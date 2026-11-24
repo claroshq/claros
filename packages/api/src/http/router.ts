@@ -1,0 +1,112 @@
+/**
+ * Routers for the dashboard API.
+ *
+ * Every route in the authenticated /v1 scope must declare the minimum role
+ * that may call it. v0.6 enforced this at boot; here the route methods take
+ * the role as a required argument, so omitting it is a type error, and an
+ * invalid value fails at registration time.
+ *
+ * Request-time order per route, as in v0.6: body parsing (400/413/415 on bad
+ * bodies), then a resolved session tenant (else 401), then the declared role
+ * (else 403). Response bodies match v0.6.
+ *
+ * Public routers (createRouter) add `parseBody()` themselves on every route
+ * that reads a body.
+ */
+import { Hono } from "hono";
+import type { Handler, MiddlewareHandler } from "hono";
+import type { AppEnv } from "./env.js";
+import { bodyParser, type BodyOptions } from "./body.js";
+import { validateBody } from "./validate.js";
+import type { z } from "zod";
+import { roleSatisfies, type UserRole } from "../types.js";
+
+/** Hono app typed with the Claros environment. */
+export function createRouter(): Hono<AppEnv> {
+  return new Hono<AppEnv>({ strict: false });
+}
+
+/** Per-route body parsing middleware (see body.ts). */
+export const parseBody = bodyParser;
+
+const PRE_AUTH = Symbol("claros.preAuth");
+type PreAuthMiddleware = MiddlewareHandler<AppEnv> & { [PRE_AUTH]: true };
+
+/**
+ * Body schema check that runs before the session/role check, as v0.6's
+ * schema validation did (a bad body answered 400 even without a session).
+ * Pass it to a RoleRouter route right after the role. The handler still
+ * reads the validated value with validateBody (same schema, same result).
+ */
+export function validatedBody<S extends z.ZodTypeAny>(schema: S): PreAuthMiddleware {
+  const mw: MiddlewareHandler<AppEnv> = async (c, next) => {
+    const v = validateBody(c, schema);
+    if (!v.ok) return v.response;
+    return next();
+  };
+  return Object.assign(mw, { [PRE_AUTH]: true as const });
+}
+
+export function requireRole(minRole: UserRole): MiddlewareHandler<AppEnv> {
+  if (minRole !== "owner" && minRole !== "member") {
+    throw new Error(
+      `[role-enforcement] minRole="${String(minRole)}" is not a valid role. Valid values: "owner", "member".`,
+    );
+  }
+  return async (c, next) => {
+    const tenant = c.var.tenant;
+    if (!tenant) {
+      return c.json({ error: "Authentication required." }, 401);
+    }
+    if (!roleSatisfies(tenant.userRole, minRole)) {
+      return c.json({ error: "Forbidden: insufficient permissions." }, 403);
+    }
+    return next();
+  };
+}
+
+type Method = "get" | "post" | "put" | "patch" | "delete";
+
+/**
+ * A router whose route methods require a minimum role. Mount `.app` under a
+ * prefix inside the authenticated /v1 scope.
+ */
+export class RoleRouter {
+  readonly app: Hono<AppEnv> = createRouter();
+  private readonly body: MiddlewareHandler<AppEnv>;
+
+  /** @param bodyOptions extra body parsers or a size limit for this router's routes */
+  constructor(bodyOptions: BodyOptions = {}) {
+    this.body = bodyParser(bodyOptions);
+  }
+
+  private add(method: Method, path: string, minRole: UserRole, handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
+    const guard = requireRole(minRole);
+    const preAuth = handlers.filter((h) => (h as Partial<PreAuthMiddleware>)[PRE_AUTH] === true);
+    const rest = handlers.filter((h) => (h as Partial<PreAuthMiddleware>)[PRE_AUTH] !== true);
+    (this.app[method] as (p: string, ...h: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]) => unknown)(
+      path,
+      this.body,
+      ...preAuth,
+      guard,
+      ...rest,
+    );
+    return this;
+  }
+
+  get(path: string, minRole: UserRole, ...handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
+    return this.add("get", path, minRole, handlers);
+  }
+  post(path: string, minRole: UserRole, ...handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
+    return this.add("post", path, minRole, handlers);
+  }
+  put(path: string, minRole: UserRole, ...handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
+    return this.add("put", path, minRole, handlers);
+  }
+  patch(path: string, minRole: UserRole, ...handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
+    return this.add("patch", path, minRole, handlers);
+  }
+  delete(path: string, minRole: UserRole, ...handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
+    return this.add("delete", path, minRole, handlers);
+  }
+}

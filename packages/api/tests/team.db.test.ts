@@ -17,7 +17,7 @@ import pg from "pg";
 import { eq, and } from "drizzle-orm";
 import { buildApp } from "../src/index.js";
 import { users, sessions, tenants, invites } from "@claros/db/schema";
-import type { FastifyInstance } from "fastify";
+import type { ClarosApp } from "../src/index.js";
 
 const TEST_DB_URL = process.env.DATABASE_URL;
 if (!TEST_DB_URL) {
@@ -35,7 +35,7 @@ process.env.DASHBOARD_URL = "http://localhost:5173";
 const pool = new pg.Pool({ connectionString: TEST_DB_URL });
 const db = drizzle(pool);
 
-let app: FastifyInstance;
+let app: ClarosApp;
 let ownerUserId: string;
 let ownerSessionId: string;
 let tenantId: string;
@@ -256,25 +256,16 @@ describe("Team management end-to-end", () => {
 });
 
 describe("Boot-time role enforcement", () => {
-  it("app refuses to start if a route omits minRole in the enforcement scope", async () => {
-    // The role enforcement is registered inside the /v1 scope in app.ts via
-    // registerRoleEnforcement(). To prove it works, we build a fresh Fastify
-    // instance with the enforcement registered and attempt to add a route
-    // without minRole in the same scope. The onRoute hook should throw.
-    const Fastify = (await import("fastify")).default;
-    const { registerRoleEnforcement } = await import("../src/plugins/role-enforcement.js");
-
-    const testApp = Fastify({ logger: false });
-
-    await expect(
-      testApp.register(async (scope) => {
-        registerRoleEnforcement(scope);
-        // This route has no config.minRole - should throw
-        scope.get("/should-fail", async () => ({ oops: true }));
-      }),
-    ).rejects.toThrow(/minRole/);
-
-    await testApp.close();
+  it("a dashboard route cannot be registered without a valid minRole", async () => {
+    // Every /v1 dashboard route is registered through RoleRouter, whose route
+    // methods take the minimum role as a required argument (omitting it is a
+    // type error). An invalid value fails at registration, before the app
+    // can serve a request.
+    const { RoleRouter } = await import("../src/http/router.js");
+    const r = new RoleRouter();
+    expect(() =>
+      r.get("/should-fail", undefined as unknown as "member", () => new Response("oops")),
+    ).toThrow(/minRole/);
   });
 });
 

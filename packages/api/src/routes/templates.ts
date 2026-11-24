@@ -32,7 +32,7 @@
  *      onboarding before configuring a provider.
  *   8. Returns the created flows for confirmation.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
 import { eq } from "drizzle-orm";
 import {
   BUSINESS_MODEL_TEMPLATES,
@@ -44,16 +44,17 @@ import { tenants, flows } from "@claros/db/schema";
 import type { Db } from "../plugins/db.js";
 
 // ---------------------------------------------------------------------------
-// Route plugin
+// Routes
 // ---------------------------------------------------------------------------
 
-const templatesRoutes: FastifyPluginAsync = async (app) => {
+export default function templatesRoutes() {
+  const r = new RoleRouter();
   /**
    * GET /v1/templates
    * List available business model templates.
    */
-  app.get("/", { config: { minRole: "member" } }, async () => {
-    return {
+  r.get("/", "member", async (c) => {
+    return c.json({
       templates: BUSINESS_MODEL_TEMPLATE_LIST.map((t) => ({
         id: t.id,
         name: t.name,
@@ -61,7 +62,7 @@ const templatesRoutes: FastifyPluginAsync = async (app) => {
         schema_version: t.schemaVersion,
         flow_count: t.flows.length,
       })),
-    };
+    });
   });
 
   /**
@@ -72,17 +73,16 @@ const templatesRoutes: FastifyPluginAsync = async (app) => {
    * Returns 400 for an unknown template id.
    * Returns 409 if the tenant already has a business_model set.
    */
-  app.post<{ Params: { id: string } }>("/:id/apply", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const templateId = request.params.id as BusinessModelId;
+  r.post("/:id/apply", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const templateId = c.req.param("id") as BusinessModelId;
 
     // Validate template id
     if (!(BUSINESS_MODEL_IDS as readonly string[]).includes(templateId)) {
-      reply.status(400);
-      return {
+      return c.json({
         error: `Unknown template id: "${templateId}". Valid ids: ${BUSINESS_MODEL_IDS.join(", ")}.`,
-      };
+      }, 400);
     }
 
     const template = BUSINESS_MODEL_TEMPLATES[templateId];
@@ -95,21 +95,19 @@ const templatesRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     if (tenantRows.length === 0) {
-      reply.status(404);
-      return { error: "Tenant not found." };
+      return c.json({ error: "Tenant not found." }, 404);
     }
 
     const tenant = tenantRows[0]!;
 
     // Reject if a template is already applied
     if (tenant.businessModel) {
-      reply.status(409);
-      return {
+      return c.json({
         error:
           `A business model template ("${tenant.businessModel}") has already been applied to this tenant. ` +
           "Flows must be adjusted manually. See the BACKLOG for template re-application semantics.",
         applied_template: tenant.businessModel,
-      };
+      }, 409);
     }
 
     // Build the updated settings JSONB.
@@ -182,13 +180,11 @@ const templatesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    reply.status(200);
-    return {
+    return c.json({
       business_model: template.id,
       template_name: template.name,
       flows_created: createdFlows,
-    };
+    });
   });
-};
-
-export default templatesRoutes;
+  return r.app;
+}

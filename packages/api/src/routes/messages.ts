@@ -19,9 +19,9 @@
  *
  * Tenant isolation: messages belonging to another tenant return 404.
  */
-import type { FastifyPluginAsync } from "fastify";
 import { sql } from "drizzle-orm";
 import type { Db } from "../plugins/db.js";
+import { RoleRouter } from "../http/router.js";
 import { QUEUE } from "@claros/core";
 
 // ---------------------------------------------------------------------------
@@ -133,10 +133,11 @@ function decodeCursor(cursor: string): CursorPayload | null {
 }
 
 // ---------------------------------------------------------------------------
-// Route plugin
+// Router
 // ---------------------------------------------------------------------------
 
-const messagesRoutes: FastifyPluginAsync = async (app) => {
+export default function messagesRoutes() {
+  const router = new RoleRouter();
   /**
    * GET /v1/messages
    *
@@ -150,23 +151,22 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
    *
    * Response: { messages: [...], next_cursor: string | null }
    */
-  app.get<{
-    Querystring: { limit?: string; after?: string; status?: string };
-  }>("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const query = c.req.query();
 
-    const rawLimit = parseInt(request.query.limit ?? "", 10);
+    const rawLimit = parseInt(query.limit ?? "", 10);
     const limit = isNaN(rawLimit) || rawLimit < 1
       ? DEFAULT_PAGE_SIZE
       : Math.min(rawLimit, MAX_PAGE_SIZE);
     const fetchLimit = limit + 1;
 
-    const statusFilter = request.query.status ?? "pending_approval";
+    const statusFilter = query.status ?? "pending_approval";
 
     let cursor: CursorPayload | null = null;
-    if (request.query.after) {
-      cursor = decodeCursor(request.query.after);
+    if (query.after) {
+      cursor = decodeCursor(query.after);
     }
 
     let rows: MessageListRow[];
@@ -216,10 +216,100 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
       ? encodeCursor(lastRow.created_at, lastRow.id)
       : null;
 
-    return {
+    return c.json({
       messages: pageRows.map(serializeMessageRow),
       next_cursor: nextCursor,
-    };
+    });
+  });
+
+  // Static /bulk/* routes are registered before the /:id/* routes: Hono runs
+  // matching handlers in registration order, so "/:id/approve" registered
+  // first would capture "/bulk/approve" (v0.6 preferred static segments).
+
+  /**
+   * POST /v1/messages/bulk/approve
+   *
+   * Approve many messages at once. Body: { ids: string[] } (1-100 uuids).
+   * One CAS UPDATE advances every message still at pending_approval; each
+   * transitioned message gets its targeted drain enqueue, same as the
+   * single-message route. Messages in any other status (or another
+   * tenant's) are reported as skipped, never touched.
+   *
+   * Response: { approved: string[], skipped: string[] }
+   */
+  router.post("/bulk/approve", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+
+    const ids = parseBulkIds((c.var.body as { ids?: unknown } | null | undefined)?.ids);
+    if (!ids) {
+      return c.json({ error: `Body must be { ids: string[] } with 1-${BULK_MAX_IDS} uuid values.` }, 400);
+    }
+
+    const now = new Date();
+    const casResult = await db.execute<{ id: string }>(sql`
+      UPDATE lifecycle_messages
+      SET status = 'approved', approved_at = ${now}, updated_at = ${now}
+      WHERE tenant_id = ${tenantId}
+        AND status = 'pending_approval'
+        AND id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])
+      RETURNING id
+    `);
+
+    const approved = casResult.rows.map((r) => r.id);
+
+    const enqueue = c.var.enqueue;
+    if (enqueue) {
+      for (const id of approved) {
+        await enqueue(
+          QUEUE.DRAIN_MESSAGE,
+          { tenant_id: tenantId, message_id: id },
+          { singletonKey: id, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
+        ).catch(() => {});
+      }
+    }
+
+    const approvedSet = new Set(approved);
+    return c.json({
+      approved,
+      skipped: ids.filter((id) => !approvedSet.has(id)),
+    });
+  });
+
+  /**
+   * POST /v1/messages/bulk/reject
+   *
+   * Reject many messages at once (terminal). Body: { ids: string[] }
+   * (1-100 uuids). One CAS UPDATE advances every message still at
+   * pending_approval; anything else is reported as skipped.
+   *
+   * Response: { rejected: string[], skipped: string[] }
+   */
+  router.post("/bulk/reject", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+
+    const ids = parseBulkIds((c.var.body as { ids?: unknown } | null | undefined)?.ids);
+    if (!ids) {
+      return c.json({ error: `Body must be { ids: string[] } with 1-${BULK_MAX_IDS} uuid values.` }, 400);
+    }
+
+    const now = new Date();
+    const casResult = await db.execute<{ id: string }>(sql`
+      UPDATE lifecycle_messages
+      SET status = 'rejected', updated_at = ${now}
+      WHERE tenant_id = ${tenantId}
+        AND status = 'pending_approval'
+        AND id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])
+      RETURNING id
+    `);
+
+    const rejected = casResult.rows.map((r) => r.id);
+    const rejectedSet = new Set(rejected);
+    return c.json({
+      rejected,
+      skipped: ids.filter((id) => !rejectedSet.has(id)),
+    });
   });
 
   /**
@@ -232,17 +322,14 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
    * If the message does not exist or belongs to another tenant: 404.
    * If the message is in a different non-approved status: 409 Conflict.
    */
-  app.post<{
-    Params: { id: string };
-  }>("/:id/approve", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const messageId = request.params.id;
+  router.post("/:id/approve", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
 
     // Validate UUID format to avoid Postgres errors
     if (!isUuid(messageId)) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     const now = new Date();
@@ -259,7 +346,7 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
 
     if (casResult.rows.length > 0) {
       // Transition succeeded - enqueue targeted drain for immediate send
-      const enqueue = request.server.enqueue;
+      const enqueue = c.var.enqueue;
       if (enqueue) {
         await enqueue(
           QUEUE.DRAIN_MESSAGE,
@@ -267,7 +354,7 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
           { singletonKey: messageId, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
         ).catch(() => {});
       }
-      return { message: "Message approved.", id: messageId, status: "approved" };
+      return c.json({ message: "Message approved.", id: messageId, status: "approved" });
     }
 
     // CAS did not match. Determine why: not found, wrong tenant, or different status.
@@ -277,24 +364,25 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (existing.rows.length === 0) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     const currentStatus = existing.rows[0]!.status;
 
     // Idempotent: already approved is a no-op
     if (currentStatus === "approved") {
-      return { message: "Message already approved.", id: messageId, status: "approved" };
+      return c.json({ message: "Message already approved.", id: messageId, status: "approved" });
     }
 
     // Any other status: conflict (e.g., already sent, rejected, etc.)
-    reply.status(409);
-    return {
-      error: `Cannot approve message in status '${currentStatus}'.`,
-      id: messageId,
-      status: currentStatus,
-    };
+    return c.json(
+      {
+        error: `Cannot approve message in status '${currentStatus}'.`,
+        id: messageId,
+        status: currentStatus,
+      },
+      409,
+    );
   });
 
   /**
@@ -307,16 +395,13 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
    * If the message does not exist or belongs to another tenant: 404.
    * If the message is in any other status: 409 Conflict.
    */
-  app.post<{
-    Params: { id: string };
-  }>("/:id/reject", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const messageId = request.params.id;
+  router.post("/:id/reject", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
 
     if (!isUuid(messageId)) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     const now = new Date();
@@ -332,7 +417,7 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (casResult.rows.length > 0) {
-      return { message: "Message rejected.", id: messageId, status: "rejected" };
+      return c.json({ message: "Message rejected.", id: messageId, status: "rejected" });
     }
 
     // Determine cause of CAS failure
@@ -342,116 +427,25 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (existing.rows.length === 0) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     const currentStatus = existing.rows[0]!.status;
 
     // Idempotent: already rejected is a no-op
     if (currentStatus === "rejected") {
-      return { message: "Message already rejected.", id: messageId, status: "rejected" };
+      return c.json({ message: "Message already rejected.", id: messageId, status: "rejected" });
     }
 
     // Any other status: conflict
-    reply.status(409);
-    return {
-      error: `Cannot reject message in status '${currentStatus}'.`,
-      id: messageId,
-      status: currentStatus,
-    };
-  });
-
-  /**
-   * POST /v1/messages/bulk/approve
-   *
-   * Approve many messages at once. Body: { ids: string[] } (1-100 uuids).
-   * One CAS UPDATE advances every message still at pending_approval; each
-   * transitioned message gets its targeted drain enqueue, same as the
-   * single-message route. Messages in any other status (or another
-   * tenant's) are reported as skipped, never touched.
-   *
-   * Response: { approved: string[], skipped: string[] }
-   */
-  app.post<{
-    Body: { ids?: unknown };
-  }>("/bulk/approve", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-
-    const ids = parseBulkIds(request.body?.ids);
-    if (!ids) {
-      reply.status(400);
-      return { error: `Body must be { ids: string[] } with 1-${BULK_MAX_IDS} uuid values.` };
-    }
-
-    const now = new Date();
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'approved', approved_at = ${now}, updated_at = ${now}
-      WHERE tenant_id = ${tenantId}
-        AND status = 'pending_approval'
-        AND id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])
-      RETURNING id
-    `);
-
-    const approved = casResult.rows.map((r) => r.id);
-
-    const enqueue = request.server.enqueue;
-    if (enqueue) {
-      for (const id of approved) {
-        await enqueue(
-          QUEUE.DRAIN_MESSAGE,
-          { tenant_id: tenantId, message_id: id },
-          { singletonKey: id, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
-        ).catch(() => {});
-      }
-    }
-
-    const approvedSet = new Set(approved);
-    return {
-      approved,
-      skipped: ids.filter((id) => !approvedSet.has(id)),
-    };
-  });
-
-  /**
-   * POST /v1/messages/bulk/reject
-   *
-   * Reject many messages at once (terminal). Body: { ids: string[] }
-   * (1-100 uuids). One CAS UPDATE advances every message still at
-   * pending_approval; anything else is reported as skipped.
-   *
-   * Response: { rejected: string[], skipped: string[] }
-   */
-  app.post<{
-    Body: { ids?: unknown };
-  }>("/bulk/reject", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-
-    const ids = parseBulkIds(request.body?.ids);
-    if (!ids) {
-      reply.status(400);
-      return { error: `Body must be { ids: string[] } with 1-${BULK_MAX_IDS} uuid values.` };
-    }
-
-    const now = new Date();
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'rejected', updated_at = ${now}
-      WHERE tenant_id = ${tenantId}
-        AND status = 'pending_approval'
-        AND id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])
-      RETURNING id
-    `);
-
-    const rejected = casResult.rows.map((r) => r.id);
-    const rejectedSet = new Set(rejected);
-    return {
-      rejected,
-      skipped: ids.filter((id) => !rejectedSet.has(id)),
-    };
+    return c.json(
+      {
+        error: `Cannot reject message in status '${currentStatus}'.`,
+        id: messageId,
+        status: currentStatus,
+      },
+      409,
+    );
   });
 
   /**
@@ -468,16 +462,13 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
    * that already has approved content would discard it, and resurrecting a
    * bounced send needs a different decision. Those return 409.
    */
-  app.post<{
-    Params: { id: string };
-  }>("/:id/retry", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const messageId = request.params.id;
+  router.post("/:id/retry", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
 
     if (!isUuid(messageId)) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     const now = new Date();
@@ -493,7 +484,7 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (casResult.rows.length > 0) {
-      return { message: "Message re-queued for generation.", id: messageId, status: "pending_generation" };
+      return c.json({ message: "Message re-queued for generation.", id: messageId, status: "pending_generation" });
     }
 
     const existing = await db.execute<{ id: string; status: string }>(sql`
@@ -502,18 +493,20 @@ const messagesRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (existing.rows.length === 0) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
-    reply.status(409);
-    return {
-      error: `Cannot retry message in status '${existing.rows[0]!.status}'.`,
-      id: messageId,
-      status: existing.rows[0]!.status,
-    };
+    return c.json(
+      {
+        error: `Cannot retry message in status '${existing.rows[0]!.status}'.`,
+        id: messageId,
+        status: existing.rows[0]!.status,
+      },
+      409,
+    );
   });
-};
+  return router.app;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -537,5 +530,3 @@ function parseBulkIds(value: unknown): string[] | null {
   }
   return [...new Set(ids)];
 }
-
-export default messagesRoutes;

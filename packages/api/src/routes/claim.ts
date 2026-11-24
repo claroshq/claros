@@ -16,12 +16,14 @@
  * - After an owner exists: GET /claim returns a redirect to /login regardless
  *   of token validity. The claim surface disappears entirely once claimed.
  */
-import type { FastifyPluginAsync } from "fastify";
 import { randomBytes, createHash } from "node:crypto";
+import { setCookie } from "hono/cookie";
 import { users, tenants, sessions } from "@claros/db/schema";
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "../plugins/db.js";
 import { SESSION_COOKIE_NAME } from "./auth.js";
+import { createRouter, parseBody } from "../http/router.js";
+import type { BodyParser } from "../http/body.js";
 
 const SESSION_TTL_DAYS = 30;
 
@@ -34,46 +36,46 @@ interface ClaimRouteOptions {
   dashboardUrl: string;
 }
 
-const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => {
-  const { getClaimToken, consumeClaimToken, dashboardUrl } = opts;
+/**
+ * Scoped form body parser for the claim POST (application/x-www-form-urlencoded).
+ * Differs from parseForm on purpose (v0.6 semantics): "+" is not decoded to a
+ * space, a pair without "=" yields an empty value, and the value stops at the
+ * second "=". A malformed escape throws, which answers 400.
+ */
+const parseClaimForm: BodyParser = (body) => {
+  const parsed: Record<string, string> = {};
+  for (const pair of body.split("&")) {
+    const [k, v] = pair.split("=");
+    if (k) parsed[decodeURIComponent(k)] = decodeURIComponent(v ?? "");
+  }
+  return parsed;
+};
 
-  // Scoped form body parser for the claim POST (application/x-www-form-urlencoded).
-  app.addContentTypeParser(
-    "application/x-www-form-urlencoded",
-    { parseAs: "string" },
-    (_req, body, done) => {
-      try {
-        const parsed: Record<string, string> = {};
-        for (const pair of (body as string).split("&")) {
-          const [k, v] = pair.split("=");
-          if (k) parsed[decodeURIComponent(k)] = decodeURIComponent(v ?? "");
-        }
-        done(null, parsed);
-      } catch (err) {
-        done(err as Error, undefined);
-      }
-    },
-  );
+/** v0.6 sent HTML with `type("text/html")`, which Fastify completed to this value. */
+const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
+
+export default function claimRoutes(opts: ClaimRouteOptions) {
+  const { getClaimToken, consumeClaimToken, dashboardUrl } = opts;
+  const app = createRouter();
 
   /**
    * GET /claim?token=<token>
    * Renders a minimal HTML form for entering the owner email.
    * If users already exist, redirects to /login.
    */
-  app.get<{ Querystring: { token?: string } }>("/", async (request, reply) => {
-    const db: Db = request.server.db;
+  app.get("/", async (c) => {
+    const db: Db = c.var.db;
 
     // If any user exists, claim is over.
     const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
     if (existingUsers.length > 0) {
-      reply.redirect(`${dashboardUrl}/login`);
-      return;
+      return c.redirect(`${dashboardUrl}/login`, 302);
     }
 
-    const token = request.query.token;
+    const token = c.req.query("token");
     const validToken = getClaimToken();
     if (!token || !validToken || token !== validToken) {
-      reply.status(403).type("text/html").send(`
+      return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
         <body style="font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;">
@@ -86,11 +88,10 @@ const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => 
           of the instance that received this request.</p>
           <pre>docker compose logs app | grep "claim"</pre>
         </body></html>
-      `);
-      return;
+      `, 403, HTML_HEADERS);
     }
 
-    reply.type("text/html").send(`
+    return c.html(`
       <!doctype html>
       <html><head><title>Claim your Claros account</title>
       <style>
@@ -110,43 +111,41 @@ const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => 
           <button type="submit">Create owner account</button>
         </form>
       </body></html>
-    `);
+    `, 200, HTML_HEADERS);
   });
 
   /**
    * POST /claim
    * Consumes the claim token, creates the owner user, starts a session.
    */
-  app.post<{ Body: { token?: string; email?: string } }>("/", async (request, reply) => {
-    const db: Db = request.server.db;
+  app.post("/", parseBody({ parsers: { "application/x-www-form-urlencoded": parseClaimForm } }), async (c) => {
+    const db: Db = c.var.db;
 
     // If any user exists, claim is over.
     const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
     if (existingUsers.length > 0) {
-      reply.redirect(`${dashboardUrl}/login`);
-      return;
+      return c.redirect(`${dashboardUrl}/login`, 302);
     }
 
     // Parse form body (application/x-www-form-urlencoded)
-    const body = request.body as Record<string, string> | undefined;
+    const body = c.var.body as Record<string, string> | undefined;
     const token = body?.token;
     const email = body?.email?.toLowerCase().trim();
 
     const validToken = getClaimToken();
     if (!token || !validToken || token !== validToken) {
-      reply.status(403).type("text/html").send(`
+      return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
         <body style="font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;">
           <h1>Invalid or expired token</h1>
           <p>This claim link is no longer valid. Check the latest container logs for the current URL.</p>
         </body></html>
-      `);
-      return;
+      `, 403, HTML_HEADERS);
     }
 
     if (!email || !email.includes("@") || email.length < 3) {
-      reply.status(400).type("text/html").send(`
+      return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
         <body style="font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;">
@@ -154,8 +153,7 @@ const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => 
           <p>Please provide a valid email address.</p>
           <a href="javascript:history.back()">Go back</a>
         </body></html>
-      `);
-      return;
+      `, 400, HTML_HEADERS);
     }
 
     // Find the default tenant (created by bootstrapSeed).
@@ -166,15 +164,14 @@ const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => 
       .limit(1);
 
     if (tenantRows.length === 0) {
-      reply.status(500).type("text/html").send(`
+      return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
         <body style="font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;">
           <h1>Setup error</h1>
           <p>No tenant found. The server may not have completed bootstrap.</p>
         </body></html>
-      `);
-      return;
+      `, 500, HTML_HEADERS);
     }
 
     const tenantId = tenantRows[0]!.id;
@@ -188,8 +185,7 @@ const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => 
 
     if (!newUser) {
       // Race condition: another request created a user. Redirect to login.
-      reply.redirect(`${dashboardUrl}/login`);
-      return;
+      return c.redirect(`${dashboardUrl}/login`, 302);
     }
 
     // Consume the claim token (single-use).
@@ -202,17 +198,17 @@ const claimRoutes: FastifyPluginAsync<ClaimRouteOptions> = async (app, opts) => 
       .values({ tenantId, userId: newUser.id, expiresAt })
       .returning({ id: sessions.id });
 
-    reply.setCookie(SESSION_COOKIE_NAME, session!.id, {
+    setCookie(c, SESSION_COOKIE_NAME, session!.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "Lax",
       path: "/",
       maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
     });
 
     // Redirect to the dashboard.
-    reply.redirect(`${dashboardUrl}/`);
+    return c.redirect(`${dashboardUrl}/`, 302);
   });
-};
 
-export default claimRoutes;
+  return app;
+}

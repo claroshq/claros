@@ -22,7 +22,6 @@
     "@claros/scheduler": "*",
     "@claros/worker": "*",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^4.28.0",
     "pg": "^8.22.0",
     "zod": "^3.23.0"
   },

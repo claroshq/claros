@@ -43,7 +43,6 @@
  *   - engagement trends: uses idx_message_events_tenant_type_day
  *     (tenant_id, event_type, occurred_at).
  */
-import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import {
@@ -57,6 +56,8 @@ import {
   type LifecycleConfig,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
+import type { AppContext } from "../http/env.js";
+import { RoleRouter } from "../http/router.js";
 
 const daysQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional(),
@@ -86,18 +87,21 @@ async function loadLifecycleConfig(db: Db, tenantId: string): Promise<LifecycleC
   );
 }
 
-function validationError(reply: any, issues: z.ZodIssue[]) {
-  reply.status(400);
-  return {
-    error: "Validation failed",
-    issues: issues.map((i) => ({
-      path: i.path.join("."),
-      message: i.message,
-    })),
-  };
+function validationError(c: AppContext, issues: z.ZodIssue[]) {
+  return c.json(
+    {
+      error: "Validation failed",
+      issues: issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    },
+    400,
+  );
 }
 
-const analyticsRoutes: FastifyPluginAsync = async (app) => {
+export default function analyticsRoutes() {
+  const router = new RoleRouter();
   /**
    * GET /v1/analytics/lifecycle?days=<1..90>
    *
@@ -118,14 +122,14 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
    * a state, belongs to neither bucket).
    * }
    */
-  app.get<{ Querystring: { days?: string } }>("/lifecycle", { config: { minRole: "member" } }, async (request, reply) => {
-    const parsed = daysQuerySchema.safeParse(request.query);
+  router.get("/lifecycle", "member", async (c) => {
+    const parsed = daysQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
     const days = parsed.data.days ?? 30;
 
     const distribution = (
@@ -208,7 +212,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
 
     const contactsTotal = distribution.reduce((acc, row) => acc + row.total, 0);
 
-    return {
+    return c.json({
       range_days: days,
       contacts_total: contactsTotal,
       distribution,
@@ -217,7 +221,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
         edges,
         days: movementDays,
       },
-    };
+    });
   });
 
   /**
@@ -239,14 +243,14 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     *                complained, suppressed, failed }]
     * }
    */
-  app.get<{ Querystring: { days?: string } }>("/sending", { config: { minRole: "member" } }, async (request, reply) => {
-    const parsed = daysQuerySchema.safeParse(request.query);
+  router.get("/sending", "member", async (c) => {
+    const parsed = daysQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
     const days = parsed.data.days ?? 30;
 
     const sendDays = (
@@ -344,7 +348,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       `)
     ).rows;
 
-    return {
+    return c.json({
       range_days: days,
       days: sendDays,
       engagement_days: engagementDays,
@@ -359,7 +363,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
         failed: 0,
       },
       per_flow: perFlow,
-    };
+    });
   });
 
   /**
@@ -381,9 +385,9 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
    *   contacts_total: number
    * }
    */
-  app.get("/retention-grid", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/retention-grid", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const config = await loadLifecycleConfig(db, tenantId);
     const recencyDays = recencyThresholdDays(config.natural_frequency_days);
@@ -416,13 +420,13 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       `)
     ).rows;
 
-    return {
+    return c.json({
       natural_frequency_days: config.natural_frequency_days,
       tenure_thresholds_days: RETENTION_TENURE_THRESHOLDS_DAYS,
       recency_thresholds_days: recencyDays,
       cells,
-      contacts_total: cells.reduce((acc, c) => acc + c.count, 0),
-    };
+      contacts_total: cells.reduce((acc, cell) => acc + cell.count, 0),
+    });
   });
 
   /**
@@ -440,21 +444,18 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
    *   next_cursor: string | null
    * }
    */
-  app.get<{
-    Params: { tenure: string; recency: string };
-    Querystring: { cursor?: string; limit?: string };
-  }>("/retention-grid/:tenure/:recency/contacts", { config: { minRole: "member" } }, async (request, reply) => {
-    const params = cellParamsSchema.safeParse(request.params);
+  router.get("/retention-grid/:tenure/:recency/contacts", "member", async (c) => {
+    const params = cellParamsSchema.safeParse(c.req.param());
     if (!params.success) {
-      return validationError(reply, params.error.issues);
+      return validationError(c, params.error.issues);
     }
-    const query = cellContactsQuerySchema.safeParse(request.query);
+    const query = cellContactsQuerySchema.safeParse(c.req.query());
     if (!query.success) {
-      return validationError(reply, query.error.issues);
+      return validationError(c, query.error.issues);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
     const limit = query.data.limit ?? 50;
 
     const config = await loadLifecycleConfig(db, tenantId);
@@ -492,10 +493,10 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
 
-    return {
+    return c.json({
       contacts: page,
       next_cursor: hasMore ? page[page.length - 1]!.id : null,
-    };
+    });
   });
 
   /**
@@ -508,21 +509,18 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
    *
    * Response: { range_days: number, days: [{ day, count, paying }] }
    */
-  app.get<{
-    Params: { tenure: string; recency: string };
-    Querystring: { days?: string };
-  }>("/retention-grid/:tenure/:recency/trend", { config: { minRole: "member" } }, async (request, reply) => {
-    const params = cellParamsSchema.safeParse(request.params);
+  router.get("/retention-grid/:tenure/:recency/trend", "member", async (c) => {
+    const params = cellParamsSchema.safeParse(c.req.param());
     if (!params.success) {
-      return validationError(reply, params.error.issues);
+      return validationError(c, params.error.issues);
     }
-    const query = daysQuerySchema.safeParse(request.query);
+    const query = daysQuerySchema.safeParse(c.req.query());
     if (!query.success) {
-      return validationError(reply, query.error.issues);
+      return validationError(c, query.error.issues);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
     const days = query.data.days ?? 30;
 
     const rows = (
@@ -539,8 +537,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       `)
     ).rows;
 
-    return { range_days: days, days: rows };
+    return c.json({ range_days: days, days: rows });
   });
-};
-
-export default analyticsRoutes;
+  return router.app;
+}

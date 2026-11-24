@@ -26,7 +26,7 @@ describe("buildApp", () => {
   it("/health is not under /v1 (public route, no auth required)", async () => {
     const app = await buildApp({ logger: false });
     const v1health = await app.inject({ method: "GET", url: "/v1/health" });
-    // No routes exist under /v1 yet, so Fastify returns 404.
+    // Without a db no dashboard routes are registered, so /v1/health is a 404.
     // Once routes are added (task 7+), the /v1 preHandler will enforce auth (401).
     expect(v1health.statusCode).toBe(404);
     await app.close();
@@ -35,9 +35,9 @@ describe("buildApp", () => {
   it("request.tenant is decorated (null by default)", async () => {
     const app = await buildApp({ logger: false });
     let capturedTenant: unknown = "NOT_SET";
-    app.get("/test-tenant", async (req) => {
-      capturedTenant = req.tenant;
-      return { ok: true };
+    app.hono.get("/test-tenant", (c) => {
+      capturedTenant = c.var.tenant;
+      return c.json({ ok: true });
     });
     await app.inject({ method: "GET", url: "/test-tenant" });
     expect(capturedTenant).toBeNull();

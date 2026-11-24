@@ -7,11 +7,11 @@
  * Endpoints:
  *   GET /v1/events/names  distinct track-event names seen recently
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
 import { sql } from "drizzle-orm";
-import type { Db } from "../plugins/db.js";
 
-const eventsRoutes: FastifyPluginAsync = async (app) => {
+export default function eventsRoutes() {
+  const r = new RoleRouter();
   /**
    * GET /v1/events/names
    *
@@ -24,9 +24,9 @@ const eventsRoutes: FastifyPluginAsync = async (app) => {
    * (events is PARTITION BY RANGE (received_at)); tenant_id is always the
    * first filter.
    */
-  app.get("/names", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/names", "member", async (c) => {
+    const db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = (
       await db.execute<{ event_name: string }>(sql`
@@ -42,8 +42,7 @@ const eventsRoutes: FastifyPluginAsync = async (app) => {
       `)
     ).rows;
 
-    return { event_names: rows.map((r) => r.event_name) };
+    return c.json({ event_names: rows.map((row) => row.event_name) });
   });
-};
-
-export default eventsRoutes;
+  return r.app;
+}

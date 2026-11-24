@@ -19,7 +19,8 @@
  * being sent via email.
  */
 import { randomBytes, createHash } from "node:crypto";
-import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+import { getCookie, setCookie } from "hono/cookie";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   users,
@@ -34,15 +35,20 @@ import {
 } from "@claros/adapters";
 import { buildLoginEmail, type TransactionalEmailInput } from "../transactional-email.js";
 import type { Db } from "../plugins/db.js";
+import { createRouter, parseBody } from "../http/router.js";
+import { parseForm } from "../http/body.js";
+import { validateBody, validateQuery } from "../http/validate.js";
+import { SESSION_COOKIE_NAME } from "../http/session.js";
+import type { AppContext } from "../http/env.js";
+
+/** Cookie name for session ID (defined in http/session.ts, re-exported here). */
+export { SESSION_COOKIE_NAME } from "../http/session.js";
 
 /** Token TTL in minutes. */
 const TOKEN_TTL_MINUTES = 10;
 
 /** Session TTL in days. */
 const SESSION_TTL_DAYS = 30;
-
-/** Cookie name for session ID. */
-export const SESSION_COOKIE_NAME = "claros_session";
 
 /**
  * Generate a cryptographically random token (URL-safe base64).
@@ -84,7 +90,7 @@ export interface AuthRouteOptions {
    * verify URL is built from dashboardUrl (see below), not baseUrl, because
    * the dashboard may be served from a different host than the API (for
    * example behind a reverse proxy) and the Vite dev proxy forwards /auth/*
-   * to Fastify.
+   * to the API server.
    */
   baseUrl: string;
   /**
@@ -242,30 +248,65 @@ function renderVerifyPage(email: string, token: string): string {
 </html>`;
 }
 
-const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
-  const { baseUrl, dashboardUrl } = opts;
-  const db: Db = app.db;
+// ---------------------------------------------------------------------------
+// Request schemas (v0.6 validated these with Ajv: coerceTypes, ajv-formats "full")
+// ---------------------------------------------------------------------------
 
-  // Register form body parser for this scope (needed for the interstitial
-  // form POST to /auth/verify). Same manual parser as unsubscribe.ts - no
-  // new dependency. JSON is handled by Fastify's built-in parser.
-  app.addContentTypeParser(
-    "application/x-www-form-urlencoded",
-    { parseAs: "string" },
-    (_req, body, done) => {
-      const parsed: Record<string, string> = {};
-      if (typeof body === "string" && body.length > 0) {
-        for (const pair of body.split("&")) {
-          const eqIdx = pair.indexOf("=");
-          if (eqIdx === -1) continue;
-          const key = decodeURIComponent(pair.slice(0, eqIdx).replace(/\+/g, " "));
-          const value = decodeURIComponent(pair.slice(eqIdx + 1).replace(/\+/g, " "));
-          parsed[key] = value;
-        }
-      }
-      done(null, parsed);
-    },
+/**
+ * Ajv's email format ("full" mode, as registered by v0.6's validator).
+ * Kept verbatim so the accepted set of addresses does not change.
+ */
+const AJV_EMAIL_FORMAT =
+  /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
+
+/** A string field with Ajv's scalar coercion (number/boolean -> string, null -> ""). */
+function ajvString<T extends z.ZodTypeAny>(inner: T) {
+  return z.preprocess(
+    (v) => (typeof v === "number" || typeof v === "boolean" ? String(v) : v === null ? "" : v),
+    inner,
   );
+}
+
+const loginBodySchema = z.object({
+  email: ajvString(
+    z
+      .string({ invalid_type_error: "must be string" })
+      .regex(AJV_EMAIL_FORMAT, { message: 'must match format "email"' }),
+  ),
+});
+
+const verifyQuerySchema = z.object({
+  token: ajvString(z.string({ invalid_type_error: "must be string" })).optional(),
+});
+
+const verifyBodySchema = z.object({
+  token: ajvString(z.string({ invalid_type_error: "must be string" })).optional(),
+});
+
+/** Session cookie attributes (unchanged since v0.6). */
+function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "Lax" as const,
+    path: "/",
+    maxAge: SESSION_TTL_DAYS * 24 * 60 * 60, // seconds
+  };
+}
+
+/** Clear the session cookie the way v0.6 did (empty value, epoch Expires, path /). */
+function clearSessionCookie(c: AppContext): void {
+  setCookie(c, SESSION_COOKIE_NAME, "", { path: "/", expires: new Date(0) });
+}
+
+export default function authRoutes(opts: AuthRouteOptions) {
+  const { baseUrl, dashboardUrl } = opts;
+  const app = createRouter();
+
+  // Form body parser for this scope (needed for the interstitial form POST to
+  // /auth/verify). Same manual parser as unsubscribe.ts (parseForm has the
+  // identical semantics) - no new dependency. JSON uses the default parser.
+  const body = parseBody({ parsers: { "application/x-www-form-urlencoded": parseForm } });
 
   /**
    * POST /auth/login
@@ -275,27 +316,16 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
    * exists (prevents user enumeration). If the user does not exist, no token
    * is created and no link is sent/printed.
    */
-  app.post<{ Body: { email: string } }>(
+  // v0.6 declared a 200 response schema with only `message`; every return
+  // below sends exactly that field.
+  app.post(
     "/login",
-    {
-      schema: {
-        body: {
-          type: "object",
-          properties: { email: { type: "string", format: "email" } },
-          required: ["email"],
-        },
-        response: {
-          200: {
-            type: "object",
-            properties: {
-              message: { type: "string" },
-            },
-          },
-        },
-      },
-    },
-    async (request, reply) => {
-      const { email } = request.body;
+    body,
+    async (c) => {
+      const v = validateBody(c, loginBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const { email } = v.value;
       const normalizedEmail = email.toLowerCase().trim();
 
       // Look up user by email (across all tenants for login - user belongs to exactly one tenant)
@@ -312,8 +342,8 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
       if (userRows.length === 0) {
         // User not found - return generic response to prevent enumeration.
         // Log for debugging but do not reveal to client.
-        request.log.debug({ email: normalizedEmail }, "Login attempt for unknown email");
-        return { message: "If that email is registered, a login link has been sent." };
+        c.var.log.debug({ email: normalizedEmail }, "Login attempt for unknown email");
+        return c.json({ message: "If that email is registered, a login link has been sent." });
       }
 
       const user = userRows[0]!;
@@ -335,7 +365,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
       // then http://localhost:PORT. dashboardUrl is resolved in app.ts with
       // opts.dashboardUrl ?? DASHBOARD_URL ?? baseUrl.
       // In Vite dev mode DASHBOARD_URL=http://localhost:5173 and the Vite proxy
-      // forwards /auth/* to Fastify - so the link is clickable in a browser.
+      // forwards /auth/* to the API server - so the link is clickable in a browser.
       // In self-host mode both values are the same origin.
       const loginUrl = `${dashboardUrl}/auth/verify?token=${raw}`;
 
@@ -356,7 +386,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
       if (!hasTransport && isConsoleLoginAllowed()) {
         // Console fallback: print the login URL to server logs.
         // This path only fires in non-production environments.
-        request.log.info(
+        c.var.log.info(
           { loginUrl, email: normalizedEmail },
           "CONSOLE LOGIN LINK (no transport configured)",
         );
@@ -371,18 +401,18 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
         console.log("========================================");
         console.log("");
 
-        return { message: "Login link printed to server console." };
+        return c.json({ message: "Login link printed to server console." });
       }
 
       if (!hasTransport && !isConsoleLoginAllowed()) {
         // Production with no transport: cannot send or print the link.
         // This should not happen in Cloud (transport always exists).
         // Log as error for operator visibility.
-        request.log.error(
+        c.var.log.error(
           { email: normalizedEmail, tenantId: user.tenantId },
           "Cannot send login link: no transport configured and console fallback is disabled",
         );
-        return { message: "If that email is registered, a login link has been sent." };
+        return c.json({ message: "If that email is registered, a login link has been sent." });
       }
 
       // Has transport: attempt to send the login link via email.
@@ -426,21 +456,21 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
 
           if (result.success) {
             // Email accepted by provider. Do NOT log the URL or token.
-            request.log.info(
+            c.var.log.info(
               { email: normalizedEmail },
               "Login link sent via email",
             );
-            return { message: "If that email is registered, a login link has been sent." };
+            return c.json({ message: "If that email is registered, a login link has been sent." });
           }
 
           // Send failed - fall through to console fallback below.
-          request.log.warn(
+          c.var.log.warn(
             { email: normalizedEmail, error: result.error, permanent: result.permanent },
             "Login link email send failed, falling back to console",
           );
         } catch (err) {
           // Unexpected error (network, etc.) - fall through to console fallback.
-          request.log.warn(
+          c.var.log.warn(
             { email: normalizedEmail, error: err instanceof Error ? err.message : String(err) },
             "Login link email send threw, falling back to console",
           );
@@ -459,10 +489,10 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
         console.log(`  Expires: ${TOKEN_TTL_MINUTES} minutes`);
         console.log("========================================");
         console.log("");
-        return { message: "Login link printed to server console." };
+        return c.json({ message: "Login link printed to server console." });
       }
 
-      return { message: "If that email is registered, a login link has been sent." };
+      return c.json({ message: "If that email is registered, a login link has been sent." });
     },
   );
 
@@ -478,23 +508,18 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
    * POSTs the token back here. Scanners do not submit forms.
    * Invalid, consumed, or expired token: 302 -> dashboardUrl/login?error=invalid_link
    */
-  app.get<{ Querystring: { token?: string } }>(
+  app.get(
     "/verify",
-    {
-      schema: {
-        querystring: {
-          type: "object",
-          properties: { token: { type: "string" } },
-        },
-      },
-    },
-    async (request, reply) => {
+    async (c) => {
+      const q = validateQuery(c, verifyQuerySchema);
+      if (!q.ok) return q.response;
+      const db: Db = c.var.db;
       const failRedirect = `${dashboardUrl}/login?error=invalid_link`;
 
-      const { token } = request.query;
+      const { token } = q.value;
 
       if (!token || token.length === 0) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       const tokenHash = hashToken(token);
@@ -514,14 +539,14 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
 
       const row = rows[0];
       if (!row || row.consumedAt !== null || row.expiresAt < now) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       // The page is per-token and short-lived; never let a scanner cache it.
-      return reply
-        .header("cache-control", "no-store")
-        .type("text/html; charset=utf-8")
-        .send(renderVerifyPage(row.email, token));
+      return c.html(renderVerifyPage(row.email, token), 200, {
+        "cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+      });
     },
   );
 
@@ -541,23 +566,19 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
    *
    * No JSON body is returned on either path.
    */
-  app.post<{ Body: { token?: string } }>(
+  app.post(
     "/verify",
-    {
-      schema: {
-        body: {
-          type: "object",
-          properties: { token: { type: "string" } },
-        },
-      },
-    },
-    async (request, reply) => {
+    body,
+    async (c) => {
+      const v = validateBody(c, verifyBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
       const failRedirect = `${dashboardUrl}/login?error=invalid_link`;
 
-      const token = request.body?.token;
+      const token = v.value.token;
 
       if (!token || token.length === 0) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       const tokenHash = hashToken(token);
@@ -583,7 +604,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
 
       if (consumed.length === 0) {
         // Token not found, already consumed, or tampered.
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       const tokenRow = consumed[0]!;
@@ -592,7 +613,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
       if (tokenRow.expiresAt < now) {
         // Token was consumed but is expired. Already marked consumed so it
         // cannot be reused regardless.
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       // Create session
@@ -612,13 +633,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
 
       // Set session cookie before the redirect so the browser sends it on the
       // first request to the dashboard.
-      reply.setCookie(SESSION_COOKIE_NAME, sessionId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: SESSION_TTL_DAYS * 24 * 60 * 60, // seconds
-      });
+      setCookie(c, SESSION_COOKIE_NAME, sessionId, sessionCookieOptions());
 
       // Update user's last_login_at
       await db
@@ -626,7 +641,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
         .set({ lastLoginAt: now })
         .where(eq(users.id, tokenRow.userId));
 
-      return reply.redirect(`${dashboardUrl}/`, 302);
+      return c.redirect(`${dashboardUrl}/`, 302);
     },
   );
 
@@ -634,25 +649,26 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
    * POST /auth/logout
    * Destroy the current session.
    */
-  app.post("/logout", async (request, reply) => {
-    const sessionId = request.cookies[SESSION_COOKIE_NAME];
+  app.post("/logout", body, async (c) => {
+    const db: Db = c.var.db;
+    const sessionId = getCookie(c, SESSION_COOKIE_NAME);
     if (sessionId) {
       await db.delete(sessions).where(eq(sessions.id, sessionId));
     }
 
-    reply.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
-    return { message: "Logged out." };
+    clearSessionCookie(c);
+    return c.json({ message: "Logged out." });
   });
 
   /**
    * GET /auth/me
    * Get the current authenticated user. Returns 401 if not logged in.
    */
-  app.get("/me", async (request, reply) => {
-    const sessionId = request.cookies[SESSION_COOKIE_NAME];
+  app.get("/me", async (c) => {
+    const db: Db = c.var.db;
+    const sessionId = getCookie(c, SESSION_COOKIE_NAME);
     if (!sessionId) {
-      reply.status(401);
-      return { error: "Not authenticated." };
+      return c.json({ error: "Not authenticated." }, 401);
     }
 
     const sessionRows = await db
@@ -666,9 +682,8 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
       .limit(1);
 
     if (sessionRows.length === 0 || sessionRows[0]!.expiresAt < new Date()) {
-      reply.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
-      reply.status(401);
-      return { error: "Not authenticated." };
+      clearSessionCookie(c);
+      return c.json({ error: "Not authenticated." }, 401);
     }
 
     const session = sessionRows[0]!;
@@ -684,13 +699,12 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
       .limit(1);
 
     if (userRows.length === 0) {
-      reply.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
-      reply.status(401);
-      return { error: "Not authenticated." };
+      clearSessionCookie(c);
+      return c.json({ error: "Not authenticated." }, 401);
     }
 
     const user = userRows[0]!;
-    return {
+    return c.json({
       user: {
         id: user.id,
         email: user.email,
@@ -698,8 +712,8 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts) => {
         role: user.role,
         tenantId: session.tenantId,
       },
-    };
+    });
   });
-};
 
-export default authRoutes;
+  return app;
+}

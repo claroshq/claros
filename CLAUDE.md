@@ -14,9 +14,9 @@ If code and docs diverge, say so before writing code. Do not silently "fix" eith
 
 ## Stack
 
-TypeScript (Node 22+) · npm workspaces · Postgres 16 + pgvector · Drizzle ORM · pg-boss · Zod at all boundaries · Vitest · Vite + React dashboard · one Docker image with `--role=all|api|worker|scheduler`.
+TypeScript (Node 22+) · npm workspaces · Hono (HTTP, on `@hono/node-server`) · Postgres 16 + pgvector · Drizzle ORM · pg-boss · Zod at all boundaries · Vitest · Vite + React dashboard · one Docker image with `--role=all|api|worker|scheduler`.
 
-In progress (see DECISIONS.md): Fastify to Hono on both runtimes, a repository layer with twin Drizzle schemas (pg + sqlite), and an `apps/worker` Cloudflare Workers runtime on D1. Until each piece lands, the Postgres + Node path is the only released one.
+HTTP conventions (packages/api/src/http): dashboard routes use `RoleRouter` (every route declares its minimum role), bodies are parsed per route with v0.6 rules, schema-validated bodies use `validatedBody` + `validateBody`; Hono matches routes in registration order, so register static paths before overlapping param paths. In progress (see DECISIONS.md): a repository layer with twin Drizzle schemas (pg + sqlite) and an `apps/worker` Cloudflare Workers runtime on D1. Until each piece lands, the Postgres + Node path is the only released one.
 
 New dependencies: only the ones approved in DECISIONS.md (D6). Anything else needs the maintainer.
 

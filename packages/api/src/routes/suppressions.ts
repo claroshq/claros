@@ -56,7 +56,7 @@
  *   keyed on (created_at, id), ?limit= (default 50, max 200), ?after=<cursor>,
  *   next_cursor in the response.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
 import { eq, and, sql } from "drizzle-orm";
 import { suppressions } from "@claros/db/schema";
 import type { Db } from "../plugins/db.js";
@@ -134,15 +134,18 @@ function decodeCursor(cursor: string): CursorPayload | null {
 // Route plugin
 // ---------------------------------------------------------------------------
 
-const suppressionRoutes: FastifyPluginAsync = async (app) => {
+export default function suppressionRoutes() {
   // Register text/plain and text/csv content type parsers for this scope.
   // These are used by the import endpoint to read raw email lists.
-  // JSON is handled by Fastify's built-in parser.
-  app.addContentTypeParser(
-    ["text/plain", "text/csv", "application/csv"],
-    { parseAs: "string" },
-    (_req, body, done) => done(null, body),
-  );
+  // JSON is handled by the default body parser.
+  const rawText = (raw: string): string => raw;
+  const r = new RoleRouter({
+    parsers: {
+      "text/plain": rawText,
+      "text/csv": rawText,
+      "application/csv": rawText,
+    },
+  });
   /**
    * POST /v1/suppressions
    *
@@ -157,20 +160,17 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
    * 201 { email, added: true } on a new row, 200 { email, added: false }
    * when the address was already suppressed.
    */
-  app.post("/", {
-    config: { rawBody: false, minRole: "member" as const },
-  }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.post("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
-    const body = request.body as Record<string, unknown> | null;
+    const body = c.var.body as Record<string, unknown> | null;
     const email = typeof body?.email === "string"
       ? body.email.trim().toLowerCase()
       : "";
 
     if (!isValidEmail(email)) {
-      reply.status(400);
-      return { error: "Body must contain a valid 'email' address." };
+      return c.json({ error: "Body must contain a valid 'email' address." }, 400);
     }
 
     const result = await db.execute<{ id: string }>(sql`
@@ -181,8 +181,7 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     const added = result.rows.length > 0;
-    reply.status(added ? 201 : 200);
-    return { email, added };
+    return c.json({ email, added }, added ? 201 : 200);
   });
 
   /**
@@ -194,11 +193,9 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
    *
    * Returns { imported, skipped, invalid, total_rows }.
    */
-  app.post("/import", {
-    config: { rawBody: false, minRole: "member" as const },
-  }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.post("/import", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     // ---------------------------------------------------------------------------
     // Parse the body into a list of candidate email strings
@@ -206,22 +203,20 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
 
     let lines: string[];
 
-    const contentType = (request.headers["content-type"] ?? "").toLowerCase();
+    const contentType = (c.req.header("content-type") ?? "").toLowerCase();
 
     if (contentType.includes("application/json")) {
       // JSON shape: { "addresses": ["a@b.com", ...] }
-      const body = request.body as Record<string, unknown>;
+      const body = c.var.body as Record<string, unknown>;
       if (!Array.isArray(body?.addresses)) {
-        reply.status(400);
-        return { error: "JSON body must have an 'addresses' array." };
+        return c.json({ error: "JSON body must have an 'addresses' array." }, 400);
       }
       lines = (body.addresses as unknown[]).map(String);
     } else {
       // Plain text / CSV: read the raw body string
-      const raw = request.body as string;
+      const raw = c.var.body as string;
       if (typeof raw !== "string" || raw.length === 0) {
-        reply.status(400);
-        return { error: "Body must be a non-empty text document or JSON {addresses:[...]}." };
+        return c.json({ error: "Body must be a non-empty text document or JSON {addresses:[...]}." }, 400);
       }
       lines = raw.split(/\r?\n/);
     }
@@ -276,8 +271,7 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
       skipped = toInsert.length - imported; // rows in batch that conflicted
     }
 
-    reply.status(200);
-    return { imported, skipped, invalid, total_rows: totalRows };
+    return c.json({ imported, skipped, invalid, total_rows: totalRows }, 200);
   });
 
   /**
@@ -290,21 +284,20 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
    *
    * Response: { suppressions: SuppressionEntry[], next_cursor: string | null }
    */
-  app.get<{
-    Querystring: { limit?: string; after?: string };
-  }>("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const query = c.req.query() as { limit?: string; after?: string };
 
-    const rawLimit = parseInt(request.query.limit ?? "", 10);
+    const rawLimit = parseInt(query.limit ?? "", 10);
     const limit = isNaN(rawLimit) || rawLimit < 1
       ? DEFAULT_PAGE_SIZE
       : Math.min(rawLimit, MAX_PAGE_SIZE);
     const fetchLimit = limit + 1;
 
     let cursor: CursorPayload | null = null;
-    if (request.query.after) {
-      cursor = decodeCursor(request.query.after);
+    if (query.after) {
+      cursor = decodeCursor(query.after);
     }
 
     let rows: (typeof suppressions.$inferSelect)[];
@@ -344,7 +337,7 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
       ? encodeCursor(lastRow.createdAt, lastRow.id)
       : null;
 
-    return {
+    return c.json({
       suppressions: pageRows.map((r) => ({
         id: r.id,
         tenant_id: r.tenantId,
@@ -354,8 +347,7 @@ const suppressionRoutes: FastifyPluginAsync = async (app) => {
         created_at: r.createdAt,
       })),
       next_cursor: nextCursor,
-    };
+    });
   });
-};
-
-export default suppressionRoutes;
+  return r.app;
+}

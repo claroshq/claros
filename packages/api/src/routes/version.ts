@@ -15,37 +15,21 @@
  * What is NOT included: hostnames, full env values, secrets, credentials, or
  * any fingerprint. This endpoint is public and must be safe to expose.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { createRouter } from "../http/router.js";
 
 interface VersionRouteOptions {
   edition: string;
 }
 
-const versionRoute: FastifyPluginAsync<VersionRouteOptions> = async (app, opts) => {
+export default function versionRoutes(opts: VersionRouteOptions) {
   const { edition } = opts;
-
-  app.get(
-    "/version",
-    {
-      schema: {
-        response: {
-          200: {
-            type: "object",
-            properties: {
-              commit:  { type: "string" },
-              edition: { type: "string" },
-              builtAt: { type: ["string", "null"] },
-            },
-          },
-        },
-      },
-    },
-    async () => ({
-      commit:  process.env.CLAROS_COMMIT_SHA ?? "unknown",
+  const app = createRouter();
+  app.get("/version", (c) =>
+    c.json({
+      commit: process.env.CLAROS_COMMIT_SHA ?? "unknown",
       edition,
       builtAt: process.env.CLAROS_BUILT_AT ?? null,
     }),
   );
-};
-
-export default versionRoute;
+  return app;
+}

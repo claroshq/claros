@@ -6,11 +6,11 @@
  * app.ts, which enforces request.tenant !== null before any route handler runs.
  *
  * Scope separation reminder: these routes share the /v1 prefix with the
- * ingestion scope, but are in a different Fastify encapsulation boundary. The
- * ingest preHandler (bearer token) does not run here; the dashboard preHandler
+ * ingestion scope, but are in a different router scope. The ingest
+ * middleware (bearer token) does not run here; the dashboard middleware
  * (session cookie) does. A bearer-key-only request reaching these routes will
- * have request.tenant === null and be rejected by the outer /v1 preHandler
- * before this plugin is entered.
+ * have request.tenant === null and be rejected by the /v1 role check
+ * before the route handler runs.
  *
  * Endpoints:
  *   POST   /v1/flows              create a flow
@@ -30,7 +30,8 @@
  * Cross-tenant isolation: any flow that exists but belongs to a different tenant
  * returns 404 (not 403) to avoid leaking information about other tenants.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
+import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { eq, and, ne } from "drizzle-orm";
 import { flows, llmConfigs, tenants, templates } from "@claros/db/schema";
@@ -119,15 +120,14 @@ export type UpdateFlowBody = z.infer<typeof updateFlowSchema>;
 /**
  * Return 400 with Zod validation issues.
  */
-function validationError(reply: any, issues: z.ZodIssue[]) {
-  reply.status(400);
-  return {
+function validationError(c: AppContext, issues: z.ZodIssue[]) {
+  return c.json({
     error: "Validation failed",
     issues: issues.map((i) => ({
       path: i.path.join("."),
       message: i.message,
     })),
-  };
+  }, 400);
 }
 
 /**
@@ -149,27 +149,27 @@ function validateStepOrders(steps: Array<{ order: number }>): string | null {
 // Route plugin
 // ---------------------------------------------------------------------------
 
-const flowsRoutes: FastifyPluginAsync = async (app) => {
+export default function flowsRoutes() {
+  const r = new RoleRouter();
   /**
    * POST /v1/flows
    * Create a new flow. Always starts with status = 'draft'.
    */
-  app.post<{ Body: CreateFlowBody }>("/", { config: { minRole: "member" } }, async (request, reply) => {
-    const parsed = createFlowSchema.safeParse(request.body);
+  r.post("/", "member", async (c) => {
+    const parsed = createFlowSchema.safeParse(c.var.body);
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
 
     const body = parsed.data;
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     // Validate step order uniqueness
     if (body.steps.length > 0) {
       const orderError = validateStepOrders(body.steps);
       if (orderError) {
-        reply.status(400);
-        return { error: orderError };
+        return c.json({ error: orderError }, 400);
       }
     }
 
@@ -196,8 +196,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       })
       .returning();
 
-    reply.status(201);
-    return serializeFlow(inserted!);
+    return c.json(serializeFlow(inserted!), 201);
   });
 
   /**
@@ -205,13 +204,13 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    * List flows for the tenant. Excludes archived by default.
    * ?include_archived=true to include them.
    */
-  app.get<{ Querystring: { include_archived?: string } }>(
+  r.get(
     "/",
-    { config: { minRole: "member" } },
-    async (request) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const includeArchived = request.query.include_archived === "true";
+    "member",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const includeArchived = c.req.query("include_archived") === "true";
 
       const rows = includeArchived
         ? await db
@@ -230,7 +229,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
             )
             .orderBy(flows.createdAt);
 
-      return { flows: rows.map(serializeFlow) };
+      return c.json({ flows: rows.map(serializeFlow) });
     },
   );
 
@@ -238,22 +237,21 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    * GET /v1/flows/:id
    * Get a single flow. Returns 404 if not found or owned by another tenant.
    */
-  app.get<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select()
       .from(flows)
-      .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
       .limit(1);
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Flow not found." };
+      return c.json({ error: "Flow not found." }, 404);
     }
 
-    return serializeFlow(rows[0]!);
+    return c.json(serializeFlow(rows[0]!));
   });
 
   /**
@@ -269,29 +267,28 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    *   - if prompt_source changes and status allows it, compiled_plan and
    *     compiled_at are cleared (the old plan is stale)
    */
-  app.patch<{ Params: { id: string }; Body: UpdateFlowBody }>(
+  r.patch(
     "/:id",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const parsed = updateFlowSchema.safeParse(request.body);
+    "member",
+    async (c) => {
+      const parsed = updateFlowSchema.safeParse(c.var.body);
       if (!parsed.success) {
-        return validationError(reply, parsed.error.issues);
+        return validationError(c, parsed.error.issues);
       }
 
       const body = parsed.data;
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
 
       // Fetch current flow (tenant-scoped)
       const rows = await db
         .select()
         .from(flows)
-        .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+        .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
         .limit(1);
 
       if (rows.length === 0) {
-        reply.status(404);
-        return { error: "Flow not found." };
+        return c.json({ error: "Flow not found." }, 404);
       }
 
       const current = rows[0]!;
@@ -304,8 +301,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
           body.status as FlowStatus,
         );
         if (transitionError) {
-          reply.status(422);
-          return { error: transitionError };
+          return c.json({ error: transitionError }, 422);
         }
 
         // [impl] Refuse activation without a compiled plan. A flow that is
@@ -314,12 +310,11 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         // invalid state at the API layer rather than tolerating it silently.
         if (body.status === "active") {
           if (current.compileStatus !== "ready" || current.compiledPlan === null) {
-            reply.status(422);
-            return {
+            return c.json({
               error:
                 "Cannot activate a flow without a compiled plan. " +
                 "Compile the flow first (POST /v1/flows/:id/compile) and wait for compile_status = 'ready'.",
-            };
+            }, 422);
           }
         }
       }
@@ -330,10 +325,9 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         body.prompt_source !== current.promptSource
       ) {
         if (currentStatus !== "draft" && currentStatus !== "paused") {
-          reply.status(422);
-          return {
+          return c.json({
             error: `prompt_source cannot be edited while the flow is '${currentStatus}'. Pause the flow first.`,
-          };
+          }, 422);
         }
       }
 
@@ -341,8 +335,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       if (body.steps !== undefined && body.steps.length > 0) {
         const orderError = validateStepOrders(body.steps);
         if (orderError) {
-          reply.status(400);
-          return { error: orderError };
+          return c.json({ error: orderError }, 400);
         }
       }
 
@@ -382,7 +375,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       // CAS: when status is being changed, guard on current status to prevent
       // a concurrent PATCH from causing an invalid double-transition.
       const whereConditions = [
-        eq(flows.id, request.params.id),
+        eq(flows.id, c.req.param("id")!),
         eq(flows.tenantId, tenantId),
       ];
       if (body.status !== undefined && body.status !== currentStatus) {
@@ -397,11 +390,10 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
 
       if (!updated) {
         // CAS failed: status was changed by a concurrent request.
-        reply.status(409);
-        return { error: "Flow status was modified concurrently. Retry the request." };
+        return c.json({ error: "Flow status was modified concurrently. Retry the request." }, 409);
       }
 
-      return serializeFlow(updated);
+      return c.json(serializeFlow(updated));
     },
   );
 
@@ -415,36 +407,35 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    * If the flow is already archived, this is a no-op (idempotent).
    * Returns 404 if the flow does not exist for this tenant.
    */
-  app.delete<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.delete("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     // Fetch current flow (tenant-scoped)
     const rows = await db
       .select()
       .from(flows)
-      .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
       .limit(1);
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Flow not found." };
+      return c.json({ error: "Flow not found." }, 404);
     }
 
     const current = rows[0]!;
 
     // Idempotent: already archived
     if (current.status === "archived") {
-      return serializeFlow(current);
+      return c.json(serializeFlow(current));
     }
 
     const [updated] = await db
       .update(flows)
       .set({ status: "archived", updatedAt: new Date() })
-      .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
       .returning();
 
-    return serializeFlow(updated!);
+    return c.json(serializeFlow(updated!));
   });
 
   /**
@@ -463,40 +454,36 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    * Returns 422 if preconditions are not met.
    * Returns 503 if the job queue is unavailable.
    */
-  app.post<{ Params: { id: string } }>("/:id/compile", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const enqueue = request.server.enqueue;
-    const tenantId = request.tenant!.id;
+  r.post("/:id/compile", "member", async (c) => {
+    const db: Db = c.var.db;
+    const enqueue = c.var.enqueue;
+    const tenantId = c.var.tenant!.id;
 
     if (!enqueue) {
-      reply.status(503);
-      return { error: "Job queue is not available." };
+      return c.json({ error: "Job queue is not available." }, 503);
     }
 
     // Fetch flow
     const rows = await db
       .select()
       .from(flows)
-      .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
       .limit(1);
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Flow not found." };
+      return c.json({ error: "Flow not found." }, 404);
     }
 
     const flow = rows[0]!;
 
     // Precondition: not archived
     if (flow.status === "archived") {
-      reply.status(422);
-      return { error: "Cannot compile an archived flow." };
+      return c.json({ error: "Cannot compile an archived flow." }, 422);
     }
 
     // Precondition: has prompt_source
     if (!flow.promptSource) {
-      reply.status(422);
-      return { error: "Flow has no prompt_source. Set a prompt before compiling." };
+      return c.json({ error: "Flow has no prompt_source. Set a prompt before compiling." }, 422);
     }
 
     // Precondition: tenant has an active LLM configuration.
@@ -509,8 +496,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     if (llmRows.length === 0) {
-      reply.status(422);
-      return { error: "No LLM configuration found. Add an LLM provider in Settings before compiling flows." };
+      return c.json({ error: "No LLM configuration found. Add an LLM provider in Settings before compiling flows." }, 422);
     }
 
     // Set compile_status = 'pending' and clear any previous error
@@ -521,7 +507,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         compileError: null,
         updatedAt: new Date(),
       })
-      .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)));
+      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)));
 
     // Enqueue the compile job. singletonKey ensures only one compile per flow.
     await enqueue(
@@ -535,8 +521,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       },
     );
 
-    reply.status(202);
-    return { message: "Compilation queued.", flow_id: flow.id, compile_status: "pending" };
+    return c.json({ message: "Compilation queued.", flow_id: flow.id, compile_status: "pending" }, 202);
   });
   /**
    * POST /v1/flows/:id/plan
@@ -553,12 +538,12 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    * On success: creates templates, builds a compiled plan, sets
    * compile_status = "ready". The flow can then be activated.
    */
-  app.post<{ Params: { id: string }; Body: unknown }>(
+  r.post(
     "/:id/plan",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
+    "member",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
 
       // Validate request body
       const stepContentSchema = z.object({
@@ -576,16 +561,15 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         exit_conditions: z.array(z.unknown()).optional(),
       });
 
-      const parsed = planBodySchema.safeParse(request.body);
+      const parsed = planBodySchema.safeParse(c.var.body);
       if (!parsed.success) {
-        reply.status(400);
-        return {
+        return c.json({
           error: "Invalid plan data.",
           issues: parsed.error.issues.map((i) => ({
             path: i.path.join("."),
             message: i.message,
           })),
-        };
+        }, 400);
       }
 
       const { steps, exit_conditions } = parsed.data;
@@ -594,31 +578,28 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       const flowRows = await db
         .select()
         .from(flows)
-        .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+        .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
         .limit(1);
 
       if (flowRows.length === 0) {
-        reply.status(404);
-        return { error: "Flow not found." };
+        return c.json({ error: "Flow not found." }, 404);
       }
 
       const flow = flowRows[0]!;
 
       if (flow.status === "archived") {
-        reply.status(422);
-        return { error: "Cannot update the plan of an archived flow." };
+        return c.json({ error: "Cannot update the plan of an archived flow." }, 422);
       }
 
       if ((flow.contentMode ?? "ai_drafted") !== "fixed_content") {
-        reply.status(422);
-        return {
+        return c.json({
           error: "Only fixed_content flows accept a hand-authored plan. " +
             "AI-drafted flows use POST /v1/flows/:id/compile instead.",
-        };
+        }, 422);
       }
 
       // Create/upsert templates for each step
-      const flowId = request.params.id;
+      const flowId = c.req.param("id")!;
       const templateVariables = [
         "contact.first_name",
         "contact.name",
@@ -679,14 +660,13 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       // Validate against the schema to be sure
       const planParsed = compiledPlanSchema.safeParse(compiledPlan);
       if (!planParsed.success) {
-        reply.status(500);
-        return {
+        return c.json({
           error: "Internal error: generated plan failed validation.",
           issues: planParsed.error.issues.map((i) => ({
             path: i.path.join("."),
             message: i.message,
           })),
-        };
+        }, 500);
       }
 
       // Write the plan to the flow
@@ -709,7 +689,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         .where(and(eq(flows.id, flowId), eq(flows.tenantId, tenantId)))
         .returning();
 
-      return serializeFlow(updated!);
+      return c.json(serializeFlow(updated!));
     },
   );
 
@@ -729,12 +709,12 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
    *
    * Requires an active LLM configuration.
    */
-  app.post<{ Params: { id: string }; Body: unknown }>(
+  r.post(
     "/:id/draft-step",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
+    "member",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
 
       const bodySchema = z.object({
         step_order: z.number().int().min(1),
@@ -743,9 +723,9 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         context: z.string().optional(),
       });
 
-      const parsed = bodySchema.safeParse(request.body);
+      const parsed = bodySchema.safeParse(c.var.body);
       if (!parsed.success) {
-        return validationError(reply, parsed.error.issues);
+        return validationError(c, parsed.error.issues);
       }
 
       const { step_order, subject, body_html, context } = parsed.data;
@@ -754,12 +734,11 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       const flowRows = await db
         .select()
         .from(flows)
-        .where(and(eq(flows.id, request.params.id), eq(flows.tenantId, tenantId)))
+        .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
         .limit(1);
 
       if (flowRows.length === 0) {
-        reply.status(404);
-        return { error: "Flow not found." };
+        return c.json({ error: "Flow not found." }, 404);
       }
 
       const flow = flowRows[0]!;
@@ -772,15 +751,13 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (llmRows.length === 0) {
-        reply.status(422);
-        return { error: "No LLM configuration found. Add an LLM provider in Settings to use AI drafting." };
+        return c.json({ error: "No LLM configuration found. Add an LLM provider in Settings to use AI drafting." }, 422);
       }
 
       const llmConfig = llmRows[0]!;
       const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
       if (!encryptionKeyEnv) {
-        reply.status(500);
-        return { error: "ENCRYPTION_KEY not configured." };
+        return c.json({ error: "ENCRYPTION_KEY not configured." }, 500);
       }
 
       let provider;
@@ -790,8 +767,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         const providerConfig = JSON.parse(decrypted);
         provider = new OpenAICompatibleProvider(providerConfig);
       } catch (err) {
-        reply.status(500);
-        return { error: `Failed to resolve LLM provider: ${err instanceof Error ? err.message : String(err)}` };
+        return c.json({ error: `Failed to resolve LLM provider: ${err instanceof Error ? err.message : String(err)}` }, 500);
       }
 
       // Fetch tenant name for product context
@@ -840,8 +816,7 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (!result.ok) {
-        reply.status(502);
-        return { error: `AI draft failed: ${result.error}` };
+        return c.json({ error: `AI draft failed: ${result.error}` }, 502);
       }
 
       // Convert markdown body to simple HTML (paragraphs)
@@ -851,13 +826,14 @@ const flowsRoutes: FastifyPluginAsync = async (app) => {
         .map((p: string) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
         .join("\n");
 
-      return {
+      return c.json({
         subject: result.draft.subject,
         body_html: htmlBody,
-      };
+      });
     },
   );
-};
+  return r.app;
+}
 
 // ---------------------------------------------------------------------------
 // Serializer
@@ -895,5 +871,3 @@ function serializeFlow(row: typeof flows.$inferSelect) {
     updated_at: row.updatedAt,
   };
 }
-
-export default flowsRoutes;

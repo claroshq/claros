@@ -369,10 +369,10 @@ async function start(): Promise<void> {
   //
   // app is declared here (outside the conditional block) so the shutdown
   // closure below can capture it. It remains undefined for pure worker and
-  // scheduler roles that never start Fastify.
+  // scheduler roles that never start the HTTP server.
   let app: Awaited<ReturnType<typeof buildApp>> | undefined;
   if (role === "all" || role === "api") {
-    // CLAROS_SERVE_DASHBOARD controls @fastify/static serving of the built
+    // CLAROS_SERVE_DASHBOARD controls static serving of the built
     // dashboard SPA and the SPA catch-all fallback.
     //
     // Default: true. An explicit CLAROS_SERVE_DASHBOARD="false" disables it
@@ -428,8 +428,8 @@ async function start(): Promise<void> {
   //
   // Order:
   //   1. app.close()  - stop accepting new HTTP connections; wait for
-  //                     in-flight requests to finish. forceCloseConnections
-  //                     is set on the Fastify instance so keep-alive
+  //                     in-flight requests to finish. close() calls
+  //                     closeAllConnections() first so keep-alive
   //                     connections are destroyed immediately rather than
   //                     waiting for the remote end to close them. Without
   //                     this the keep-warm cron (every 60 s) would hold a

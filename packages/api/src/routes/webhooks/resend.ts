@@ -68,7 +68,7 @@
  *   Acknowledged with 200 and ignored. Returning a non-2xx would cause Resend
  *   to retry indefinitely.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { createRouter, parseBody } from "../../http/router.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq, and, sql } from "drizzle-orm";
 import { lifecycleMessages, suppressions, messageEvents } from "@claros/db/schema";
@@ -608,26 +608,23 @@ async function writeMessageEvent(
  * This allows each tenant to connect their own Resend account, each
  * issuing a distinct signing secret, without any global secret fallback.
  */
-const resendWebhookRoute: FastifyPluginAsync = async (app) => {
-  // We need the raw body for signature verification.
-  // Register a content type parser that preserves the raw body.
-  app.addContentTypeParser(
-    "application/json",
-    { parseAs: "string" },
-    (_req, body, done) => {
-      done(null, body);
-    },
-  );
+export default function resendWebhookRoutes() {
+  const app = createRouter();
 
-  app.post<{ Params: { tenantId: string } }>("/:tenantId", async (request, reply) => {
-    if (!request.server.db) {
-      reply.status(503);
-      return { error: "Service unavailable." };
+  // We need the raw body for signature verification.
+  // Use a content type parser that preserves the raw body.
+  const rawJsonBody = parseBody({
+    parsers: { "application/json": (raw) => raw },
+  });
+
+  app.post("/:tenantId", rawJsonBody, async (c) => {
+    if (!c.var.db) {
+      return c.json({ error: "Service unavailable." }, 503);
     }
 
-    const db: Db = request.server.db;
-    const { tenantId } = request.params;
-    const rawBody = request.body as string;
+    const db: Db = c.var.db;
+    const tenantId = c.req.param("tenantId");
+    const rawBody = c.var.body as string;
 
     // Step 1: Load the webhook secret for this tenant BEFORE parsing the body.
     // This resolves the ordering constraint: we need the secret before
@@ -646,14 +643,13 @@ const resendWebhookRoute: FastifyPluginAsync = async (app) => {
     const webhookSecret = await loadTenantWebhookSecret(db, tenantId);
     if (!webhookSecret) {
       // Respond identically to a signature mismatch - no information about why.
-      reply.status(400);
-      return { error: "Invalid webhook signature." };
+      return c.json({ error: "Invalid webhook signature." }, 400);
     }
 
     // Step 2: Extract Svix headers
-    const svixId = request.headers["svix-id"] as string | undefined;
-    const svixTimestamp = request.headers["svix-timestamp"] as string | undefined;
-    const svixSignature = request.headers["svix-signature"] as string | undefined;
+    const svixId = c.req.header("svix-id");
+    const svixTimestamp = c.req.header("svix-timestamp");
+    const svixSignature = c.req.header("svix-signature");
 
     // Step 3: Verify signature against the tenant's secret (before JSON.parse)
     const verification = verifyResendWebhookSignature(
@@ -665,8 +661,7 @@ const resendWebhookRoute: FastifyPluginAsync = async (app) => {
     );
 
     if (!verification.ok) {
-      reply.status(400);
-      return { error: "Invalid webhook signature." };
+      return c.json({ error: "Invalid webhook signature." }, 400);
     }
 
     // Step 4: Parse the verified payload
@@ -674,17 +669,15 @@ const resendWebhookRoute: FastifyPluginAsync = async (app) => {
     try {
       event = JSON.parse(rawBody) as ResendWebhookEvent;
     } catch {
-      reply.status(400);
-      return { error: "Invalid JSON payload." };
+      return c.json({ error: "Invalid JSON payload." }, 400);
     }
 
     // Step 5: Process the event, scoped to this tenant
     await processResendWebhookEvent(db, event, tenantId, svixId);
 
     // Always return 200 to acknowledge receipt (even for ignored events)
-    reply.status(200);
-    return { received: true };
+    return c.json({ received: true }, 200);
   });
-};
 
-export default resendWebhookRoute;
+  return app;
+}

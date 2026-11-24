@@ -53,7 +53,9 @@
  *   need config - they trigger on any activity.
  * - engagement_depth is NOT touched by this task.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { createRouter, parseBody } from "../http/router.js";
+import { createIngestAuth, ingestPreflight, parsePlainTextAsJson } from "../http/ingest-auth.js";
+import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { eq, and, ne, sql, inArray } from "drizzle-orm";
 import { contacts, events, contactConflicts, lifecycleTransitions, tenants } from "@claros/db/schema";
@@ -977,7 +979,37 @@ async function loadLifecycleConfig(db: Db, tenantId: string): Promise<LifecycleC
   return resolveLifecycleConfig(lifecycleOverrides);
 }
 
-const ingestRoutes: FastifyPluginAsync = async (app) => {
+/** Validation failure response shared by the three ingestion routes. */
+function validationFailed(c: AppContext, issues: z.ZodIssue[]): Response {
+  return c.json(
+    {
+      error: "Validation failed",
+      issues: issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    },
+    400,
+  );
+}
+
+/**
+ * Ingestion routes, mounted at /v1 in app.ts. Per route: body parsing
+ * (text/plain parsed as JSON for the browser beacon path), then API key
+ * auth (one shared instance, so rate-limit and last_used_at state is per
+ * app), then the handler. OPTIONS preflights are answered without auth.
+ */
+export default function ingestRoutes() {
+  const app = createRouter();
+  const ingestAuth = createIngestAuth();
+  const parsers = { "text/plain": parsePlainTextAsJson };
+  const defaultBody = parseBody({ parsers });
+  const batchBody = parseBody({ parsers, limit: 512 * 1024 });
+
+  app.options("/track", defaultBody, ingestPreflight);
+  app.options("/identify", defaultBody, ingestPreflight);
+  app.options("/batch", batchBody, ingestPreflight);
+
   /**
    * POST /v1/track
    *
@@ -985,31 +1017,24 @@ const ingestRoutes: FastifyPluginAsync = async (app) => {
    * Track events only ensure the contact exists and update last_seen_at.
    * They do NOT process traits.
    */
-  app.post("/track", async (request, reply) => {
-    const parsed = trackBodySchema.safeParse(request.body);
+  app.post("/track", defaultBody, ingestAuth, async (c) => {
+    const parsed = trackBodySchema.safeParse(c.var.body);
     if (!parsed.success) {
-      reply.status(400);
-      return {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          path: i.path.join("."),
-          message: i.message,
-        })),
-      };
+      return validationFailed(c, parsed.error.issues);
     }
 
-    const tenantId = request.ingestTenant!.id;
-    const db: Db = request.server.db;
+    const tenantId = c.var.ingestTenant!.id;
+    const db: Db = c.var.db;
     const { deduplicated } = await processTrackEvent(
       db,
-      request.server.enqueue,
+      c.var.enqueue,
       tenantId,
       parsed.data,
     );
     if (parsed.data.messageId) {
-      return { success: true, deduplicated };
+      return c.json({ success: true, deduplicated });
     }
-    return { success: true };
+    return c.json({ success: true });
   });
 
   /**
@@ -1023,26 +1048,19 @@ const ingestRoutes: FastifyPluginAsync = async (app) => {
    * - Email conflicts are detected and recorded (not applied)
    * - Invalid payment_status values are rejected and recorded as conflicts
    */
-  app.post("/identify", async (request, reply) => {
-    const parsed = identifyBodySchema.safeParse(request.body);
+  app.post("/identify", defaultBody, ingestAuth, async (c) => {
+    const parsed = identifyBodySchema.safeParse(c.var.body);
     if (!parsed.success) {
-      reply.status(400);
-      return {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          path: i.path.join("."),
-          message: i.message,
-        })),
-      };
+      return validationFailed(c, parsed.error.issues);
     }
 
-    const tenantId = request.ingestTenant!.id;
-    const db: Db = request.server.db;
+    const tenantId = c.var.ingestTenant!.id;
+    const db: Db = c.var.db;
     const { deduplicated } = await processIdentifyEvent(db, tenantId, parsed.data);
     if (parsed.data.messageId) {
-      return { success: true, deduplicated };
+      return c.json({ success: true, deduplicated });
     }
-    return { success: true };
+    return c.json({ success: true });
   });
 
   /**
@@ -1060,26 +1078,19 @@ const ingestRoutes: FastifyPluginAsync = async (app) => {
    *   or rejected as a unit only on auth/size failure).
    * - Anonymous items (no userId) fail validation and land in errors[] -
    *   anonymous tracking is out of scope (see file header).
-   * - Caps: 100 items per batch, 512 KB request body (route bodyLimit),
+   * - Caps: 100 items per batch, 512 KB request body (route body limit),
    *   matching the spirit of Segment's 32KB/event + 500KB/batch contract.
    * - The whole batch counts as ONE request against the key's rate limit.
    */
-  app.post("/batch", { bodyLimit: 512 * 1024 }, async (request, reply) => {
-    const parsed = batchBodySchema.safeParse(request.body);
+  app.post("/batch", batchBody, ingestAuth, async (c) => {
+    const parsed = batchBodySchema.safeParse(c.var.body);
     if (!parsed.success) {
-      reply.status(400);
-      return {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          path: i.path.join("."),
-          message: i.message,
-        })),
-      };
+      return validationFailed(c, parsed.error.issues);
     }
 
-    const tenantId = request.ingestTenant!.id;
-    const db: Db = request.server.db;
-    const enqueue = request.server.enqueue;
+    const tenantId = c.var.ingestTenant!.id;
+    const db: Db = c.var.db;
+    const enqueue = c.var.enqueue;
 
     let received = 0;
     const errors: Array<{ index: number; message: string }> = [];
@@ -1111,8 +1122,8 @@ const ingestRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    return { success: true, received, errors };
+    return c.json({ success: true, received, errors });
   });
-};
 
-export default ingestRoutes;
+  return app;
+}

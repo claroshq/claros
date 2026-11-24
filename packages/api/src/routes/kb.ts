@@ -52,7 +52,8 @@
  *   served by idx_kb_entries_tenant_created (tenant_id, created_at, id),
  *   added in migration 0018.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
+import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { kbEntries } from "@claros/db/schema";
@@ -213,15 +214,14 @@ function decodeCursor(cursor: string): CursorPayload | null {
 /**
  * Return 400 with Zod validation issues, matching the error shape in flows.ts.
  */
-function validationError(reply: any, issues: z.ZodIssue[]) {
-  reply.status(400);
-  return {
+function validationError(c: AppContext, issues: z.ZodIssue[]) {
+  return c.json({
     error: "Validation failed",
     issues: issues.map((i) => ({
       path: i.path.join("."),
       message: i.message,
     })),
-  };
+  }, 400);
 }
 
 /**
@@ -237,7 +237,8 @@ function makePreview(content: string): string {
 // Route plugin
 // ---------------------------------------------------------------------------
 
-const kbRoutes: FastifyPluginAsync = async (app) => {
+export default function kbRoutes() {
+  const r = new RoleRouter();
   /**
    * POST /v1/kb
    * Create a new knowledge base entry.
@@ -260,16 +261,16 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
    * is not set (stays null = "never enqueued" state). Tests that need to
    * verify enqueue behavior pass a mock enqueue function.
    */
-  app.post<{ Body: CreateKbEntryBody }>("/", { config: { minRole: "member" } }, async (request, reply) => {
-    const parsed = createKbEntrySchema.safeParse(request.body);
+  r.post("/", "member", async (c) => {
+    const parsed = createKbEntrySchema.safeParse(c.var.body);
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
 
     const body = parsed.data;
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const enqueue = request.server.enqueue;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const enqueue = c.var.enqueue;
 
     const [inserted] = await db
       .insert(kbEntries)
@@ -309,8 +310,7 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    reply.status(201);
-    return serializeEntry(inserted!);
+    return c.json(serializeEntry(inserted!), 201);
   });
 
   /**
@@ -325,27 +325,26 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
    * Response: { entries: EntryPreview[], next_cursor: string | null }
    * Content is returned as a truncated preview (first 300 chars).
    */
-  app.get<{
-    Querystring: {
+  r.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const query = c.req.query() as {
       limit?: string;
       after?: string;
       include_inactive?: string;
     };
-  }>("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const includeInactive = request.query.include_inactive === "true";
+    const includeInactive = query.include_inactive === "true";
 
     // Parse and clamp limit
-    const rawLimit = parseInt(request.query.limit ?? "", 10);
+    const rawLimit = parseInt(query.limit ?? "", 10);
     const limit = isNaN(rawLimit) || rawLimit < 1
       ? DEFAULT_PAGE_SIZE
       : Math.min(rawLimit, MAX_PAGE_SIZE);
 
     // Parse cursor
     let cursor: CursorPayload | null = null;
-    if (request.query.after) {
-      cursor = decodeCursor(request.query.after);
+    if (query.after) {
+      cursor = decodeCursor(query.after);
       // A malformed cursor is treated as no cursor (first page). Callers should
       // not construct cursors manually; this is defensive, not a security issue.
     }
@@ -416,10 +415,10 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
         ? encodeCursor(lastRow.createdAt, lastRow.id)
         : null;
 
-    return {
+    return c.json({
       entries: pageRows.map(serializeEntryPreview),
       next_cursor: nextCursor,
-    };
+    });
   });
 
   /**
@@ -427,24 +426,23 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
    * Get a single KB entry with full content.
    * Returns 404 if not found or owned by another tenant.
    */
-  app.get<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select()
       .from(kbEntries)
       .where(
-        and(eq(kbEntries.id, request.params.id), eq(kbEntries.tenantId, tenantId)),
+        and(eq(kbEntries.id, c.req.param("id")!), eq(kbEntries.tenantId, tenantId)),
       )
       .limit(1);
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Knowledge base entry not found." };
+      return c.json({ error: "Knowledge base entry not found." }, 404);
     }
 
-    return serializeEntry(rows[0]!);
+    return c.json(serializeEntry(rows[0]!));
   });
 
   /**
@@ -458,32 +456,32 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
    * Gap 3 note: same sequential (non-atomic) approach as POST. See POST comment.
    * Tag-only or non-content updates do not touch embedding_status.
    */
-  app.patch<{ Params: { id: string }; Body: UpdateKbEntryBody }>(
+  r.patch(
     "/:id",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const parsed = updateKbEntrySchema.safeParse(request.body);
+    "member",
+    async (c) => {
+      const parsed = updateKbEntrySchema.safeParse(c.var.body);
       if (!parsed.success) {
-        return validationError(reply, parsed.error.issues);
+        return validationError(c, parsed.error.issues);
       }
 
       const body = parsed.data;
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const enqueue = request.server.enqueue;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const enqueue = c.var.enqueue;
+      const id = c.req.param("id")!;
 
       // Verify ownership
       const rows = await db
         .select()
         .from(kbEntries)
         .where(
-          and(eq(kbEntries.id, request.params.id), eq(kbEntries.tenantId, tenantId)),
+          and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
         )
         .limit(1);
 
       if (rows.length === 0) {
-        reply.status(404);
-        return { error: "Knowledge base entry not found." };
+        return c.json({ error: "Knowledge base entry not found." }, 404);
       }
 
       // Build SET clause from only the supplied fields
@@ -513,7 +511,7 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
         .update(kbEntries)
         .set(setClauses as any)
         .where(
-          and(eq(kbEntries.id, request.params.id), eq(kbEntries.tenantId, tenantId)),
+          and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
         )
         .returning();
 
@@ -536,7 +534,7 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      return serializeEntry(updated!);
+      return c.json(serializeEntry(updated!));
     },
   );
 
@@ -545,30 +543,30 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
    * Hard delete. Returns 200 with the deleted entry on success.
    * Returns 404 if the entry does not exist for this tenant.
    */
-  app.delete<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.delete("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const id = c.req.param("id")!;
 
     const rows = await db
       .select()
       .from(kbEntries)
       .where(
-        and(eq(kbEntries.id, request.params.id), eq(kbEntries.tenantId, tenantId)),
+        and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
       )
       .limit(1);
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Knowledge base entry not found." };
+      return c.json({ error: "Knowledge base entry not found." }, 404);
     }
 
     await db
       .delete(kbEntries)
       .where(
-        and(eq(kbEntries.id, request.params.id), eq(kbEntries.tenantId, tenantId)),
+        and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
       );
 
-    return serializeEntry(rows[0]!);
+    return c.json(serializeEntry(rows[0]!));
   });
 
   /**
@@ -602,15 +600,14 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
    * Returns 202 with { enqueued, remaining, total_qualifying }.
    * Returns 503 if the job queue is not available.
    */
-  app.post("/re-embed", { config: { minRole: "member" } }, async (request, reply) => {
-    const enqueue = request.server.enqueue;
+  r.post("/re-embed", "member", async (c) => {
+    const enqueue = c.var.enqueue;
     if (!enqueue) {
-      reply.status(503);
-      return { error: "Job queue is not available." };
+      return c.json({ error: "Job queue is not available." }, 503);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     // Count ALL qualifying entries (for the 'remaining' response field).
     //
@@ -648,8 +645,7 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
     const totalQualifying = allQualifying.length;
 
     if (totalQualifying === 0) {
-      reply.status(202);
-      return { enqueued: 0, remaining: 0, total_qualifying: 0, message: "No entries require re-embedding." };
+      return c.json({ enqueued: 0, remaining: 0, total_qualifying: 0, message: "No entries require re-embedding." }, 202);
     }
 
     // Apply the per-call cap.
@@ -696,8 +692,7 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    reply.status(202);
-    return {
+    return c.json({
       enqueued,
       remaining,
       total_qualifying: totalQualifying,
@@ -705,9 +700,10 @@ const kbRoutes: FastifyPluginAsync = async (app) => {
         remaining > 0
           ? `Re-embedding enqueued for ${enqueued} entries. Call again to process ${remaining} more.`
           : `Re-embedding enqueued for ${enqueued} entries.`,
-    };
+    }, 202);
   });
-};
+  return r.app;
+}
 
 // ---------------------------------------------------------------------------
 // Serializers
@@ -760,5 +756,3 @@ function serializeEntryPreview(row: typeof kbEntries.$inferSelect) {
     updated_at: row.updatedAt,
   };
 }
-
-export default kbRoutes;

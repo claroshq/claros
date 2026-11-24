@@ -22,9 +22,9 @@
  * scale where ILIKE is slow, a pg_trgm GIN index on recipient_address would
  * fix it without schema changes. Not added now (premature).
  */
-import type { FastifyPluginAsync } from "fastify";
 import { sql } from "drizzle-orm";
 import type { Db } from "../plugins/db.js";
+import { RoleRouter } from "../http/router.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,10 +85,11 @@ function isUuid(s: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Route plugin
+// Router
 // ---------------------------------------------------------------------------
 
-const sentLogRoutes: FastifyPluginAsync = async (app) => {
+export default function sentLogRoutes() {
+  const router = new RoleRouter();
   /**
    * GET /v1/sent-log
    *
@@ -107,22 +108,12 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
    *
    * Response: { messages: [...], next_cursor: string | null }
    */
-  app.get<{
-    Querystring: {
-      limit?: string;
-      after?: string;
-      status?: string;
-      flow_id?: string;
-      recipient?: string;
-      from?: string;
-      to?: string;
-      feedback?: string;
-    };
-  }>("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const query = c.req.query();
 
-    const rawLimit = parseInt(request.query.limit ?? "", 10);
+    const rawLimit = parseInt(query.limit ?? "", 10);
     const limit =
       isNaN(rawLimit) || rawLimit < 1
         ? DEFAULT_PAGE_SIZE
@@ -135,7 +126,7 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
     ];
 
     // Status filter: default shows all sent-log statuses
-    const statusParam = request.query.status;
+    const statusParam = query.status;
     if (statusParam && SENT_LOG_STATUSES.includes(statusParam)) {
       conditions.push(sql`m.status = ${statusParam}`);
     } else {
@@ -145,13 +136,13 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Flow filter
-    if (request.query.flow_id && isUuid(request.query.flow_id)) {
-      conditions.push(sql`m.flow_id = ${request.query.flow_id}::uuid`);
+    if (query.flow_id && isUuid(query.flow_id)) {
+      conditions.push(sql`m.flow_id = ${query.flow_id}::uuid`);
     }
 
     // Recipient search (ILIKE on address, contact email, or contact name)
-    if (request.query.recipient && request.query.recipient.trim().length > 0) {
-      const pattern = `%${request.query.recipient.trim()}%`;
+    if (query.recipient && query.recipient.trim().length > 0) {
+      const pattern = `%${query.recipient.trim()}%`;
       conditions.push(
         sql`(
           m.recipient_address ILIKE ${pattern}
@@ -162,15 +153,15 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Date range on sent_at
-    if (request.query.from) {
-      conditions.push(sql`m.sent_at >= ${request.query.from}::timestamptz`);
+    if (query.from) {
+      conditions.push(sql`m.sent_at >= ${query.from}::timestamptz`);
     }
-    if (request.query.to) {
-      conditions.push(sql`m.sent_at <= ${request.query.to}::timestamptz`);
+    if (query.to) {
+      conditions.push(sql`m.sent_at <= ${query.to}::timestamptz`);
     }
 
     // Feedback filter
-    const feedbackParam = request.query.feedback;
+    const feedbackParam = query.feedback;
     if (
       feedbackParam &&
       ["opened", "clicked", "bounced", "complained"].includes(feedbackParam)
@@ -185,8 +176,8 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
 
     // Cursor
     let cursor: CursorPayload | null = null;
-    if (request.query.after) {
-      cursor = decodeCursor(request.query.after);
+    if (query.after) {
+      cursor = decodeCursor(query.after);
     }
     if (cursor) {
       // DESC order: next page has OLDER messages
@@ -241,7 +232,7 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
         ? encodeCursor(lastRow.sent_at, lastRow.id)
         : null;
 
-    return {
+    return c.json({
       messages: pageRows.map((r) => ({
         id: r.id,
         contact_id: r.contact_id,
@@ -260,7 +251,7 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
         },
       })),
       next_cursor: nextCursor,
-    };
+    });
   });
 
   /**
@@ -269,14 +260,13 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
    * Single message detail: envelope, content, and event timeline.
    * Returns the full message row plus the most recent events (up to 100).
    */
-  app.get<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const messageId = request.params.id;
+  router.get("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
 
     if (!isUuid(messageId)) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     type DetailRow = {
@@ -328,8 +318,7 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (msgResult.rows.length === 0) {
-      reply.status(404);
-      return { error: "Message not found." };
+      return c.json({ error: "Message not found." }, 404);
     }
 
     const msg = msgResult.rows[0]!;
@@ -352,7 +341,7 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
       LIMIT 100
     `);
 
-    return {
+    return c.json({
       message: {
         id: msg.id,
         contact_id: msg.contact_id,
@@ -387,8 +376,7 @@ const sentLogRoutes: FastifyPluginAsync = async (app) => {
         occurred_at: e.occurred_at,
         metadata: e.metadata,
       })),
-    };
+    });
   });
-};
-
-export default sentLogRoutes;
+  return router.app;
+}

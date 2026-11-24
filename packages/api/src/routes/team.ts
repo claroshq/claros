@@ -20,12 +20,12 @@
  *   - Work attributed to removed members (approvals, etc.) is preserved.
  */
 import { randomBytes, createHash } from "node:crypto";
-import type { FastifyPluginAsync } from "fastify";
 import { eq, and, sql, ne, isNull } from "drizzle-orm";
 import { users, sessions, invites, tenants, transportConfigs } from "@claros/db/schema";
 import { resolveTransportAdapter } from "@claros/adapters";
 import { buildInviteEmail, type TransactionalEmailInput } from "../transactional-email.js";
 import type { Db } from "../plugins/db.js";
+import { RoleRouter } from "../http/router.js";
 
 /** Invite token TTL: 7 days. */
 const INVITE_TTL_DAYS = 7;
@@ -36,14 +36,15 @@ function generateToken(): { raw: string; hash: string } {
   return { raw, hash };
 }
 
-const teamRoutes: FastifyPluginAsync = async (app) => {
+export default function teamRoutes() {
+  const router = new RoleRouter();
   /**
    * GET /v1/team
    * List all active team members for this tenant.
    */
-  app.get("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select({
@@ -58,7 +59,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(users.tenantId, tenantId), isNull(users.deactivatedAt)))
       .orderBy(users.createdAt);
 
-    return { members: rows };
+    return c.json({ members: rows });
   });
 
   /**
@@ -66,18 +67,17 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
    * Create a new invite. Returns the invite URL always (for copy-paste).
    * Sends a branded email if a transport is configured.
    */
-  app.post<{ Body: { email: string; role?: string } }>(
+  router.post(
     "/invites",
-    { config: { minRole: "owner" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const inviterId = request.tenant!.userId;
+    "owner",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const inviterId = c.var.tenant!.userId;
 
-      const { email, role } = request.body ?? {};
+      const { email, role } = (c.var.body as { email?: unknown; role?: unknown } | null | undefined) ?? {};
       if (!email || typeof email !== "string" || !email.includes("@")) {
-        reply.status(400);
-        return { error: "A valid email address is required." };
+        return c.json({ error: "A valid email address is required." }, 400);
       }
 
       const normalizedEmail = email.toLowerCase().trim();
@@ -95,8 +95,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (existing.length > 0) {
-        reply.status(409);
-        return { error: "That email is already a team member." };
+        return c.json({ error: "That email is already a team member." }, 409);
       }
 
       // Generate token
@@ -196,7 +195,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
         console.log("");
       }
 
-      return {
+      return c.json({
         invite: {
           id: inserted!.id,
           email: normalizedEmail,
@@ -205,7 +204,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
           invite_url: inviteUrl,
           email_sent: emailSent,
         },
-      };
+      });
     },
   );
 
@@ -213,9 +212,9 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
    * GET /v1/team/invites
    * List pending (unconsumed, unexpired) invites.
    */
-  app.get("/invites", { config: { minRole: "owner" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/invites", "owner", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select({
@@ -233,32 +232,31 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
       ))
       .orderBy(invites.createdAt);
 
-    return { invites: rows };
+    return c.json({ invites: rows });
   });
 
   /**
    * DELETE /v1/team/invites/:id
    * Revoke a pending invite.
    */
-  app.delete<{ Params: { id: string } }>(
+  router.delete(
     "/invites/:id",
-    { config: { minRole: "owner" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
+    "owner",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
 
-      const { id } = request.params;
+      const id = c.req.param("id")!;
       const deleted = await db
         .delete(invites)
         .where(and(eq(invites.id, id), eq(invites.tenantId, tenantId)))
         .returning({ id: invites.id });
 
       if (deleted.length === 0) {
-        reply.status(404);
-        return { error: "Invite not found." };
+        return c.json({ error: "Invite not found." }, 404);
       }
 
-      return { ok: true };
+      return c.json({ ok: true });
     },
   );
 
@@ -266,19 +264,18 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
    * PATCH /v1/team/:id/role
    * Change a member's role. Cannot demote the last owner.
    */
-  app.patch<{ Params: { id: string }; Body: { role: string } }>(
+  router.patch(
     "/:id/role",
-    { config: { minRole: "owner" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
+    "owner",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
 
-      const { id } = request.params;
-      const { role } = request.body ?? {};
+      const id = c.req.param("id")!;
+      const { role } = (c.var.body as { role?: unknown } | null | undefined) ?? {};
 
       if (role !== "owner" && role !== "member") {
-        reply.status(400);
-        return { error: "Role must be 'owner' or 'member'." };
+        return c.json({ error: "Role must be 'owner' or 'member'." }, 400);
       }
 
       // Load the target user
@@ -289,8 +286,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (targetRows.length === 0) {
-        reply.status(404);
-        return { error: "Member not found." };
+        return c.json({ error: "Member not found." }, 404);
       }
 
       const target = targetRows[0]!;
@@ -307,8 +303,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
           ));
 
         if ((ownerCount[0]?.cnt ?? 0) <= 1) {
-          reply.status(400);
-          return { error: "Cannot demote the last owner. Promote another member first." };
+          return c.json({ error: "Cannot demote the last owner. Promote another member first." }, 400);
         }
       }
 
@@ -317,7 +312,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
         .set({ role })
         .where(eq(users.id, id));
 
-      return { ok: true, role };
+      return c.json({ ok: true, role });
     },
   );
 
@@ -328,20 +323,19 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
    *   2. Deleting all their sessions (immediate revocation).
    * Cannot remove the last owner.
    */
-  app.delete<{ Params: { id: string } }>(
+  router.delete(
     "/:id",
-    { config: { minRole: "owner" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const currentUserId = request.tenant!.userId;
+    "owner",
+    async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const currentUserId = c.var.tenant!.userId;
 
-      const { id } = request.params;
+      const id = c.req.param("id")!;
 
       // Cannot remove yourself
       if (id === currentUserId) {
-        reply.status(400);
-        return { error: "You cannot remove yourself. Transfer ownership first." };
+        return c.json({ error: "You cannot remove yourself. Transfer ownership first." }, 400);
       }
 
       // Load target
@@ -352,8 +346,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (targetRows.length === 0) {
-        reply.status(404);
-        return { error: "Member not found." };
+        return c.json({ error: "Member not found." }, 404);
       }
 
       const target = targetRows[0]!;
@@ -370,8 +363,7 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
           ));
 
         if ((ownerCount[0]?.cnt ?? 0) <= 1) {
-          reply.status(400);
-          return { error: "Cannot remove the last owner." };
+          return c.json({ error: "Cannot remove the last owner." }, 400);
         }
       }
 
@@ -387,9 +379,8 @@ const teamRoutes: FastifyPluginAsync = async (app) => {
         .delete(sessions)
         .where(eq(sessions.userId, id));
 
-      return { ok: true };
+      return c.json({ ok: true });
     },
   );
-};
-
-export default teamRoutes;
+  return router.app;
+}
