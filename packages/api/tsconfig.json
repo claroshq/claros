@@ -4,10 +4,21 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../core" },
-    { "path": "../adapters" },
-    { "path": "../../drizzle" }
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../adapters"
+    },
+    {
+      "path": "../../drizzle"
+    },
+    {
+      "path": "../store"
+    }
   ]
 }

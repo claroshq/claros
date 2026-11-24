@@ -29,7 +29,7 @@ if [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != "$lock_sha" ]; then
 fi
 
 npm run build --silent \
-  -w @claros/core -w @claros/adapters -w @claros/brain-oss -w @claros/db \
+  -w @claros/core -w @claros/adapters -w @claros/brain-oss -w @claros/db -w @claros/store \
   -w @claros/api -w @claros/worker -w @claros/scheduler
 
 # The image has no .git, so Tailwind's content scan would pick up class
