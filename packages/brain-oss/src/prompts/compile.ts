@@ -4,8 +4,6 @@
  * Instructs the LLM to read a natural-language flow description and produce
  * a deterministic execution plan as JSON. The output is validated against
  * the compiledPlanSchema from @claros/core before being stored.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import type { ChatMessage } from "../providers/types.js";
 

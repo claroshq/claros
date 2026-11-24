@@ -1,42 +1,52 @@
 # Contributing to Claros
 
-## How this project works
+Claros is MIT-licensed and developed in the open in this repository.
 
-Claros uses an open source, not open contribution model. Development happens in a private
-repository. Releases are assembled, verified, and published here as squashed commits. This
-repository is output, not a collaboration space.
+## Issues first
 
-**Pull requests are not accepted and are closed automatically.**
+The most useful contribution is a clear issue:
 
-This is not a temporary state. It reflects how the project is built: one maintainer, one
-direction, one private codebase that gets periodically mirrored here. External patches
-cannot be merged into a repo that is not the source.
+- **Bug report:** what you expected, what happened, steps to reproduce, and your environment (OS, Docker version, Postgres version, how you deployed, Claros version from `GET /version`).
+- **Feature request:** the problem you are trying to solve, not only the solution you have in mind.
+- **Question:** use [GitHub Discussions](https://github.com/claroshq/claros/discussions).
 
-## What you can do
+For security issues, do not open a public issue. See [SECURITY.md](./SECURITY.md).
 
-**File a bug report.** Include what you expected, what happened, steps to reproduce, and
-your environment (OS, Docker version, Postgres version, how you deployed). Clear reports
-with reproduction steps are the most useful thing an external contributor can provide.
+## Pull requests
 
-**Request a feature.** Open an Issue. No commitment, but useful ideas surface in the
-roadmap.
+Pull requests are welcome. Every pull request runs the `check` workflow. Be aware that Claros has a small core team and a specific direction: merges are rare, and an issue that describes the problem is often more useful than a patch. For anything larger than a small fix, open an issue first so we can agree on the approach before you spend time on it.
 
-**Report a security issue privately.** See [SECURITY.md](./SECURITY.md). Do not open a
-public Issue for vulnerabilities.
+A pull request is ready for review when:
 
-## What this project will not accept
+- `npm run check` passes locally (see below);
+- behaviour changes have tests, and no existing assertion was weakened;
+- user-facing changes update the docs in `docs/` and add an entry under `## [Unreleased]` in [CHANGELOG.md](./CHANGELOG.md);
+- the HTTP API stays backward compatible (see "Compatibility" below).
 
-- Pull requests (closed automatically)
-- Patches via email or other channels
-- Changes to documentation, tests, or configuration via PR
+## Running the checks locally
 
-If you have found a bug that is blocking you, file an Issue. If the fix is genuinely urgent
-and simple, describe it in the Issue; the maintainer can apply it to the private repo and
-release.
+Requirements: Node.js 22+ (with npm), Docker (for the local Postgres).
 
-## Why
+```bash
+npm install
+docker compose up -d postgres        # Postgres 16 + pgvector on localhost:5433
+cp .env.example .env                 # then fill in ENCRYPTION_KEY and UNSUBSCRIBE_SIGNING_KEY
+npm run db:migrate -- --yes          # apply migrations to the local database
+npm run check                        # build, typecheck, tests (unit + Postgres-backed), shellcheck
+```
 
-The open source is real: MIT license, full engine, nothing crippled. The development model
-is the constraint, not the license. A single maintainer moving fast in a specific direction
-cannot also maintain an external contributor workflow. SQLite operates this way. So does
-this project.
+`npm test` runs the test suites only. Test files that need Postgres are named `*.db.test.ts`.
+
+## Compatibility
+
+Claros has users running it in production. Changes follow these rules:
+
+- The HTTP API, the ingest contract and the environment variables of the Docker install stay backward compatible within a major version.
+- Removing or changing something user-visible needs a deprecation in a release before it is removed, with a note in CHANGELOG.md.
+- Database migrations are expand-contract: a destructive schema change never ships in the same release as the code that stops using the old shape.
+
+## Style
+
+- TypeScript, Zod at boundaries, tests with Vitest.
+- No em dashes in code, comments, docs or UI copy. Use regular hyphens.
+- Commit messages and all text in English.

@@ -6,8 +6,6 @@
  * character - turning client-supplied messageIds like "m-1" into 500s on
  * the ingest hot path. These tests pin the hash-based derivation:
  * arbitrary strings must produce a stable bigint.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import { describe, it, expect } from "vitest";
 import { dedupLockKey } from "../src/enrollment.js";

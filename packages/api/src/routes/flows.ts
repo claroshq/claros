@@ -29,8 +29,6 @@
  *
  * Cross-tenant isolation: any flow that exists but belongs to a different tenant
  * returns 404 (not 403) to avoid leaking information about other tenants.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

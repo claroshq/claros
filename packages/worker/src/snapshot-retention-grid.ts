@@ -15,8 +15,6 @@
  * flow's audience are the same set by construction. Counts reflect the
  * thresholds in effect at write time; history is not rewritten when a
  * tenant changes natural_frequency_days.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

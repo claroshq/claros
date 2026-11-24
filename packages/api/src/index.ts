@@ -1,8 +1,6 @@
 /**
  * @claros/api - HTTP API layer (Fastify routes, plugins, middleware).
  * Depends on @claros/core, @claros/adapters, @claros/db.
- *
- * Mirror side: PUBLIC (packages/api is in the mirror whitelist).
  */
 export { buildApp } from "./app.js";
 export type { BuildAppOptions } from "./app.js";

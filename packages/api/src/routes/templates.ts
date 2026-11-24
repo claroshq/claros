@@ -31,8 +31,6 @@
  *      path. Templates must not require credentials, because a tenant reaches
  *      onboarding before configuring a provider.
  *   8. Returns the created flows for confirmation.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { eq } from "drizzle-orm";

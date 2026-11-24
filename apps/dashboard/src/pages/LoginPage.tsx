@@ -10,8 +10,6 @@
  *   - submitting: pending label in button
  *   - sent: "check your inbox" message
  *   - error: banner above the form (from ?error=invalid_link or submit failure)
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { useSearchParams } from "react-router-dom";

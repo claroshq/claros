@@ -3,8 +3,6 @@
  *
  * Lists all installed email templates and allows editing subject, body HTML,
  * and body text. Shows available variables for interpolation.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

@@ -17,8 +17,6 @@
  * No checkpoint is needed: the phase executes one aggregate SQL query per
  * tenant (O(contacts for the tenant) with idx_contacts_tenant_state),
  * not per-event.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

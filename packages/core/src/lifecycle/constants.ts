@@ -3,8 +3,6 @@
  *
  * These are applied when a tenant has no overrides in settings.lifecycle.
  * Business model templates (task 25) will provide different defaults.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import type { LifecycleConfig } from "./states.js";
 

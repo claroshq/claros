@@ -14,8 +14,6 @@
  * The grid's bucket boundaries are computed by the same core functions that
  * drive segment enrollment, so a cell on this screen and the audience of
  * the resulting flow are provably the same set.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

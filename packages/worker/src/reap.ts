@@ -32,8 +32,6 @@
  *   Drain's own writes (task 14 fix) include AND status = 'sending', so if reap
  *   resets a row to 'approved' first, drain's success write hits 0 rows and the
  *   contact gets a retry.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

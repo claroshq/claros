@@ -1,6 +1,6 @@
 /**
  * @claros/brain-oss - Brain interface and community implementation.
- * Provides the Brain contract that brain-cloud also implements.
+ * Provides the Brain contract and its community implementation.
  *
  * Exports:
  *   - Brain interface (decide + draft + assess) - tasks 17, 20
@@ -11,8 +11,6 @@
  *   - LLM provider interface + OpenAI-compatible implementation
  *   - Prompt builders for compile/decide/draft/assess
  *   - Zod output schemas for decide, draft, and assess
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 
 // ---------------------------------------------------------------------------
@@ -86,7 +84,7 @@ export interface BrainConfig {
   llmModel?: string;
 }
 
-/** The Brain interface - implemented by both OSS and Cloud editions */
+/** The Brain interface */
 export interface Brain {
   decide(context: DecideContext): Promise<BrainDecision>;
   draft(context: DraftContext): Promise<BrainDraft>;
@@ -98,13 +96,11 @@ export interface Brain {
 
 /** Create the community Brain implementation (BYO LLM key).
  *
- * Note: this factory implements the Brain interface used by the edition system
- * (apps/server/src/edition.ts loadBrain). It returns no-ops because the worker
+ * Note: this factory implements the Brain interface. It returns no-ops because the worker
  * does NOT use this interface at runtime - it imports decide(), draft(), and
  * assess() directly from brain-oss and calls them with fully-typed
  * DecidePromptContext / DraftPromptContext / AssessPromptContext. The Brain
- * interface exists so brain-cloud can plug in as a drop-in replacement for
- * future server-side uses (e.g. streaming, agent integration). Until such a
+ * interface exists for future server-side uses (e.g. streaming, agent integration). Until such a
  * use case exists, createOssBrain() returns skip/empty stubs that no production
  * code path reaches.
  */

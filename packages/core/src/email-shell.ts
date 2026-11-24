@@ -41,8 +41,6 @@
  *   - Custom fonts (not viable in email without degraded rendering)
  *   - Interactive elements (accordion, carousel, AMP)
  *   - Full-bleed hero images in the shell (body content can include images)
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 
 // ---------------------------------------------------------------------------

@@ -61,8 +61,6 @@
  * Migration check:
  *   This implementation requires migration 0015 (recipient_address column on
  *   lifecycle_messages). That migration must be applied before this code runs.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { eq, and, sql } from "drizzle-orm";

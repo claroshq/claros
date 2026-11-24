@@ -14,8 +14,6 @@
  *     borderless table read as composed rather than floating.
  *   - Row hover raises the row to --bg-raised. Selected state is not used
  *     yet; when it arrives it uses --accent-soft.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 

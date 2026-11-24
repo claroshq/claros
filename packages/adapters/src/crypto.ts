@@ -14,8 +14,6 @@
  *
  * Key rotation: decrypt with old key, re-encrypt with new key, update the row.
  * A rotation script (future) iterates all rows. No in-band rotation logic here.
- *
- * Mirror side: PUBLIC (packages/adapters is mirrored).
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 

@@ -16,8 +16,6 @@ import { users } from "./users.js";
  *   - Accepted via POST /invite/accept (public route, like magic link verify).
  *   - Single-use: atomic CAS on accepted_at.
  *   - 7-day TTL.
- *
- * Mirror side: PUBLIC (drizzle/ is mirrored).
  */
 export const invites = pgTable(
   "invites",

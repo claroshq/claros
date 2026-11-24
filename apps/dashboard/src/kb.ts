@@ -3,8 +3,6 @@
  *
  * The list is cursor-paginated (infinite query, "Load more"). Detail is a
  * plain query by id. Mutations invalidate both.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import {
   useInfiniteQuery,

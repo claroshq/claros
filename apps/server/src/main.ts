@@ -4,8 +4,6 @@
  * Parses --role from argv, creates DB connection, runs startup migrations,
  * runs bootstrap seed check, then starts the appropriate services
  * (API, worker, scheduler).
- *
- * Mirror side: PUBLIC (apps/server is mirrored).
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +31,11 @@ function parseRole(): Role {
 const role = parseRole();
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "0.0.0.0";
-const edition = process.env.CLAROS_EDITION ?? "community";
+/**
+ * Reported in /health and /version for v0.6 API compatibility. Claros has a
+ * single open-source edition; the CLAROS_EDITION env var is no longer read.
+ */
+const edition = "community";
 
 /**
  * Bootstrap seed: ensure one default tenant exists on first boot.
@@ -127,44 +129,6 @@ async function bootstrapSeed(db: ReturnType<typeof drizzle>): Promise<boolean> {
 }
 
 async function start(): Promise<void> {
-  // Edition safety check: if CLAROS_EDITION=cloud, verify the cloud brain is
-  // actually implemented. The brain-cloud package exports a BRAIN_READY sentinel
-  // that is false while the implementation is a stub. A stub brain returns
-  // action:"skip" for every message, producing a deployment that silently
-  // generates nothing. Refuse to start rather than fail silently.
-  if (edition === "cloud") {
-    try {
-      const pkg = "@claros/" + "brain-cloud"; // non-literal defeats static resolution
-      const mod = await import(pkg);
-      if (mod.BRAIN_READY !== true) {
-        console.error("");
-        console.error("==========================================================");
-        console.error(`  FATAL: CLAROS_EDITION=cloud but ${pkg} is not ready.`);
-        console.error("");
-        console.error("  The cloud brain is still a stub (BRAIN_READY=false).");
-        console.error("  A deployment with this edition would silently produce no");
-        console.error("  messages for any contact. Use CLAROS_EDITION=community");
-        console.error("  until the cloud brain implementation is wired.");
-        console.error("==========================================================");
-        console.error("");
-        process.exit(1);
-      }
-    } catch (err) {
-      const pkg = "@claros/" + "brain-cloud";
-      console.error("");
-      console.error("==========================================================");
-      console.error(`  FATAL: CLAROS_EDITION=cloud but ${pkg} cannot be loaded.`);
-      console.error(`  ${err instanceof Error ? err.message : String(err)}`);
-      console.error("");
-      console.error(`  The cloud edition requires ${pkg} to be present`);
-      console.error("  in the image. Use CLAROS_EDITION=community or ensure the");
-      console.error("  package is included in the build.");
-      console.error("==========================================================");
-      console.error("");
-      process.exit(1);
-    }
-  }
-
   // Create database connection
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -228,7 +192,7 @@ async function start(): Promise<void> {
   // Who sets it:
   //   docker-compose.yml sets CLAROS_MIGRATE_ON_BOOT=true.
   //   Cloud deploy (wrangler) does not set it. Local .env can set it for
-  //   pnpm dev convenience, but never ships to production.
+  //   npm run dev convenience, but never ships to production.
   //
   // Cases:
   //   - local compose (CLAROS_MIGRATE_ON_BOOT=true):  migrate() runs.
@@ -411,23 +375,12 @@ async function start(): Promise<void> {
     // CLAROS_SERVE_DASHBOARD controls @fastify/static serving of the built
     // dashboard SPA and the SPA catch-all fallback.
     //
-    // Default: true for community edition, false for cloud edition.
-    // Rationale: in Cloud the Worker serves static assets; the container must
-    // not attempt to serve them. The edition-based default means a Cloud
-    // container never accidentally enables SPA serving without an explicit
-    // override - it does not require the operator to remember to set the flag.
-    // An explicit CLAROS_SERVE_DASHBOARD value ("true" or "false") still
-    // overrides in both directions.
+    // Default: true. An explicit CLAROS_SERVE_DASHBOARD="false" disables it
+    // (for example when a reverse proxy serves the dashboard).
     //
     // If enabled but apps/dashboard/dist does not exist, a warning is logged
     // and serving is skipped - the server still starts cleanly.
-    const editionDefault = edition !== "cloud";
-    const serveDashboard =
-      process.env.CLAROS_SERVE_DASHBOARD === "true"
-        ? true
-        : process.env.CLAROS_SERVE_DASHBOARD === "false"
-          ? false
-          : editionDefault;
+    const serveDashboard = process.env.CLAROS_SERVE_DASHBOARD !== "false";
 
     app = await buildApp({ role, edition, db, enqueue, serveDashboard, claimToken });
 

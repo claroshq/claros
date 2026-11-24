@@ -10,8 +10,6 @@
  *
  * Installing creates templates and a flow in "draft" status. The user must
  * explicitly activate the flow to start enrollment. No LLM is required.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { sql } from "drizzle-orm";

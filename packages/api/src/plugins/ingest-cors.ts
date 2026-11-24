@@ -26,8 +26,6 @@
  * registered here (scope-local) parses the body as JSON. The
  * Authorization-header + application/json path remains fully supported for
  * server-side clients; it simply costs one preflight per origin.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 

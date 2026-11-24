@@ -6,8 +6,6 @@
  *
  * Endpoints:
  *   GET /v1/events/names  distinct track-event names seen recently
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { sql } from "drizzle-orm";

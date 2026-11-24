@@ -38,8 +38,6 @@
  * Verification error types are distinct so callers can decide the response
  * without leaking which part failed to the outside world. The endpoint must
  * return the same opaque HTTP status regardless of the internal error reason.
- *
- * Mirror side: PUBLIC (packages/adapters is mirrored).
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 

@@ -11,8 +11,6 @@
  * Each partition covers [start-of-month, start-of-next-month) on received_at.
  * Uses CREATE TABLE IF NOT EXISTS for safety even though we pre-check pg_class,
  * guarding against races if multiple scheduler instances fire concurrently.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

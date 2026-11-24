@@ -5,8 +5,6 @@
  *   L1: Suppression (hard block, never bypassed)
  *   L2: Frequency cap (per-contact rate limiting)
  *   L3: Send window (timezone-aware timing)
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 export {
   THROTTLE_DEFAULTS,

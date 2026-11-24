@@ -10,8 +10,6 @@
  *
  * The processing logic is identical to processOneContentMessage in content.ts.
  * This file reuses that function directly after claiming the single message.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

@@ -14,8 +14,6 @@
  * The same bucket functions drive both the analytics endpoint (read model)
  * and segment-trigger enrollment (engine), so a cell on the screen and the
  * audience of a segment flow are provably the same set.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 
 // ---------------------------------------------------------------------------

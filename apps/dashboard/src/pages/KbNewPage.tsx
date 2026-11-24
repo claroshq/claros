@@ -9,8 +9,6 @@
  * Creates an entry via POST /v1/kb, then lands on its detail page.
  * Creating enqueues an embedding job server-side; the entry's embedding
  * state is visible immediately after.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

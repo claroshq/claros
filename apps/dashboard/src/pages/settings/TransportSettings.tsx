@@ -4,8 +4,6 @@
  * Same replace-never-show discipline as the LLM provider: the GET
  * endpoint never returns credentials. Without a transport, approved
  * messages cannot be delivered.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { useSetupState, usePutTransport } from "../../settings.js";

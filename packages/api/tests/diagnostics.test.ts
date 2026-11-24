@@ -31,8 +31,6 @@
  *   - the real /v1 preHandler returns 401 when tenant is null (no cookie)
  *   - the full diagnostics route shape, startedAt, env reflection, key paths
  *   - /version does not include startedAt
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import type { FastifyInstance } from "fastify";

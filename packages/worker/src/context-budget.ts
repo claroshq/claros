@@ -84,8 +84,6 @@
  *   The fact of truncation and which sections were dropped is returned to the
  *   caller in the TruncationResult.droppedSections array. The caller (assembler
  *   slice 18.5) is responsible for wiring this into the assembled packet.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import {
   buildDraftMessages,

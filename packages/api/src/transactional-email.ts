@@ -10,8 +10,6 @@
  * (no List-Unsubscribe, no postal address) because they are direct
  * responses to the recipient's own action. The shell's compliance slot
  * is filled with an empty string.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { wrapInShell, wrapInTextShell, type BrandSettings } from "@claros/core";
 

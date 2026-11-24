@@ -8,8 +8,6 @@
  *
  * Zero-data discipline: a chart of nothing renders its frame with a
  * centred note, never a blank box and never fabricated sample data.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 import { useRef, useState } from "react";

@@ -55,8 +55,6 @@
  *   Uses the same cursor-based pagination convention as GET /v1/kb:
  *   keyed on (created_at, id), ?limit= (default 50, max 200), ?after=<cursor>,
  *   next_cursor in the response.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { eq, and, sql } from "drizzle-orm";

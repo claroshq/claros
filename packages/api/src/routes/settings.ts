@@ -65,8 +65,6 @@
  *   the resolver documents the safe fallback: null return, messages stay approved,
  *   no operator action required when the provider ships. Validation only rejects
  *   values that are clearly not a known provider identifier.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { eq, and, sql } from "drizzle-orm";

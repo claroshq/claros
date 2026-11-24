@@ -5,8 +5,6 @@
  * optional - a fresh install produces clean emails with sensible
  * defaults. The test-send form lives here because what it exercises is
  * exactly this configuration (plus transport and postal address).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useEffect, useState } from "react";
 import { useSetupState, usePatchTenant, useSendTestEmail } from "../../settings.js";

@@ -12,8 +12,6 @@
  * Empty without filters is not an error state: it is a tenant whose
  * events have not started flowing, and the copy says so. Empty with
  * filters is a search miss and offers to clear them.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";

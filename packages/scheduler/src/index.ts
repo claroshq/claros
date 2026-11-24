@@ -12,8 +12,6 @@
  * Pattern: one boss.schedule() call per cron-triggered queue constant.
  * Add a new schedule here in the same commit as the queue name in @claros/core
  * and the handler in @claros/worker.
- *
- * Mirror side: PUBLIC (packages/scheduler is mirrored).
  */
 import type { PgBoss } from "pg-boss";
 import { QUEUE } from "@claros/core";

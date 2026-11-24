@@ -2,7 +2,7 @@
  * Behavioural proof for exposed throttle controls (Proofs 1-3).
  * Proof 4 (API validation) is in packages/api/tests/throttle-proof.db.test.ts.
  *
- * Run: pnpm test -- tests/throttle-proof.db.test.ts   (via pnpm test which loads .env)
+ * Run: npx vitest run tests/throttle-proof.db.test.ts   (via npm test which loads .env)
  * Requires: DATABASE_URL + Postgres running.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -31,7 +31,7 @@ class LogAdapter implements TransportAdapter {
 const TEST_DB_URL = process.env.DATABASE_URL;
 if (!TEST_DB_URL) {
   throw new Error(
-    `[throttle-proof] DATABASE_URL not set. Export it or run via: pnpm test\n`,
+    `[throttle-proof] DATABASE_URL not set. Export it or run via: npm test\n`,
   );
 }
 

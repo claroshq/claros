@@ -17,8 +17,6 @@
  * reconciled out of the queue with a quiet notice, not an error banner.
  *
  * Pagination is cursor-based; the queue appends via "Load more".
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { Inbox } from "lucide-react";

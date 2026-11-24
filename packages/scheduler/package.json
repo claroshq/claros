@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claros/core": "workspace:*",
+    "@claros/core": "*",
     "pg-boss": "^12.26.2"
   },
   "devDependencies": {

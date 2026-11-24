@@ -24,8 +24,6 @@
  * [impl] Budget note: the assessment payload carries the full draft body plus
  * the contact context summary. It is likely the largest of the three LLM calls.
  * The budget machinery must cover the assessment path before the worker is wired.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import { assessOutputSchema, type AssessOutput } from "@claros/core";
 import type { LlmProvider } from "./providers/types.js";

@@ -8,7 +8,7 @@
  *
  * Returns the container's own view of its environment:
  *   commit    - CLAROS_COMMIT_SHA env (set at image build time via --build-arg)
- *   edition   - CLAROS_EDITION env
+ *   edition   - always "community" (kept for v0.6 compatibility)
  *   builtAt   - CLAROS_BUILT_AT env (null if absent)
  *   startedAt - ISO-8601 UTC timestamp of when this container process started.
  *               Computed once at module load time from Date.now() and
@@ -28,8 +28,6 @@
  *
  * Used by `claros doctor` to compare the container's live environment against
  * the operator's local environment after a secret rotation or deploy.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { createHash } from "node:crypto";
@@ -117,7 +115,7 @@ const diagnosticsRoute: FastifyPluginAsync = async (app) => {
 
       return {
         commit:  process.env.CLAROS_COMMIT_SHA ?? "unknown",
-        edition: process.env.CLAROS_EDITION    ?? "community",
+        edition: "community",
         builtAt: process.env.CLAROS_BUILT_AT   ?? null,
         startedAt: PROCESS_STARTED_AT,
         keys: {

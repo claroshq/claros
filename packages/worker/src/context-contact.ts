@@ -22,8 +22,6 @@
  *     counts. 30-day approximation is a deliberate implementation choice;
  *     see the ambiguity note in the task 18 report.
  *   - All queries are scoped by tenant_id. No cross-tenant data leaks.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

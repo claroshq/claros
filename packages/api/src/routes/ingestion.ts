@@ -23,8 +23,6 @@
  * partitions (received_at >= now - 7 days) because events is partitioned by
  * received_at and an unbounded ORDER BY received_at DESC would scan every
  * partition.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";

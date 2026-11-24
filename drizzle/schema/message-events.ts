@@ -35,8 +35,6 @@ import { lifecycleMessages } from "./lifecycle-messages.js";
  *   The application layer enforces a per-message cap (50 events). Beyond that,
  *   a future retention policy can truncate old engagement events (opens/clicks)
  *   while preserving terminal events (bounces/complaints) indefinitely.
- *
- * Mirror side: PUBLIC (drizzle/ is mirrored).
  */
 export const messageEvents = pgTable(
   "message_events",

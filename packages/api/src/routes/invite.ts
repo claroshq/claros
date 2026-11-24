@@ -10,8 +10,6 @@
  *   - POST consumes the token atomically (CAS on accepted_at IS NULL).
  *   - Token is single-use. Second use gets redirected to login with error.
  *   - 7-day TTL.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { createHash } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";

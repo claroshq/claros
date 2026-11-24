@@ -4,8 +4,6 @@
  * Workspace members, roles, and invites. Owners can promote, demote,
  * remove, and invite; members see the roster read-only. The invite link
  * panel covers installs without an email transport.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

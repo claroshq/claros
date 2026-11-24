@@ -44,8 +44,6 @@
  * Provider message ID:
  *   On success Resend returns `{ "id": "<uuid>" }`. This is the provider message ID
  *   stored in lifecycle_messages.provider_message_id for later webhook correlation.
- *
- * Mirror side: PUBLIC (packages/adapters is mirrored).
  */
 
 import type { TransportAdapter, TransportSendParams, TransportSendResult } from "./transport-types.js";

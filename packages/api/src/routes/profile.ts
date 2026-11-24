@@ -17,8 +17,6 @@
  *   3. Clicking the verification link atomically swaps the email, checking for
  *      collisions at verification time (not just at request time).
  *   4. If never completed, pending_email expires after 24 hours - no harm done.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { randomBytes, createHash } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";

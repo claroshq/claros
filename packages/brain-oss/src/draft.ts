@@ -6,8 +6,6 @@
  *   - decide()  - task 17: context -> action decision
  *   - draft()   - task 17: context -> email content (this file)
  *   - assess()  - task 20: (context + draft) -> pass/fail verdict
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import { draftOutputSchema, type DraftOutput } from "@claros/core";
 import type { LlmProvider } from "./providers/types.js";

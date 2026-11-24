@@ -3,8 +3,6 @@
  *
  * A physical postal address is a legal requirement on commercial email
  * (CAN-SPAM). While it is missing, the drain refuses to send anything.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { useSetupState, usePatchTenant } from "../../settings.js";

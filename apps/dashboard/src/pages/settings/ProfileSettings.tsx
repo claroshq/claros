@@ -4,8 +4,6 @@
  * The signed-in user's own account: display name, role, and the
  * email-change request flow (a verification link goes to the new
  * address before anything switches).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

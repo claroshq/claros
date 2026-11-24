@@ -46,8 +46,6 @@
  * require the one-click HTTPS form, which is fully implemented. If a monitored
  * inbound address is added in the future, the mailto: form can be restored; see
  * BACKLOG.md "Restore List-Unsubscribe mailto form".
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { generateUnsubscribeToken } from "@claros/adapters";
 
@@ -99,7 +97,7 @@ export interface ComplianceOutput {
  * Resolve the base URL for the unsubscribe endpoint.
  *
  * For self-hosted installs the operator sets BASE_URL to their domain,
- * e.g. https://mail.example.com. For Cloud, BASE_URL is https://api.claros.org.
+ * e.g. https://mail.example.com.
  * The default of http://localhost:3000 is only valid in local development
  * and will produce non-functional unsubscribe links in production - but the
  * production error is visible (links don't work) rather than silent (wrong

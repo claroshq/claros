@@ -4,8 +4,6 @@
  *
  * Used inside the flow editor to edit step content without leaving the flow.
  * This is a detail of a flow, not a standalone destination.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

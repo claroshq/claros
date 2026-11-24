@@ -6,8 +6,6 @@
  * in the email itself, workspace) and carries a warning dot on sections
  * the product cannot run without, so "what is missing" is visible from
  * anywhere in settings. Deep-linkable: every section is its own route.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { NavLink, Outlet } from "react-router-dom";
 import {

@@ -1,8 +1,6 @@
 /**
  * Ingestion hooks: API key management and the first-event status poll that
  * powers the Integrate screen's waiting indicator.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {

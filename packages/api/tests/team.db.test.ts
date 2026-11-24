@@ -10,8 +10,6 @@
  *
  * Uses the same test patterns as auth.db.test.ts: real app via buildApp(),
  * real DB, real migrations.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";

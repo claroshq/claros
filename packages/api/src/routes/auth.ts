@@ -17,8 +17,6 @@
  * Console fallback: when no transport is configured and NODE_ENV is not production
  * (and is not absent), the login link is printed to the server console instead of
  * being sent via email.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { randomBytes, createHash } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
@@ -84,8 +82,9 @@ export interface AuthRouteOptions {
    * Base URL of the API server (no trailing slash). Retained for interface
    * compatibility but not currently used in auth route logic. The magic link
    * verify URL is built from dashboardUrl (see below), not baseUrl, because
-   * in Cloud the verify link must point at app.claros.org where the SPA lives
-   * and the Vite dev proxy forwards /auth/* to Fastify.
+   * the dashboard may be served from a different host than the API (for
+   * example behind a reverse proxy) and the Vite dev proxy forwards /auth/*
+   * to Fastify.
    */
   baseUrl: string;
   /**

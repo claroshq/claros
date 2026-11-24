@@ -5,8 +5,6 @@
  * throttle config (settings.throttle is null/missing/partial) gets these values.
  * Absent config NEVER means unlimited sending - the failure direction is always
  * toward throttling, not toward unbounded delivery.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import { z } from "zod";
 

@@ -11,8 +11,6 @@
  * No persistent checkpoint - restart-from-top is safe because CAS prevents
  * double-fire, and the arithmetic shows the scan completes well within the
  * 15-minute interval at realistic scale (see BACKLOG.md for the threshold).
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, inArray, gt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

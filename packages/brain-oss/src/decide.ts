@@ -9,8 +9,6 @@
  *
  * The function is pure: provider and context are parameters, no database access,
  * no tenant or crypto knowledge in brain-oss.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import { decideOutputSchema, type DecideOutput } from "@claros/core";
 import type { LlmProvider } from "./providers/types.js";

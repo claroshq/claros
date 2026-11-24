@@ -19,8 +19,6 @@
  * placeholders violates the author's intent and produces unprofessional
  * email. The message is marked 'failed' with a clear reason so the operator
  * can fix the data or the template.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 
 // ---------------------------------------------------------------------------

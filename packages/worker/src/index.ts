@@ -17,8 +17,6 @@
  *   pg-boss opens its own pg.Pool (max=3, sized up in Phase 2 once real
  *   concurrency is known). The Drizzle pool used by the API is separate.
  *   See apps/server/src/main.ts for per-role connection totals.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { PgBoss, fromDrizzle } from "pg-boss";
 import type { Job } from "pg-boss";

@@ -5,8 +5,6 @@
  * accessible and more familiar than anything built from divs. The chevron
  * is decorative; the boundary, focus ring, and disabled treatment match
  * Input exactly so a form reads as one system.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 import { ChevronDown } from "lucide-react";

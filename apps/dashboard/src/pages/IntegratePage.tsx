@@ -13,8 +13,6 @@
  *      inline when none exists.
  *   3. API keys - list, create (publishable / secret), edit origins, revoke.
  *      The raw key is shown exactly once, in the creation banner.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { Fragment, useMemo, useState, type ElementType } from "react";
 import { Check, Copy, Plus, X, Zap, Code2, KeyRound, Send } from "lucide-react";

@@ -6,8 +6,6 @@
  * and the crypto envelope (@claros/adapters decrypt). brain-oss must not gain
  * any knowledge of tenants, llm_configs, or encryption; it receives an
  * already-constructed LlmProvider as a parameter.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

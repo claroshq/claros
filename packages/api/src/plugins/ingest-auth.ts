@@ -43,8 +43,6 @@
  *
  * This plugin is registered on the ingestion scope ONLY. It does NOT share
  * any auth logic with the session-cookie tenant plugin used by the dashboard.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";

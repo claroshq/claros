@@ -3,8 +3,6 @@
  *
  * Contains trigger matching, re-entry policy evaluation, and priority
  * resolution. Used by the worker (scan phase 2 and trigger-check job).
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 
 import { createHash } from "node:crypto";

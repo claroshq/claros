@@ -52,8 +52,6 @@
  *   Other event-driven transitions (at_risk/dormant/churned recovery) do not
  *   need config - they trigger on any activity.
  * - engagement_depth is NOT touched by this task.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

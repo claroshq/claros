@@ -12,8 +12,6 @@
  * The timeline uses the message_events table. For messages sent before the
  * event table existed, only the high-water feedback value is shown - we do
  * not fabricate a timeline from a single value.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";

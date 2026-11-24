@@ -6,8 +6,6 @@
  * optional one-line muted subtitle, and the page's primary action top
  * right. Every page renders this block in every state (loading, empty,
  * error, populated) so the verb never disappears.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React from "react";
 

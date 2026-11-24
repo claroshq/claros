@@ -14,8 +14,6 @@
  * path and cannot leave stale state behind.
  * This path must not trigger for /auth/me itself - fetchMe() does not go
  * through apiFetch().
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 
 export interface MeResponse {

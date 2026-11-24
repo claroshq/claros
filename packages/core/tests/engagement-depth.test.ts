@@ -8,8 +8,6 @@
  * - Small cohort floor: power bucket suppressed when cohort below minimum
  * - Zero events returns null (no depth assignment)
  * - Edge values: exactly at each boundary
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import { describe, it, expect } from "vitest";
 import {

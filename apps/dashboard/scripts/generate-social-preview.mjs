@@ -9,9 +9,6 @@
  *   node scripts/generate-social-preview.mjs
  *
  * Outputs: oss/social-preview.png
- *
- * Mirror side: PRIVATE (scripts/ is not mirrored).
- * The output file oss/social-preview.png IS mirrored (it lives in oss/).
  */
 import { chromium } from "playwright";
 import { mkdirSync, readFileSync } from "node:fs";

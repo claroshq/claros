@@ -6,8 +6,6 @@
  * applies the same logic before first paint. The stored choice lives in
  * localStorage under "claros-ui-theme". In "system" mode a matchMedia
  * listener keeps the resolved theme in sync with the OS.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useSyncExternalStore } from "react";
 

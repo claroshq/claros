@@ -6,8 +6,6 @@
  * HTML content renders in the same sandboxed frame discipline as the
  * approval draft preview; markdown and text render as preformatted text
  * (no markdown renderer is bundled).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

@@ -3,8 +3,6 @@
  *
  * Follows the same pattern as auth.ts / useMe(): thin wrappers over
  * TanStack Query that page components call directly.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {

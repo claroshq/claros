@@ -1,10 +1,8 @@
 /**
  * Drizzle configuration for community schema.
- * This config governs the public/community tables only.
- * Private sub-schemas (brain-cloud, billing) have their own configs.
  *
- * For migrations: use `pnpm db:migrate`, which reads DATABASE_URL by default
- * (local) or PRODUCTION_DATABASE_URL with --prod. The script exports the
+ * For migrations: use `npm run db:migrate`, which reads DATABASE_URL by default
+ * (local) or PRODUCTION_DATABASE_URL with --prod (a remote database). The script exports the
  * resolved URL as DATABASE_URL before invoking drizzle-kit.
  *
  * For generate, studio, check: DATABASE_URL is sufficient.

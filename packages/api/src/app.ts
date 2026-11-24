@@ -13,8 +13,6 @@
  *   5. Authenticated scope /v1 (all routes that require a resolved tenant)
  *   6. Ingestion scope /v1 (API key auth)
  *   7. Static serving + SPA fallback (LAST; only when opts.serveDashboard is true)
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import path from "node:path";
 import { existsSync } from "node:fs";
@@ -77,9 +75,8 @@ export interface BuildAppOptions {
    */
   role?: string;
   /**
-   * The Claros edition: "community" | "cloud".
-   * Supplied by apps/server from CLAROS_EDITION env.
-   * Reported in /health. Defaults to "community".
+   * Edition label reported in /health and /version. Always "community";
+   * kept for v0.6 API compatibility.
    */
   edition?: string;
   /** Fastify logger config. Defaults to structured in production, disabled in test. */
@@ -112,12 +109,8 @@ export interface BuildAppOptions {
    * When true, register @fastify/static to serve the dashboard SPA from dist/
    * and add a SPA catch-all fallback for unknown paths.
    *
-   * Used in both self-host and Cloud (Slice 2 deliberate reversal: the
-   * container serves the SPA in Cloud via app.claros.org passthrough).
-   * Defaults to true for community edition, false for cloud edition (the
-   * cloud default becomes relevant only once brain-cloud ships; until then
-   * the container always runs community). Defaults to false in BuildAppOptions
-   * to preserve existing test behaviour that does not set serveDashboard.
+   * apps/server passes true unless CLAROS_SERVE_DASHBOARD="false". Defaults
+   * to false in BuildAppOptions to preserve existing test behaviour that does not set serveDashboard.
    *
    * If set to true but the dist directory cannot be found, a startup warning
    * is logged and static serving is skipped rather than crashing.
@@ -377,9 +370,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   }
 
   // --- Static serving + SPA fallback (LAST) ------------------------------------
-  // Registered when opts.serveDashboard is true. In Cloud, app.claros.org
-  // passthrough routing forwards SPA requests to the container, so the container
-  // serves assets just as in self-host mode (Slice 2 deliberate reversal).
+  // Registered when opts.serveDashboard is true.
   // Must come after all API routes to avoid shadowing them.
   if (opts.serveDashboard) {
     await registerSpaServing(app, opts);
@@ -404,7 +395,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
  *
  * If the resolved path does not exist on disk, logs a warning and returns
  * without registering anything. This prevents a crash when starting the
- * server before running `pnpm --filter @claros/dashboard build`.
+ * server before running `npm run build -w @claros/dashboard`.
  */
 async function registerSpaServing(
   app: FastifyInstance,
@@ -419,7 +410,7 @@ async function registerSpaServing(
       `[dashboard] serveDashboard=true but dist directory not found. ` +
       `mechanism=${mechanism} tried=${distPath} -- ` +
       "If mechanism=auto, verify WORKDIR is the monorepo root or set CLAROS_DASHBOARD_DIST explicitly. " +
-      "Run `pnpm --filter @claros/dashboard build` to create the dist directory. " +
+      "Run `npm run build -w @claros/dashboard` to create the dist directory. " +
       "Static serving and SPA fallback are disabled until the path exists.",
     );
     return;

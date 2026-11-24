@@ -6,8 +6,6 @@
  * broken down per flow. Rates are shown with their denominators, and a
  * rate over fewer than LOW_VOLUME_SENT sends is marked as unstable rather
  * than printed as a confident percentage.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { Link } from "react-router-dom";

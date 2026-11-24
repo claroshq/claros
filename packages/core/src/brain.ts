@@ -8,8 +8,6 @@
  * Used by:
  *   - Task 17 (brain interface): exported from brain-oss for external use.
  *   - Task 19 (content generation worker): validates Brain output at runtime.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import { z } from "zod";
 

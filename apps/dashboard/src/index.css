@@ -12,8 +12,6 @@
  * No hex, rgb, or oklch literals in components, and no new values outside
  * this file. Contrast for every sanctioned pair is audited by
  * scripts/contrast.mjs; the numbers live in docs/BRAND.md.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 @import "tailwindcss";
 

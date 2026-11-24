@@ -6,15 +6,15 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "packageManager": "pnpm@9.15.4",
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "test": "turbo test",
-    "typecheck": "turbo typecheck",
-    "lint": "turbo lint",
+    "dev": "npm run dev -w @claros/server",
+    "dev:dashboard": "npm run dev -w @claros/dashboard",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run build -w @claros/core -w @claros/adapters -w @claros/brain-oss -w @claros/db -w @claros/api -w @claros/worker -w @claros/scheduler && npm run typecheck --workspaces --if-present",
+    "test": "bash scripts/test.sh",
+    "check": "bash scripts/check.sh",
     "db:generate": "drizzle-kit generate --config drizzle/drizzle.config.ts",
-    "db:migrate": "drizzle-kit migrate --config drizzle/drizzle.config.ts"
+    "db:migrate": "bash scripts/migrate.sh"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -22,11 +22,21 @@
     "drizzle-kit": "^0.31.10",
     "pg": "^8.22.0",
     "tsx": "^4.16.0",
-    "turbo": "^2.0.0",
     "typescript": "^5.5.0",
     "vitest": "^1.6.0"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2"
-  }
+  },
+  "workspaces": [
+    "packages/core",
+    "packages/adapters",
+    "packages/brain-oss",
+    "drizzle",
+    "packages/api",
+    "packages/worker",
+    "packages/scheduler",
+    "apps/server",
+    "apps/dashboard"
+  ]
 }

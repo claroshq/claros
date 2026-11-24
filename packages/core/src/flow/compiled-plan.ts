@@ -9,8 +9,6 @@
  * The schema is strict on all fields including conditions. The condition
  * vocabulary is closed: exactly three step-level shapes and three plan-level
  * exit shapes. The execution engine (task 12d) evaluates these deterministically.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import { z } from "zod";
 

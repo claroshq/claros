@@ -3,8 +3,6 @@
  *
  * One implementation (OpenAICompatibleProvider) covers OpenAI, Anthropic (via proxy),
  * Groq, Ollama, and any custom endpoint that implements the /v1/chat/completions shape.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 
 // ---------------------------------------------------------------------------

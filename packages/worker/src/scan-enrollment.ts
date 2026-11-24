@@ -11,8 +11,6 @@
  *
  * Segment-triggered flows enroll in phase 2b (scan-segment-enrollment.ts),
  * not here: this phase only handles lifecycle_transition triggers.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

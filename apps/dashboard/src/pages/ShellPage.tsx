@@ -13,8 +13,6 @@
  *
  * Navigation is driven by the NAV_ITEMS array. Activating a future
  * destination is a one-line change (set enabled: true and add the route).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { Outlet, NavLink, useLocation } from "react-router-dom";

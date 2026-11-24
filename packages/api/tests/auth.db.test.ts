@@ -11,7 +11,7 @@
  * - Session creation and validation
  * - Console fallback behavior (stdout only, never in response body)
  *
- * Run with: pnpm test (requires local Postgres from docker-compose).
+ * Run with: npm test (requires local Postgres from docker-compose).
  *
  * When no Postgres is reachable: integration tests skip with a visible message;
  * unit tests (token utilities, isConsoleLoginAllowed) always run.

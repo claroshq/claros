@@ -22,7 +22,7 @@
  *
  * Requires local Postgres (docker compose up postgres).
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { eq, sql, inArray } from "drizzle-orm";
@@ -1136,6 +1136,16 @@ describe("drain worker", () => {
   });
 
   describe("compliance: missing signing key fails closed", () => {
+    // signingKey: null falls back to process.env.UNSUBSCRIBE_SIGNING_KEY, so the
+    // env var must be absent for these cases to exercise the missing-key path
+    // regardless of the developer's local .env.
+    beforeEach(() => {
+      vi.stubEnv("UNSUBSCRIBE_SIGNING_KEY", "");
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     it("reverts message to approved when UNSUBSCRIBE_SIGNING_KEY is absent (not a transport failure, no retry consumed)", async () => {
       if (!dbAvailable) return;
 

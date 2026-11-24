@@ -5,8 +5,6 @@
  * The server applies these defaults at write time; this copy exists so the
  * form can show what will be used before saving. After a save, the values
  * rendered come from the server response, not from this table.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 
 export interface LlmProviderDisplayDefaults {

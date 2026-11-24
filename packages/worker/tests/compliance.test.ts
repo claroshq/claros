@@ -79,7 +79,7 @@ describe("checkBaseUrl", () => {
     });
 
     it("accepts the Cloud production URL", () => {
-      expect(checkBaseUrl("https://api.claros.org", true)).toBeNull();
+      expect(checkBaseUrl("https://claros.example.com", true)).toBeNull();
     });
 
     it("accepts https with a non-standard port", () => {
@@ -102,7 +102,7 @@ describe("checkBaseUrl", () => {
     });
 
     it("does not throw for a valid https URL when called without override", () => {
-      expect(() => checkBaseUrl("https://api.claros.org")).not.toThrow();
+      expect(() => checkBaseUrl("https://claros.example.com")).not.toThrow();
     });
   });
 });

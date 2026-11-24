@@ -8,8 +8,6 @@
  * This is the second enrollment path (the first is scan-enrollment.ts for
  * lifecycle-transition triggers). Both use the shared enrollContactInFlows
  * function which handles advisory locking and guards.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

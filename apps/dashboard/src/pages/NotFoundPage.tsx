@@ -5,8 +5,6 @@
  * (sidebar, user footer) stays put and only the content region reports the
  * miss. The shell's own auth gate runs first: an unauthenticated visitor to
  * an unknown path is redirected to /login before this page can render.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { Link } from "react-router-dom";
 

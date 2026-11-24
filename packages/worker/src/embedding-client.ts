@@ -10,8 +10,6 @@
  * same retry policy, error classification, and model default apply to both
  * indexing and querying paths. Model consistency is critical: a query vector
  * produced by a different model than the stored entry vectors is incomparable.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

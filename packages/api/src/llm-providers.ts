@@ -13,7 +13,6 @@
  * 1-token chat completion. A wrong key is reported at save time instead of
  * surfacing hours later as failed compiles and stuck messages.
  *
- * Mirror side: PUBLIC (packages/api is mirrored). The dashboard keeps a
  * display-only mirror of LLM_PROVIDER_DEFAULTS in
  * apps/dashboard/src/llm-defaults.ts; this file is the source of truth.
  */

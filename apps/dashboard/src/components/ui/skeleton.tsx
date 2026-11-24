@@ -5,8 +5,6 @@
  * the brand accent at low opacity, which made every loading screen shimmer
  * in the brand color: a loading state is absence of content, not a brand
  * moment.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { cn } from "@/lib/utils";
 

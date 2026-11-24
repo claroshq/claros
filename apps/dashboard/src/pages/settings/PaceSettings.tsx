@@ -4,8 +4,6 @@
  * Per-contact caps, the send window, and the drain batch size. These
  * limits protect sender reputation; getting them wrong lands mail in
  * spam or gets the domain blocked.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useEffect, useState } from "react";
 import { useThrottle, usePutThrottle } from "../../settings.js";

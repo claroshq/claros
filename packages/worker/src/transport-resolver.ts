@@ -28,8 +28,6 @@
  *
  *   - Decryption fails (wrong key, corrupted envelope):
  *       Returns null with a logged operator error. Same safe fallback.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
