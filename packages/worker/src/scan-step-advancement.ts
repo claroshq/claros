@@ -23,8 +23,6 @@
  * Checkpoint: uses scan_checkpoints table keyed by ("step_advancement", tenant_id).
  * Each batch updates the checkpoint. A stale checkpoint (older than 30 min) is
  * discarded with discard_count incremented and a warning logged.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, gt, sql, gte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

@@ -3,8 +3,6 @@
  *
  * Registered at root scope (no auth required). Always returns 200
  * regardless of role or edition. This is the compose smoke-test target.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 

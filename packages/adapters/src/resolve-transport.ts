@@ -19,8 +19,6 @@
  *   - ENCRYPTION_KEY missing or invalid
  *   - Decryption failure (wrong key, corrupted envelope)
  *   - JSON parse failure on decrypted content
- *
- * Mirror side: PUBLIC (packages/adapters is mirrored).
  */
 import { decrypt, parseEncryptionKey } from "./crypto.js";
 import { ResendTransportAdapter } from "./resend.js";

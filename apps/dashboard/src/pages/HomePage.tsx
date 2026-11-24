@@ -12,8 +12,6 @@
  * The two modes share a single route (/home) and transition automatically.
  * The setup path is always reachable from the operational view via a quiet
  * link if anything regresses or was skipped.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { Link } from "react-router-dom";

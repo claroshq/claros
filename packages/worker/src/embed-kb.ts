@@ -44,8 +44,6 @@
  * Embedding status (gap 2):
  *   kb_entries.embedding_status: null|'pending'|'failed'.
  *   Non-NULL embedding = success (status cleared to null; vector is the evidence).
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

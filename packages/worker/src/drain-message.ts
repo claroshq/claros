@@ -10,8 +10,6 @@
  * job), the job returns immediately with no effect.
  *
  * The processing logic reuses processOneMessage from drain.ts.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

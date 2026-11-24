@@ -9,8 +9,6 @@
  * Placeholder text uses --fg-subtle, which is advisory-level contrast by
  * design: placeholders are hints, never labels. Labels live outside the
  * input.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 

@@ -2,8 +2,6 @@
  * Suppressions hooks.
  *
  * TanStack Query hooks for the suppressions list and CSV import.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import {
   useInfiniteQuery,

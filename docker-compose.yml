@@ -24,7 +24,6 @@ services:
       - NODE_ENV=development
       # Pass-through from .env (Docker Compose auto-loads .env from the same
       # directory as the compose file - the repo root - where .env lives).
-      - CLAROS_EDITION=${CLAROS_EDITION:-community}
       - PORT=${PORT:-3000}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL:-}

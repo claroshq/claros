@@ -18,8 +18,6 @@
  *
  * The gate is a PURE function: no I/O, no DB access. All inputs are pre-fetched
  * by the caller (drain worker). This makes it fully unit-testable with synthetic data.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import type { ThrottleConfig } from "./defaults.js";
 

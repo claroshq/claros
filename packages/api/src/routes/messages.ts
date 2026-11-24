@@ -18,8 +18,6 @@
  * returns 409 (terminal means no going back).
  *
  * Tenant isolation: messages belonging to another tenant return 404.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { sql } from "drizzle-orm";

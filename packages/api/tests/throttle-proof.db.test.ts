@@ -5,7 +5,7 @@
  * tests: buildApp with a real DB, a magic-link login to get a session cookie,
  * then calls the endpoint.
  *
- * Run: pnpm test (via the normal test runner which loads .env)
+ * Run: npm test (via the normal test runner which loads .env)
  * Requires: DATABASE_URL + Postgres running + ENCRYPTION_KEY set.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -20,7 +20,7 @@ if (!TEST_DB_URL) {
   const inCI = process.env.CI === "true";
   throw new Error(
     `[throttle-proof-api] DATABASE_URL is not set.\n` +
-      (inCI ? `Set it in the workflow env block.\n` : `Export it or run via pnpm test.\n`),
+      (inCI ? `Set it in the workflow env block.\n` : `Export it or run via npm test.\n`),
   );
 }
 

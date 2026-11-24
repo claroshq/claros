@@ -9,8 +9,6 @@
  *
  * The evaluator is pure logic over its inputs. I/O (event queries) is handled
  * by the caller and passed in via the EventChecker interface.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { stepConditionSchema, type StepCondition, type PlanExitCondition } from "@claros/core";
 

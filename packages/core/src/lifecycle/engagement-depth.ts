@@ -15,8 +15,6 @@
  * The power_cutoff is NOT computed here (it requires the full cohort distribution
  * and lives in the SQL query). This module handles the per-contact assignment
  * given the pre-computed cutoff.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import type { LifecycleConfig } from "./states.js";
 

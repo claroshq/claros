@@ -16,8 +16,6 @@
  *   1. onRoute hook (boot time): rejects routes without config.minRole.
  *   2. preHandler hook (request time): checks request.tenant.userRole
  *      against the declared minRole and returns 403 if insufficient.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyInstance } from "fastify";
 import { roleSatisfies, type UserRole } from "../types.js";

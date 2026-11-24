@@ -5,7 +5,7 @@
  * One CLI for every operator task: login links, credential setup, and
  * guided first-run configuration.
  *
- * Usage (local checkout, after pnpm build):
+ * Usage (local checkout, after npm run build):
  *   node apps/server/bin/claros.mjs <command> [options]
  *
  * Usage (Docker Compose, app container running):
@@ -29,7 +29,7 @@
  *            Production writes in non-interactive mode are confirmed by the flag itself.
  *
  * Prerequisites:
- *   Run `pnpm build` once first. This script imports from built dist/ directories:
+ *   Run `npm run build` once first. This script imports from built dist/ directories:
  *     packages/adapters/dist/  (crypto)
  *     drizzle/dist/            (@claros/db schema)
  *
@@ -41,8 +41,6 @@
  *     pattern as PATCH /v1/settings/tenant (packages/api/src/routes/settings.ts:582-600).
  *   login-link: uses generateToken() + magicLinkTokens table, the same logic as
  *     POST /auth/login in packages/api/src/routes/auth.ts. No HTTP server required.
- *
- * Mirror side: PUBLIC (apps/server is mirrored).
  */
 import { createInterface } from "node:readline";
 import { existsSync, readFileSync, writeFileSync, statSync, chownSync, chmodSync } from "node:fs";
@@ -82,9 +80,9 @@ if (topCommand === "install") {
 }
 
 // ---------------------------------------------------------------------------
-// Import from built dist directories (run `pnpm build` first).
+// Import from built dist directories (run `npm run build` first).
 // These are deferred to after the install early-exit because install does
-// not need compiled packages and must work before `pnpm build` has run
+// not need compiled packages and must work before `npm run build` has run
 // (e.g. inside a fresh Docker image where dist is available from the builder
 // stage, but not on the host before the first build).
 // ---------------------------------------------------------------------------
@@ -1691,7 +1689,6 @@ async function cmdDoctor(db, dbInfo, sessionToken) {
 
   // --- CONTAINER fingerprints (from /v1/diagnostics) ---
   let containerKeys = null;
-  let containerEdition = null;
   let containerBaseUrl = null;
   let diagnosticsSkipReason = null;
 
@@ -1704,7 +1701,6 @@ async function cmdDoctor(db, dbInfo, sessionToken) {
     const diagResult = await fetchJson(diagEndpoint, sessionToken);
     if (diagResult.ok) {
       containerKeys    = diagResult.data.keys ?? null;
-      containerEdition = diagResult.data.edition ?? null;
       containerBaseUrl = null; // /v1/diagnostics does not expose BASE_URL (not a secret but not needed here)
     } else {
       diagnosticsSkipReason = `GET /v1/diagnostics: ${diagResult.error}`;
@@ -1721,9 +1717,6 @@ async function cmdDoctor(db, dbInfo, sessionToken) {
     // Re-fetch /version for edition - it was already fetched above; reuse deployedCommit data
     // Edition is in /version response; we stored it but need to surface it here.
     // We stored deployedCommit but not edition - fetch diagnostics has it if available.
-    if (containerEdition !== null) {
-      out(`    CLAROS_EDITION (container): ${containerEdition}`);
-    }
   }
   // Local BASE_URL
   const localBaseUrl = process.env.BASE_URL ?? "(not set)";
@@ -1982,47 +1975,47 @@ async function cmdInstall(args) {
     await testPool.end();
   }
 
-  // Step 5b: pnpm install in the host directory.
+  // Step 5b: npm install in the host directory.
   //
   // The compose dev-stage mounts ./apps, ./packages, and ./drizzle into the
   // app container. The container's entrypoint rebuilds the dashboard using
-  // pnpm, which requires node_modules to be present in the mounted paths.
-  // Running `pnpm install` here (inside the install container, which is a
+  // npm, which requires node_modules to be present in the mounted paths.
+  // Running `npm install` here (inside the install container, which is a
   // Linux environment matching what the app container needs) writes Linux
   // node_modules into the host directory so the subsequent `docker compose up`
-  // works without requiring Node.js or pnpm on the host machine.
+  // works without requiring Node.js or npm on the host machine.
   //
   // This only runs when the install command is executed inside a container
   // (/.dockerenv present) with a --host-root argument, i.e. the install
   // service in docker-compose.yml. It is skipped when running claros install
-  // directly on the host (where pnpm install is already done).
+  // directly on the host (where npm install is already done).
   if (isContainer && hostRoot !== repoRoot) {
     console.log("  Installing node_modules for compose mounts...");
     try {
       const { execFileSync } = await import("node:child_process");
-      execFileSync("pnpm", ["install", "--frozen-lockfile"], {
+      execFileSync("npm", ["ci"], {
         cwd: hostRoot,
         stdio: ["ignore", "inherit", "inherit"],
         timeout: 300000,
       });
       console.log("  node_modules installed");
     } catch (err) {
-      console.warn(`  WARNING: pnpm install failed: ${err.message}`);
-      console.warn("  docker compose up may fail. Run 'pnpm install' in the project directory.");
+      console.warn(`  WARNING: npm install failed: ${err.message}`);
+      console.warn("  docker compose up may fail. Run 'npm install' in the project directory.");
     }
 
     console.log("  Building packages for compose mounts...");
     try {
       const { execFileSync } = await import("node:child_process");
-      execFileSync("pnpm", ["build"], {
+      execFileSync("npm", ["run", "build"], {
         cwd: hostRoot,
         stdio: ["ignore", "inherit", "inherit"],
         timeout: 300000,
       });
       console.log("  Build complete");
     } catch (err) {
-      console.warn(`  WARNING: pnpm build failed: ${err.message}`);
-      console.warn("  docker compose up may fail. Run 'pnpm build' in the project directory.");
+      console.warn(`  WARNING: npm run build failed: ${err.message}`);
+      console.warn("  docker compose up may fail. Run 'npm run build' in the project directory.");
     }
   }
 
@@ -2060,7 +2053,7 @@ Prints a single report covering:
   Environment for ENCRYPTION_KEY and UNSUBSCRIBE_SIGNING_KEY: the LOCAL
               fingerprint (this machine's env) compared against the CONTAINER
               fingerprint (from GET /v1/diagnostics). MATCH or MISMATCH.
-              BASE_URL (local) and CLAROS_EDITION (container).
+              BASE_URL (local).
 
 Security: no secret, key, credential, or password is printed.
 Fingerprints and byte lengths only.
@@ -2091,7 +2084,7 @@ Examples:
   node apps/server/bin/claros.mjs doctor --session <claros_session_cookie_value>
 
   # Production database with environment comparison:
-  CLAROS_DOCTOR_URL=https://api.claros.org \\
+  CLAROS_DOCTOR_URL=https://claros.example.com \\
     node apps/server/bin/claros.mjs doctor --prod --session <token>
 `);
     return;
@@ -2241,7 +2234,7 @@ Credential input:
   Interactive (TTY): prompts for each field; secrets not echoed.
   Non-interactive (pipe): reads JSON from stdin; confirmation is automatic.
 
-Requires pnpm build to have been run (imports from dist/).
+Requires npm run build to have been run (imports from dist/).
 `);
 }
 

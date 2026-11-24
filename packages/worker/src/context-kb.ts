@@ -52,8 +52,6 @@
  * (tenant_id, flow_id, step_order, embedding_model) would eliminate redundant
  * API calls entirely. See docs/BACKLOG.md "KB query vector cache" for the
  * tracking item. No cache is built here.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

@@ -4,8 +4,6 @@
  * The list is cursor-paginated (infinite query). Filters live in the query
  * key, so changing them starts a fresh queue. Detail and timeline are
  * keyed by contact id.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import {
   useInfiniteQuery,

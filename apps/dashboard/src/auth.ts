@@ -7,8 +7,6 @@
  *
  * ME_QUERY_KEY lives in query-client.ts so that api.ts can reference it
  * without creating a circular dependency.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchMe, postLogin, postLogout } from "./api.js";

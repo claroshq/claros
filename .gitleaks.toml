@@ -1,0 +1,10 @@
+# Gitleaks configuration for Claros mirror verification.
+# Allowlist entries suppress known false positives (documentation placeholders).
+
+[allowlist]
+  description = "Documentation placeholder tokens"
+  regexTarget = "match"
+  regexes = [
+    '''PASTE_YOUR_KEY''',
+    '''cl_live_YOUR_SECRET_KEY''',
+  ]

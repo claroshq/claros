@@ -15,8 +15,6 @@
  *   (recovery is "restart the container and read the new URL").
  * - After an owner exists: GET /claim returns a redirect to /login regardless
  *   of token validity. The claim surface disappears entirely once claimed.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { randomBytes, createHash } from "node:crypto";

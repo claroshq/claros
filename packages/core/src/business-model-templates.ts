@@ -34,8 +34,6 @@
  *   dormant_days, churned_days. The spec does not define
  *   engagement_depth_window_days or power_user_percentile for templates;
  *   these are left as defaults from the resolver.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import type { LifecycleConfig } from "./lifecycle/states.js";
 import type { ThrottleConfig } from "./throttle/defaults.js";

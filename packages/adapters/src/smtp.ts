@@ -54,8 +54,6 @@
  *   (e.g. "250 2.0.0 OK 1234567890 abc123 - gsmtp"). Nodemailer exposes
  *   this as `info.messageId`. Stored for reference but unlike Resend there
  *   is no webhook system to correlate it with delivery events.
- *
- * Mirror side: PUBLIC (packages/adapters is mirrored).
  */
 
 import { createTransport, type Transporter } from "nodemailer";

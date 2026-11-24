@@ -13,8 +13,6 @@
  * CAS semantics: the worker only writes if compile_status is still 'pending'.
  * If the prompt changed while the job was in flight (status reset to null by
  * the API), the write returns 0 rows and the stale result is discarded.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

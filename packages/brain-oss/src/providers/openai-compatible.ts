@@ -27,8 +27,6 @@
  *
  * Retry policy: exponential backoff on 429 (rate limit) and 5xx (server errors).
  * Non-retryable errors (400, 401, 403, 404) throw immediately.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import type {
   LlmProvider,

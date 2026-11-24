@@ -8,8 +8,6 @@
  * and on demand its payload; a transition shows the state change and what
  * caused it; a message shows the draft and where it came from. Flows link
  * to the flow editor.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";

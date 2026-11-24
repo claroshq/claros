@@ -3,8 +3,6 @@
  *
  * TanStack Query hooks for the sent-mail log: the paginated list and the
  * single message detail (with event timeline).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {

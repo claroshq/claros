@@ -13,8 +13,6 @@
  *
  * Concurrency: the entire enrollment sequence for a contact is serialized
  * via pg_advisory_xact_lock (transaction-scoped, auto-released on crash).
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql, desc, ne } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

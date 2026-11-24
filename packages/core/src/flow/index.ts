@@ -4,8 +4,6 @@
  * FlowStep, FlowTrigger, FlowStatus, delay format, and the status
  * transition table all live here so that the API (write) and the
  * execution engine (task 12, read) use the same definitions.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 
 // ---------------------------------------------------------------------------

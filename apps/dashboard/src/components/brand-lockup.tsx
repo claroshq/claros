@@ -12,8 +12,6 @@
  *     Quicksand wordmark)
  *
  * Appears in the sidebar and the login panel; nowhere else needs it.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { BrandMark } from "./brand-mark.js";
 

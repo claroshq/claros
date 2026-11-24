@@ -4,8 +4,6 @@
  * These functions compute what transition (if any) should happen given
  * the current state, an event, and configuration. They have no I/O -
  * the caller is responsible for reading state and writing transitions.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 import type { LifecycleState, LifecycleConfig } from "./states.js";
 import { assertValidTransition } from "./states.js";

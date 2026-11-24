@@ -12,8 +12,6 @@
  * Previously ME_QUERY_KEY lived in auth.ts and queryClient was defined in
  * main.tsx. Moving both here breaks the cycle that would otherwise form
  * when api.ts needs to reach the client.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { QueryClient } from "@tanstack/react-query";
 

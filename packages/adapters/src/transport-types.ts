@@ -7,8 +7,6 @@
  *
  * packages/worker imports these types and re-exports them as its public API
  * (packages/worker/src/transport.ts imports from here).
- *
- * Mirror side: PUBLIC (packages/adapters is mirrored).
  */
 
 // ---------------------------------------------------------------------------

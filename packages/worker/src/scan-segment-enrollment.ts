@@ -18,8 +18,6 @@
  * rather than in one burst, so a big tenant cannot starve the scan
  * interval. The cap is per-flow, not per-tenant: fairness across flows
  * within a tenant matches the scan's per-tenant fairness across tenants.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, inArray, gt, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

@@ -10,8 +10,6 @@
  * remaining, total_qualifying }. remaining > 0 means another batch is
  * waiting; the button offers it. That is the only progress signal the API
  * reports, and it is what the UI shows. No invented progress bar.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

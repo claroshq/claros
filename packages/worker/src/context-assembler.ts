@@ -44,8 +44,6 @@
  *   corresponding sections are simply absent (undefined) in the context.
  *   The prompt builders handle absent sections by omitting them from the
  *   assembled text. No fabrication.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { DecidePromptContext, DraftPromptContext } from "@claros/brain-oss";

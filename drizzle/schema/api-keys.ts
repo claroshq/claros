@@ -22,8 +22,6 @@
  * [impl] Added in task 7 (event ingestion API) - not in the original spec's
  * section 8, but required by Appendix C's authentication contract.
  * kind/allowed_origins added with the Integrate screen (Phase 5).
- *
- * Mirror side: PUBLIC (drizzle/ is mirrored).
  */
 import {
   pgTable,

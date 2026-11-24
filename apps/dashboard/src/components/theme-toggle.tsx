@@ -4,8 +4,6 @@
  * A three-way segmented control: light, system, dark. "system" follows the
  * OS and is the default. The choice persists in localStorage via
  * src/lib/theme.ts. Icons are 14px lucide glyphs, same discipline as nav.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 import { Monitor, Moon, Sun } from "lucide-react";

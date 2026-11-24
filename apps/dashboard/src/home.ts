@@ -1,8 +1,6 @@
 /**
  * Home page hooks: diagnostics, library flows, and the composite readiness
  * state that drives the setup/operational mode split.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {

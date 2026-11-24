@@ -5,8 +5,6 @@
  * outreach is warranted NOW. The model outputs a structured JSON decision
  * validated against decideOutputSchema. The model does NOT write email content
  * and does NOT choose timing - it only answers "should we reach out?".
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import type { ChatMessage } from "../providers/types.js";
 

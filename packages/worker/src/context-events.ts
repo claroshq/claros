@@ -40,8 +40,6 @@
  *
  * All queries are scoped by tenant_id and contact_id.
  * Ordering is always deterministic (ties broken explicitly).
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

@@ -3,8 +3,6 @@
  *
  * Boundary, focus ring, and disabled treatment match Input. Multi-line
  * fields get vertical resize only; horizontal resize breaks layouts.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 

@@ -21,8 +21,6 @@
  * messages per tenant, not millions), this is acceptable. If a tenant reaches
  * scale where ILIKE is slow, a pg_trgm GIN index on recipient_address would
  * fix it without schema changes. Not added now (premature).
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { sql } from "drizzle-orm";

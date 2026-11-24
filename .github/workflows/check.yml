@@ -1,0 +1,103 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: build, typecheck, tests (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: claros
+          POSTGRES_PASSWORD: claros
+          POSTGRES_DB: claros
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claros"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      DATABASE_URL: postgres://claros:claros@localhost:5432/claros
+      SEED_TEST_DATABASE_URL: postgres://claros:claros@localhost:5432/claros_seed_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create seed test database
+        run: PGPASSWORD=claros createdb -h localhost -U claros claros_seed_test
+      - name: Apply migrations
+        run: |
+          npm run db:migrate -- --yes
+          DATABASE_URL="$SEED_TEST_DATABASE_URL" npm run db:migrate -- --yes
+      - run: npm run typecheck
+      - run: npm test
+
+  lint:
+    name: shellcheck and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck scripts/*.sh docker/initdb/*.sh
+      - name: docs check
+        run: bash scripts/check-docs.sh
+
+  docker:
+    name: Docker image and smoke test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: claros
+          POSTGRES_PASSWORD: claros
+          POSTGRES_DB: claros
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claros"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build -f docker/Dockerfile --target runner --build-arg COMMIT_SHA=${{ github.sha }} -t claros:ci .
+      - name: Boot against a fresh database and check /health
+        run: |
+          docker run -d --name claros --network host \
+            -e PORT=3000 \
+            -e DATABASE_URL=postgres://claros:claros@localhost:5432/claros \
+            -e CLAROS_MIGRATE_ON_BOOT=true \
+            -e ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+            -e UNSUBSCRIBE_SIGNING_KEY="$(openssl rand -hex 32)" \
+            -e BASE_URL=http://localhost:3000 \
+            claros:ci
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/health; then echo; break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:3000/health | grep -q '"status":"ok"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)" = "200"
+          docker logs claros 2>&1 | grep -q "CLAIM YOUR ACCOUNT"
+      - name: Container logs
+        if: always()
+        run: docker logs claros 2>&1 | sed -E 's/token=[A-Za-z0-9_-]+/token=***/' | tail -50

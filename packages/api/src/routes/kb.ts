@@ -51,8 +51,6 @@
  *   Index note: the cursor ORDER BY clause is (created_at ASC, id ASC),
  *   served by idx_kb_entries_tenant_created (tenant_id, created_at, id),
  *   added in migration 0018.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

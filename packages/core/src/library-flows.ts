@@ -26,8 +26,6 @@
  * Activation: installing and activating are separate acts. The install
  * endpoint creates the templates and flow in "draft" status. The user
  * must explicitly set the flow to "active" to start enrollment.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 
 // ---------------------------------------------------------------------------

@@ -42,8 +42,6 @@
  *     WHERE sent_at IS NOT NULL, added in migration 0018.
  *   - engagement trends: uses idx_message_events_tenant_type_day
  *     (tenant_id, event_type, occurred_at).
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

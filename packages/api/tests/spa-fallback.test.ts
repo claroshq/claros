@@ -14,8 +14,6 @@
  *   - POST /some/path does not serve index.html (wrong method)
  *   - auto resolution (no dashboardDist, no env var) finds real dist
  *   - warn-and-skip path logs exact path and mechanism
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";

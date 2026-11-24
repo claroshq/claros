@@ -22,8 +22,6 @@
  * the mark is nudged down by mark size x 0.05 to sit on the x-height
  * optical center; mark size is roughly wordmark size x 1.15 (solid fill
  * reads heavier than the wordmark strokes, so it stays smaller).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 interface BrandMarkProps {
   /** Width and height. CSS length string or number (px). Default 18px. */

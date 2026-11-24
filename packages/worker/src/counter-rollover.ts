@@ -11,8 +11,6 @@
  * Running every tick is cheap: the WHERE clause ensures only eligible contacts
  * are touched, and the UPDATE is a single round-trip regardless of how many
  * contacts qualify.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

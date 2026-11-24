@@ -47,7 +47,7 @@
  *
  * Requires:
  *   - Local Postgres (docker compose up postgres).
- *   - pnpm build must have been run (CLI imports from dist/).
+ *   - npm run build must have been run (CLI imports from dist/).
  *   - DATABASE_URL must be set.
  *   - ENCRYPTION_KEY must be set (or the test sets a known test key).
  */

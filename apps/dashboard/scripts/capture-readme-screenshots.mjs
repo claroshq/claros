@@ -4,8 +4,8 @@
  *
  * Prerequisites:
  *   1. Local Postgres running with seeded data (node scripts/seed-screenshots.mjs)
- *   2. API server running on :3000 (pnpm dev or docker compose up)
- *   3. Dashboard dev server running on :5173 (pnpm dev)
+ *   2. API server running on :3000 (npm run dev or docker compose up)
+ *   3. Dashboard dev server running on :5173 (npm run dev)
  *
  * Usage:
  *   node scripts/capture-readme-screenshots.mjs [--base http://localhost:5173]
@@ -17,8 +17,6 @@
  *   - Developer tools are overwhelmingly viewed in dark mode
  *   - Dark screenshots have better contrast on both GitHub light/dark backgrounds
  *   - The product's dark theme uses a neutral charcoal, not a harsh black
- *
- * Mirror side: PRIVATE (scripts/ is not mirrored).
  */
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";

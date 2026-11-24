@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-.pnpm-store/
 
 # Build output
 dist/
@@ -26,7 +25,6 @@ Thumbs.db
 logs/
 *.log
 npm-debug.log*
-pnpm-debug.log*
 
 # Test coverage
 coverage/
@@ -41,8 +39,6 @@ drizzle/meta/_journal.json.bak
 vite.config.ts.timestamp-*
 
 # Mirror output
-.mirror-out/
 
 # Misc
 tmp/
-.turbo/

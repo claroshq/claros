@@ -1,7 +1,5 @@
 /**
  * Analytics hooks.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useQuery } from "@tanstack/react-query";
 import {

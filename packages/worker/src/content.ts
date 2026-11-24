@@ -41,8 +41,6 @@
  * 'failed', 'value_gated' and 'skipped' are terminal and are NOT recovered
  * by reap. A generation_failed message can be re-queued by the operator via
  * POST /v1/messages/:id/retry after the configuration fault is fixed.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

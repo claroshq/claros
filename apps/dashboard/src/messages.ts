@@ -5,8 +5,6 @@
  * via "Load more", never numbered pages. Approve/reject remove the message
  * from every cached page instead of refetching, so the reviewer's position
  * in the queue is preserved.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import {
   useInfiniteQuery,

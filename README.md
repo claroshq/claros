@@ -4,10 +4,10 @@
 
 An AI-native alternative to Customer.io, Loops, and Mautic. Flows are written in plain language, compiled once by an LLM into a deterministic execution plan, and run by a pure Postgres-backed engine. No Redis, no Kafka, no message broker. One Docker image, one database.
 
-[![CI](https://github.com/claroshq/claros/actions/workflows/ci.yml/badge.svg)](https://github.com/claroshq/claros/actions/workflows/ci.yml)
+[![check](https://github.com/claroshq/claros/actions/workflows/check.yml/badge.svg)](https://github.com/claroshq/claros/actions/workflows/check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-![Claros dashboard](guide/assets/home.png)
+![Claros dashboard](docs/guide/assets/home.png)
 
 ## Why it is different
 
@@ -15,13 +15,13 @@ An AI-native alternative to Customer.io, Loops, and Mautic. Flows are written in
 
 **Everything AI-written waits for a human.** Generated emails queue in an approval inbox. You approve, reject, or let a trusted flow auto-send. The AI drafts; you publish.
 
-![Approval queue](guide/assets/approvals.png)
+![Approval queue](docs/guide/assets/approvals.png)
 
 **Your stack, your keys.** Emails go through your Resend or SMTP account. AI runs against your OpenAI-compatible endpoint (OpenAI, Anthropic, Gemini, Groq, Ollama). Postgres is the only infrastructure. Nothing phones home.
 
 **A retention grid, not a vanity dashboard.** Contacts are bucketed by tenure and recency into a 4x4 grid. Each cell is an audience you can act on: create a flow, see who is there, watch the trend. The grid adapts to your product's natural rhythm.
 
-![Lifecycle retention grid](guide/assets/lifecycle.png)
+![Lifecycle retention grid](docs/guide/assets/lifecycle.png)
 
 ## Get running
 
@@ -31,7 +31,7 @@ docker compose run --rm install
 docker compose up
 ```
 
-Open the claim URL printed to the console, enter your email, and you are the owner. The **[Quickstart](guide/QUICKSTART.md)** walks through the rest: connect a transport, activate the library flow, send a test event, and receive a real email - all from the browser. About 5 minutes once images are cached.
+Open the claim URL printed to the console, enter your email, and you are the owner. The **[Quickstart](docs/guide/QUICKSTART.md)** walks through the rest: connect a transport, activate the library flow, send a test event, and receive a real email - all from the browser. About 5 minutes once images are cached.
 
 ## What it does
 
@@ -59,44 +59,29 @@ Open the claim URL printed to the console, enter your email, and you are the own
 
 | Document | What it covers |
 |---|---|
-| [Quickstart](guide/QUICKSTART.md) | Three commands to a running install, then a real email via the browser |
-| [Installation and Configuration](guide/INSTALLATION.md) | Every run mode, every environment variable and setting, migrations, upgrading, backups |
-| [Deployment](guide/DEPLOYMENT.md) | External Postgres, multiple instances, the role split, secrets that must match |
-| [Concepts and Guides](guide/CONCEPTS.md) | The model: events, contacts, compilation, approvals, content modes. Task guides |
-| [Flow Prompt Library](guide/FLOW-PROMPTS.md) | Working prompts to paste into the flow editor |
-| [Ingestion](guide/INGESTION.md) | Sending events: curl, browser snippet, server SDKs, Segment compatibility, GTM |
-| [FAQ and Troubleshooting](guide/FAQ.md) | Lost admin access, secrets, email not sending, AI features idle, backups, data egress |
-| [Contributing](CONTRIBUTING.md) | The development model (open source, not open contribution) |
+| [Quickstart](docs/guide/QUICKSTART.md) | Three commands to a running install, then a real email via the browser |
+| [Installation and Configuration](docs/guide/INSTALLATION.md) | Every run mode, every environment variable and setting, migrations, upgrading, backups |
+| [Deployment](docs/guide/DEPLOYMENT.md) | External Postgres, multiple instances, the role split, secrets that must match |
+| [Concepts and Guides](docs/guide/CONCEPTS.md) | The model: events, contacts, compilation, approvals, content modes. Task guides |
+| [Flow Prompt Library](docs/guide/FLOW-PROMPTS.md) | Working prompts to paste into the flow editor |
+| [Ingestion](docs/guide/INGESTION.md) | Sending events: curl, browser snippet, server SDKs, Segment compatibility, GTM |
+| [FAQ and Troubleshooting](docs/guide/FAQ.md) | Lost admin access, secrets, email not sending, AI features idle, backups, data egress |
+| [Contributing](CONTRIBUTING.md) | Issues, pull requests, running the checks locally |
 | [Security](SECURITY.md) | Vulnerability reporting |
 
-Changes are documented on the [releases page](https://github.com/claroshq/claros/releases); there is no separate changelog file.
-
-## Editions
-
-Both editions share the same engine and schema. The distinction is how the product is operated.
-
-| | Community (this repo, MIT) | Cloud |
-|---|---|---|
-| **Engine** | Full lifecycle engine, all workers | Same engine |
-| **Brain** | BYO LLM key (OpenAI-compatible or local/Ollama) | Same at launch; optimized hosted prompts later |
-| **Transport** | Resend, SMTP (bring your own) | + Zero-config hosted sending |
-| **Compliance** | RFC 8058 one-click unsub, suppression, CAN-SPAM | Same + managed deliverability |
-| **Deploy** | Self-host: single image, Postgres only | Fully hosted, zero-ops |
-| **Cost** | Free (MIT) | Pay per email sent |
-
-Cloud adds zero-ops hosting and managed sending, not a better engine. The engine is identical.
+Changes are recorded in [CHANGELOG.md](CHANGELOG.md) and on the [releases page](https://github.com/claroshq/claros/releases).
 
 ## Development (from source)
 
-Requires Node.js 22+, pnpm 9.15+, and Postgres 16 with pgvector.
+Requires Node.js 22+ (with npm) and Postgres 16 with pgvector.
 
 ```bash
-pnpm install
-pnpm db:migrate   # apply migrations to DATABASE_URL from .env
-pnpm dev          # API on :3000 (watch mode), dashboard dev server on :5173
+npm install
+npm run db:migrate   # apply migrations to DATABASE_URL from .env
+npm run dev          # API on :3000 (watch mode), dashboard dev server on :5173
 ```
 
-Details and the production image are in [Installation and Configuration](guide/INSTALLATION.md).
+Details and the production image are in [Installation and Configuration](docs/guide/INSTALLATION.md).
 
 ## License
 

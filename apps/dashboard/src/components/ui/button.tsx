@@ -12,8 +12,6 @@
  *
  * Focus: 2px ring in --ring with a 2px offset against the page background,
  * via focus-visible so pointer users never see it.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";

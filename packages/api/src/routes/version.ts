@@ -14,8 +14,6 @@
  *
  * What is NOT included: hostnames, full env values, secrets, credentials, or
  * any fingerprint. This endpoint is public and must be safe to expose.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 

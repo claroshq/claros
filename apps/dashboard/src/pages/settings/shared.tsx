@@ -2,8 +2,6 @@
  * Shared pieces for the settings sub-pages: the section card, the notice
  * banner, the read-only summary list, and small helpers every section
  * reuses.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 import { AlertTriangle, Info, type LucideIcon } from "lucide-react";

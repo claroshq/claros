@@ -1,7 +1,5 @@
 /**
  * Lifecycle state machine - public API.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 export {
   LIFECYCLE_STATES,

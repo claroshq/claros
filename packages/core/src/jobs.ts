@@ -7,8 +7,6 @@
  * No pg-boss import; payload types are plain TypeScript.
  * The scheduler (packages/scheduler) and API layer (packages/api) import
  * queue names from here without importing worker logic.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 
 // ---------------------------------------------------------------------------

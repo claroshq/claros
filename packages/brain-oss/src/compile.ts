@@ -6,8 +6,6 @@
  *   - decide()  - task 17: context -> action decision (runs per contact per step)
  *   - draft()   - task 17: context -> email content (runs per contact per step)
  *   - assess()  - task 20: (context + draft) -> pass/fail verdict (value gate)
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import { compiledPlanSchema, type CompiledPlan } from "@claros/core";
 import type { LlmProvider } from "./providers/types.js";

@@ -2,8 +2,6 @@
  * Settings hooks: transport, LLM provider, tenant (postal address + brand),
  * business model templates, and test email. Also exports useSetupState, the
  * combined read behind the first-run checklist.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {

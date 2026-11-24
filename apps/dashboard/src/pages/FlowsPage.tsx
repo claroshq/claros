@@ -14,8 +14,6 @@
  *   created_at   - temporal orientation (mono)
  *   (actions)    - pause/resume/activate; archive lives in the editor,
  *                  destructive actions are not one click from a list
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

@@ -14,8 +14,6 @@
  *
  * NOTE: /auth/verify is NOT a client route. The server owns that path.
  * After a successful verify, the server redirects to / (this component).
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useMe } from "./auth.js";

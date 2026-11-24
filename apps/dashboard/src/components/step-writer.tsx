@@ -13,8 +13,6 @@
  *   - AI draft button per step (calls POST /v1/flows/:id/draft-step)
  *   - Live preview rendered as an email card, with variables substituted
  *     by sample contact data
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";

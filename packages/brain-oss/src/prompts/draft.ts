@@ -3,8 +3,6 @@
  *
  * Instructs the LLM to write one email for a contact whose decision to send
  * has already been made. Output is JSON with subject and body_markdown.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import type { ChatMessage } from "../providers/types.js";
 

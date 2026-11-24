@@ -23,7 +23,7 @@ Claros is maintained by a solo developer. Honest expectations:
 
 ## Scope
 
-This policy covers the Claros engine code in this repository. For issues with the hosted Cloud service at app.claros.org, use the same email.
+This policy covers the Claros code in this repository. There is no hosted Claros service.
 
 ## No Bounty Program
 

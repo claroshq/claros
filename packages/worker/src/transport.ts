@@ -10,8 +10,6 @@
  * It is structurally impossible to use in production: it is never registered
  * in any resolver, and cannot be imported from src/ without violating the
  * test/src boundary.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 
 // Re-export all transport types from @claros/adapters so callers that import

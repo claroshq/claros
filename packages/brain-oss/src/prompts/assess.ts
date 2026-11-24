@@ -30,8 +30,6 @@
  * body), this call is likely the largest of the three (decide, draft, assess).
  * The budget machinery must be extended to cover the assessment path before the
  * worker is wired. See the next slice for the budget coverage requirement.
- *
- * Mirror side: PUBLIC (packages/brain-oss is mirrored).
  */
 import type { ChatMessage } from "../providers/types.js";
 import type { DraftPromptContext } from "./draft.js";

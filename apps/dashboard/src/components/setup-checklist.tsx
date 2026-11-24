@@ -12,8 +12,6 @@
  * look around. This panel blocks nothing, dismisses permanently
  * (localStorage), and stays one click away via a quiet "Finish setup"
  * affordance in the flows header while anything is missing.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { Link } from "react-router-dom";

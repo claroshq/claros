@@ -4,8 +4,6 @@
  * The GET endpoint never returns the key, so this screen shows whether a
  * provider is configured and lets it be replaced, never what it is.
  * Without an LLM provider every flow compile returns 422.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState } from "react";
 import { useSetupState, usePutLlm } from "../../settings.js";

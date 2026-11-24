@@ -4,8 +4,6 @@
  * Validates the session cookie on each request and resolves the tenant context.
  * Public routes (health, auth, unsubscribe) are registered outside the /v1
  * scope and do not require a resolved tenant.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyInstance } from "fastify";
 import { eq, and, isNull } from "drizzle-orm";

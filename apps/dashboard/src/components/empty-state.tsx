@@ -7,8 +7,6 @@
  * one or two lines of muted copy, and an optional primary action. List
  * pages render this instead of ad-hoc centered text so every empty screen
  * in the product reads as the same voice.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React from "react";
 

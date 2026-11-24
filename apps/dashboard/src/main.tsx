@@ -1,7 +1,5 @@
 /**
  * Claros dashboard SPA entry point.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React from "react";
 import ReactDOM from "react-dom/client";

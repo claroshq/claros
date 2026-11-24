@@ -18,8 +18,6 @@
  *   - Demoting the last owner is rejected.
  *   - Removing a member immediately terminates their sessions (deactivated_at).
  *   - Work attributed to removed members (approvals, etc.) is preserved.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import { randomBytes, createHash } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";

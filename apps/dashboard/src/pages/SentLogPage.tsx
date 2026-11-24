@@ -7,8 +7,6 @@
  *
  * Filters: status, flow, recipient search, feedback.
  * Pagination: cursor-based infinite scroll via "Load more".
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";

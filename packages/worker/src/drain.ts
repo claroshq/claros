@@ -60,8 +60,6 @@
  *   The fetchDrainBatch strategy parameter allows Cloud to substitute a
  *   round-robin implementation without forking this file. Cloud passes a
  *   different FetchDrainBatch function at startup via apps/server wiring.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

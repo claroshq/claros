@@ -42,8 +42,6 @@
  *   than empty strings, placeholder text, or null values.
  *
  * All queries are scoped by tenant_id. Deterministic results.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

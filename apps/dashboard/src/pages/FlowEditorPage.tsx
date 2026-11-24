@@ -44,8 +44,6 @@
  *   active -> paused. Anything not archived -> archived, behind an inline
  *   confirmation, because archived is terminal. 409 (concurrent transition)
  *   and 422 surface as banners with the server's message.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";

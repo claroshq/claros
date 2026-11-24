@@ -67,19 +67,19 @@ If the GHCR package is not yet public at the time you read this, use Docker Comp
 
 ### 3. From source
 
-Requires Node.js 22+ and pnpm 9.15+ (the repo pins pnpm 9.15.4 via `packageManager`), plus a Postgres 16 with pgvector.
+Requires Node.js 22+ (with npm), plus a Postgres 16 with pgvector.
 
 ```bash
-pnpm install
+npm install
 cp .env.example .env   # set DATABASE_URL, ENCRYPTION_KEY, UNSUBSCRIBE_SIGNING_KEY
-pnpm db:migrate        # applies migrations to DATABASE_URL
-pnpm build
-pnpm dev               # all roles in watch mode (--role=all); API on :3000, dashboard dev server on :5173
+npm run db:migrate        # applies migrations to DATABASE_URL
+npm run build
+npm run dev               # all roles in watch mode (--role=all); API on :3000, dashboard dev server on :5173
 ```
 
 The Vite dev server proxies `/v1` and `/auth` to the API on port 3000. In a built deployment the API serves the dashboard itself and there is no separate dev server.
 
-Other root scripts: `pnpm test` (unit tests need no database; `*.db.test.ts` integration tests need `DATABASE_URL`), `pnpm typecheck`, `pnpm lint`, `pnpm db:generate` (authors a new migration after schema changes).
+Other root scripts: `npm test` (unit tests need no database; `*.db.test.ts` integration tests need `DATABASE_URL`), `npm run typecheck`, `npm run lint`, `npm run db:generate` (authors a new migration after schema changes).
 
 ---
 
@@ -116,7 +116,7 @@ All variables are read by the server process unless noted. The only hard require
 
 | Variable | Default | What it does | Get it wrong |
 |---|---|---|---|
-| `CLAROS_MIGRATE_ON_BOOT` | off | When exactly `true`, applies pending migrations at startup. Set in the compose stack | Off + never running `pnpm db:migrate` = schema drift and boot/query failures after upgrades. On is safe for single-instance deploys; for multi-replica deploys run migrations out of band instead |
+| `CLAROS_MIGRATE_ON_BOOT` | off | When exactly `true`, applies pending migrations at startup. Set in the compose stack | Off + never running `npm run db:migrate` = schema drift and boot/query failures after upgrades. On is safe for single-instance deploys; for multi-replica deploys run migrations out of band instead |
 | `CLAROS_SERVE_DASHBOARD` | `true` | Serves the built dashboard SPA from the API process | Set `false` only if you serve the SPA elsewhere |
 | `CLAROS_DASHBOARD_DIST` | auto-detected | Overrides the dashboard build directory | Rarely needed |
 | `CLAROS_EDITION` | `community` | Edition marker. `cloud` is for the hosted service and requires private packages | Setting `cloud` on a community checkout stops the boot |
@@ -258,9 +258,9 @@ All `set` and `create` commands accept JSON on stdin for automation (`echo '{...
 
 - Schema is managed by Drizzle; migration files live in `drizzle/migrations`.
 - Compose sets `CLAROS_MIGRATE_ON_BOOT=true`, so the stack migrates itself on every start. Nothing else to do.
-- From source: `pnpm db:migrate` applies pending migrations to `DATABASE_URL`.
+- From source: `npm run db:migrate` applies pending migrations to `DATABASE_URL`.
 - Published image, single instance: set `CLAROS_MIGRATE_ON_BOOT=true`.
-- Published image, multiple replicas: do not let every replica migrate. Run the migration once from a checkout (`pnpm db:migrate`) or a one-off container, then roll the replicas.
+- Published image, multiple replicas: do not let every replica migrate. Run the migration once from a checkout (`npm run db:migrate`) or a one-off container, then roll the replicas.
 
 Migrations are expand-contract: new code always works against the previous schema, and destructive changes ship in a later release than the code that stopped needing the old shape. Upgrading by one release at a time is always safe.
 
@@ -275,7 +275,7 @@ git pull
 docker compose up -d --build    # compose remigrates on boot
 ```
 
-Published image: pull the new tag, recreate the container. With `CLAROS_MIGRATE_ON_BOOT=true` the schema updates itself; otherwise run `pnpm db:migrate` first.
+Published image: pull the new tag, recreate the container. With `CLAROS_MIGRATE_ON_BOOT=true` the schema updates itself; otherwise run `npm run db:migrate` first.
 
 There is no downgrade path for the schema. Take a backup before upgrading (below), and read the release notes on the [releases page](https://github.com/claroshq/claros/releases); that page is the changelog.
 

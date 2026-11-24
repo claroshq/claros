@@ -13,8 +13,6 @@
  *     as invalid and reported in the result
  *   - Duplicate addresses (already suppressed) are counted as skipped
  *   - Maximum 10,000 rows per import call
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";

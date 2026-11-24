@@ -3,8 +3,6 @@
  *
  * This is the single source of truth for which transitions are legal.
  * An attempt to transition outside this table is a bug, not a no-op.
- *
- * Mirror side: PUBLIC (packages/core is mirrored).
  */
 
 // ---------------------------------------------------------------------------

@@ -67,8 +67,6 @@
  * Unknown event types:
  *   Acknowledged with 200 and ignored. Returning a non-2xx would cause Resend
  *   to retry indefinitely.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";

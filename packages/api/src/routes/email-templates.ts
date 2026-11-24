@@ -11,8 +11,6 @@
  *
  * Editing a template changes the stored content but does NOT bypass the shell.
  * The template body is always wrapped in the branded shell at drain time.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { eq, and } from "drizzle-orm";

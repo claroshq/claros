@@ -13,8 +13,6 @@
  *   - CAS on current_step prevents double-advance if both targeted and cron fire.
  *   - ON CONFLICT DO NOTHING on message insert prevents duplicates.
  *   - If the membership is not active (already completed/exited), returns immediately.
- *
- * Mirror side: PUBLIC (packages/worker is mirrored).
  */
 import { eq, and, sql, gte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

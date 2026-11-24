@@ -15,10 +15,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claros/adapters": "workspace:*",
-    "@claros/brain-oss": "workspace:*",
-    "@claros/core": "workspace:*",
-    "@claros/db": "workspace:*",
+    "@claros/adapters": "*",
+    "@claros/brain-oss": "*",
+    "@claros/core": "*",
+    "@claros/db": "*",
     "@fastify/cookie": "^9.4.0",
     "@fastify/static": "7.0.4",
     "drizzle-orm": "^0.45.2",

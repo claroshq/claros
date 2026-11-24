@@ -1,17 +1,11 @@
 # Stage 1: Builder - installs all deps (including devDeps) and builds dist files.
 FROM node:22-alpine AS builder
 
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
-
 WORKDIR /app
 
-# Copy package files first for better layer caching.
-# Only public packages are listed here. Private packages (brain-cloud, billing)
-# are absent from the public mirror and must NOT be referenced in COPY steps;
-# the mirror would fail on day one if they were. Instead, a second
-# `pnpm install` after COPY packages/ sets up their workspace node_modules
-# in the private repo, where the packages exist and the lockfile lists them.
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Copy package manifests first for better layer caching. npm workspaces need
+# every workspace package.json present before `npm ci`.
+COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/adapters/package.json packages/adapters/
 COPY packages/api/package.json packages/api/
@@ -20,47 +14,38 @@ COPY packages/scheduler/package.json packages/scheduler/
 COPY packages/brain-oss/package.json packages/brain-oss/
 COPY apps/server/package.json apps/server/
 COPY apps/dashboard/package.json apps/dashboard/
-# drizzle/ is workspace package @claros/db; package.json required for pnpm install
+# drizzle/ is workspace package @claros/db
 COPY drizzle/package.json drizzle/
 
-RUN pnpm install --frozen-lockfile
+RUN npm ci
 
 # Copy source
-COPY tsconfig.base.json turbo.json ./
+COPY tsconfig.base.json ./
 COPY packages/ packages/
 COPY apps/ apps/
 # Full drizzle package: tsconfig.json + schema/ required by tsc --build;
 # migrations/ required at runtime for in-process auto-migrate on startup.
 COPY drizzle/ drizzle/
 
-# Re-run pnpm install to wire workspace symlinks for any packages that arrived
-# via COPY packages/ but were absent from the early package.json COPY above
-# (private packages: brain-cloud, billing). In the public mirror those packages
-# do not exist, so this is a no-op. In the private repo it links them quickly
-# from the local store without downloading anything new.
-RUN pnpm install --frozen-lockfile
-
 # Remove any .tsbuildinfo that may have been included in the build context
-# (e.g. from a development tree where pnpm build was already run). tsbuildinfo
+# (e.g. from a development tree where the build already ran). tsbuildinfo
 # files are in .gitignore and absent from a clean git clone, but a direct
 # directory copy can include them. If they exist here, tsc --build considers
 # every package up to date and skips emitting .js/.d.ts without error.
 RUN find . -name 'tsconfig.tsbuildinfo' -not -path '*/node_modules/*' -delete
 
-RUN pnpm build
+RUN npm run build
 
 # Stage 2: Dev - keeps all deps (including tsx) for hot reload.
 # docker-compose.yml mounts the source over /app so file changes are visible
 # immediately; node_modules stays from this image layer (Linux binaries).
 FROM node:22-alpine AS dev
 
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
-
 WORKDIR /app
 
 # All deps including devDeps (tsx, vitest, etc.) - needed for `tsx watch`.
 COPY --from=builder /app/node_modules node_modules
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
+COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/tsconfig.base.json ./
 COPY --from=builder /app/packages/ packages/
 COPY --from=builder /app/apps/ apps/
@@ -94,13 +79,11 @@ EXPOSE 3000
 #     NODE_ENV=development, which would make Vite bundle development React
 #     (roughly 1.7x the JS). The server itself still runs with
 #     NODE_ENV=development so the console login fallback keeps working.
-ENTRYPOINT ["sh", "-c", "rm -rf apps/dashboard/dist && NODE_ENV=production pnpm --filter @claros/dashboard build && exec node --import /app/node_modules/tsx/dist/esm/index.mjs --watch apps/server/src/main.ts \"$@\"", "sh"]
+ENTRYPOINT ["sh", "-c", "rm -rf apps/dashboard/dist && NODE_ENV=production npm run build -w @claros/dashboard && exec node --import /app/node_modules/tsx/dist/esm/index.mjs --watch apps/server/src/main.ts \"$@\"", "sh"]
 CMD ["--role=all"]
 
 # Stage 3: Runner - production image, prod deps only.
 FROM node:22-alpine AS runner
-
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 WORKDIR /app
 
@@ -116,7 +99,7 @@ ENV CLAROS_COMMIT_SHA=${COMMIT_SHA}
 ENV CLAROS_BUILT_AT=${BUILT_AT}
 
 # Copy built output and production deps
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
+COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/tsconfig.base.json ./
 COPY --from=builder /app/packages/ packages/
 COPY --from=builder /app/apps/ apps/
@@ -126,7 +109,7 @@ COPY --from=builder /app/drizzle/package.json drizzle/
 COPY --from=builder /app/drizzle/dist drizzle/dist
 COPY --from=builder /app/drizzle/migrations drizzle/migrations
 
-RUN pnpm install --frozen-lockfile --prod
+RUN npm ci --omit=dev
 
 # Make the claros CLI available as a short command in PATH.
 RUN chmod +x /app/apps/server/bin/claros.mjs \

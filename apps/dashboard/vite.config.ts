@@ -15,8 +15,6 @@ import path from "node:path";
  * so that the path alias "@/*" is declared exactly once and shared between
  * the build and the test runner. Two config files mean two alias declarations,
  * which creates a class of bug where the build resolves but tests do not.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 
 const apiTarget = process.env.VITE_API_URL ?? "http://localhost:3000";

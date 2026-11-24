@@ -4,8 +4,6 @@
  * The Drizzle instance is created externally (by apps/server) and passed
  * to buildApp as an option. This plugin simply decorates it so routes
  * and hooks can access it via `app.db`.
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyInstance } from "fastify";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

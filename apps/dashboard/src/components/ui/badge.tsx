@@ -16,8 +16,6 @@
  *
  * The pulse prop animates the dot (e.g. compile pending). It animates
  * opacity only and is disabled by prefers-reduced-motion.
- *
- * Mirror side: PUBLIC (apps/dashboard is mirrored).
  */
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";

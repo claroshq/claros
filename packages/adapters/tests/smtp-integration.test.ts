@@ -9,7 +9,7 @@
  *   4. Tests verification failure with wrong credentials
  *   5. Tests verification success with correct credentials
  *
- * Run deliberately: pnpm vitest run tests/smtp-integration.test.ts
+ * Run deliberately: npx vitest run tests/smtp-integration.test.ts
  *
  * Requires internet access. The entire suite skips when Ethereal is
  * unreachable - either because the network is down or the createTestAccount()

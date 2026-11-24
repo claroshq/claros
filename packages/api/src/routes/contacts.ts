@@ -31,8 +31,6 @@
  *     (tenant_id, created_at, id).
  *   - the timeline's transitions branch uses idx_transitions_contact
  *     (contact_id, transitioned_at DESC).
- *
- * Mirror side: PUBLIC (packages/api is mirrored).
  */
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

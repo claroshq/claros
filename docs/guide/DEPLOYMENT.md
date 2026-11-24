@@ -107,7 +107,7 @@ After the first owner exists, the claim surface is gone permanently and this lim
 ## Upgrading in a multi-instance setup
 
 1. Take a database backup (`pg_dump`)
-2. Run migrations ONCE (either from a one-off container with `CLAROS_MIGRATE_ON_BOOT=true`, or from a source checkout with `pnpm db:migrate`)
+2. Run migrations ONCE (either from a one-off container with `CLAROS_MIGRATE_ON_BOOT=true`, or from a source checkout with `npm run db:migrate`)
 3. Roll new containers. Migrations are expand-contract: new code always works against the previous schema
 
 Do not let every replica migrate simultaneously. Use a leader-election pattern or a dedicated migration job.
