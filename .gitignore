@@ -42,3 +42,6 @@ vite.config.ts.timestamp-*
 
 # Misc
 tmp/
+
+# compose dev container dependency stamp
+packages/.claros-lock-sha
