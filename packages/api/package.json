@@ -22,7 +22,8 @@
     "@hono/node-server": "^2.1.11",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.21",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "@claros/store": "*"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

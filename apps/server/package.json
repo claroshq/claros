@@ -23,7 +23,8 @@
     "@claros/worker": "*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.22.0",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "@claros/store": "*"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",

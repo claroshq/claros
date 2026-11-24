@@ -1,0 +1,21 @@
+{
+  "name": "@claros/store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@claros/core": "*",
+    "@claros/db": "*",
+    "drizzle-orm": "^0.45.2"
+  }
+}

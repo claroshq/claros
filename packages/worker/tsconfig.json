@@ -4,6 +4,24 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src"],
-  "references": [{ "path": "../core" }, { "path": "../adapters" }, { "path": "../brain-oss" }, { "path": "../../drizzle" }]
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../adapters"
+    },
+    {
+      "path": "../brain-oss"
+    },
+    {
+      "path": "../../drizzle"
+    },
+    {
+      "path": "../store"
+    }
+  ]
 }

@@ -12,6 +12,7 @@ COPY packages/api/package.json packages/api/
 COPY packages/worker/package.json packages/worker/
 COPY packages/scheduler/package.json packages/scheduler/
 COPY packages/brain-oss/package.json packages/brain-oss/
+COPY packages/store/package.json packages/store/
 COPY apps/server/package.json apps/server/
 COPY apps/dashboard/package.json apps/dashboard/
 # drizzle/ is workspace package @claros/db
