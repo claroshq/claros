@@ -16,6 +16,8 @@ export type { Store } from "./types.js";
 export * from "./types.js";
 export { createPgStore } from "./pg/index.js";
 export type { PgDb } from "./pg/db.js";
+export { createD1Store } from "./d1/index.js";
+export type { D1Db } from "./d1/db.js";
 
 const stores = new WeakMap<object, Store>();
 

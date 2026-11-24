@@ -38,7 +38,9 @@ const candidates = await storeFor(db).workerDrain.claimBatch({ limit, now });
 
 ## Tests
 
-Behaviour is tested through the calling modules (the existing `*.db.test.ts` suites). From v0.8 the same suites run against both Postgres and D1.
+- Behaviour is tested through the calling modules (the existing `*.db.test.ts` suites on Postgres).
+- Store contract tests live in `packages/store/tests` and run the same assertions on every backend (`tests/support/backends.ts`): the local Postgres (when `DATABASE_URL` is set) and an in-memory D1 database from Miniflare, the engine `wrangler dev` uses. A D1 query module is done when its contract tests pass on both.
+- Until a D1 module is written, its methods throw "not implemented for D1 yet" (`src/d1/db.ts`).
 
 ## Schemas and migrations
 

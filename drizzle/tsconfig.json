@@ -16,5 +16,5 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["schema"]
+  "include": ["schema", "schema-sqlite"]
 }
