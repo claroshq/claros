@@ -8,6 +8,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Changed
 
+- The HTTP layer moved from Fastify to [Hono](https://hono.dev), so the same API can later run on Cloudflare Workers. The HTTP API is unchanged: every v0.6 route, status code, response body and error shape is kept, and a route-parity test guards the v0.6 route list. On Node the server runs on `@hono/node-server`. One intended difference: every route now also answers with a trailing slash (`/health/` returned 404 before, now 200).
+- Log output: the server still writes one JSON object per line for startup, warnings and errors, but no longer prints the two per-request access lines ("incoming request" / "request completed") Fastify emitted. Put a reverse proxy access log in front if you relied on them.
 - The repository is now the single source of Claros development. Earlier releases were published here from a separate repository; the history and tags of this repository are kept.
 - Contribution model: pull requests are now accepted and run the `check` workflow. See CONTRIBUTING.md.
 - Development tooling moved from pnpm + turbo to npm workspaces (`npm install`, `npm run build`, `npm test`, `npm run check`). The Docker image and `docker compose` commands are unchanged for users.

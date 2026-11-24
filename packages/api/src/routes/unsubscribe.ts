@@ -62,11 +62,12 @@
  *   This implementation requires migration 0015 (recipient_address column on
  *   lifecycle_messages). That migration must be applied before this code runs.
  */
-import type { FastifyPluginAsync } from "fastify";
 import { eq, and, sql } from "drizzle-orm";
 import { lifecycleMessages, suppressions } from "@claros/db/schema";
 import { verifyUnsubscribeToken } from "@claros/adapters";
 import type { Db } from "../plugins/db.js";
+import { createRouter, parseBody } from "../http/router.js";
+import { parseForm } from "../http/body.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -264,8 +265,11 @@ function unsubscribeErrorHtml(): string {
   ].join("\n");
 }
 
+/** Content-Type v0.6 set explicitly on every HTML response. */
+const HTML_HEADERS = { "Content-Type": "text/html; charset=utf-8" };
+
 // ---------------------------------------------------------------------------
-// Route plugin
+// Route module
 // ---------------------------------------------------------------------------
 
 /**
@@ -275,47 +279,29 @@ function unsubscribeErrorHtml(): string {
  * No session cookie required. No tenant resolved from session.
  * Tenant is resolved entirely from the token payload.
  */
-const unsubscribeRoutes: FastifyPluginAsync = async (app) => {
-  // Register form body parser for this scope (needed for browser POST and one-click).
+export default function unsubscribeRoutes() {
+  const app = createRouter();
+
+  // Form body parser for this scope (needed for browser POST and one-click).
   // application/x-www-form-urlencoded for browser form submissions and RFC 8058.
-  // JSON is handled by Fastify's built-in parser.
-  app.addContentTypeParser(
-    "application/x-www-form-urlencoded",
-    { parseAs: "string" },
-    (_req, body, done) => {
-      // Parse key=value pairs manually (no new dependency).
-      const parsed: Record<string, string> = {};
-      if (typeof body === "string" && body.length > 0) {
-        for (const pair of body.split("&")) {
-          const eqIdx = pair.indexOf("=");
-          if (eqIdx === -1) continue;
-          const key = decodeURIComponent(pair.slice(0, eqIdx).replace(/\+/g, " "));
-          const value = decodeURIComponent(pair.slice(eqIdx + 1).replace(/\+/g, " "));
-          parsed[key] = value;
-        }
-      }
-      done(null, parsed);
-    },
-  );
+  // Key=value pairs parsed manually by parseForm (same semantics as the v0.6
+  // parser, no new dependency). JSON uses the default parser.
+  const body = parseBody({ parsers: { "application/x-www-form-urlencoded": parseForm } });
 
   // ---------------------------------------------------------------------------
   // POST /unsubscribe/one-click  (RFC 8058 - mailbox provider automation)
   // ---------------------------------------------------------------------------
 
-  app.post<{
-    Querystring: { token?: string };
-  }>("/one-click", async (request, reply) => {
-    if (!request.server.db) {
-      reply.status(503);
-      return { error: "Service unavailable." };
+  app.post("/one-click", body, async (c) => {
+    if (!c.var.db) {
+      return c.json({ error: "Service unavailable." }, 503);
     }
 
-    const db: Db = request.server.db;
-    const token = request.query.token;
+    const db: Db = c.var.db;
+    const token = c.req.query("token");
 
     if (!token || token.length === 0) {
-      reply.status(400);
-      return { error: "Invalid unsubscribe link." };
+      return c.json({ error: "Invalid unsubscribe link." }, 400);
     }
 
     const outcome = await resolveAndSuppress(db, token, SOURCE_ONE_CLICK);
@@ -325,16 +311,13 @@ const unsubscribeRoutes: FastifyPluginAsync = async (app) => {
         // UNSUBSCRIBE_SIGNING_KEY not configured - server misconfiguration.
         // Return 503 so the provider knows to retry rather than treating this
         // as a permanent invalid-token response.
-        reply.status(503);
-        return { error: "Service unavailable." };
+        return c.json({ error: "Service unavailable." }, 503);
       }
       // Do not reveal which part failed or whether the message exists.
-      reply.status(400);
-      return { error: "Invalid unsubscribe link." };
+      return c.json({ error: "Invalid unsubscribe link." }, 400);
     }
 
-    reply.status(200);
-    return { unsubscribed: true };
+    return c.json({ unsubscribed: true }, 200);
   });
 
   // ---------------------------------------------------------------------------
@@ -343,10 +326,8 @@ const unsubscribeRoutes: FastifyPluginAsync = async (app) => {
   // MUST NOT suppress. A link preview, bot, or scanner fetching this URL
   // must not unsubscribe the human. Only the POST performs the action.
 
-  app.get<{
-    Querystring: { token?: string };
-  }>("/", async (request, reply) => {
-    const token = request.query.token ?? "";
+  app.get("/", async (c) => {
+    const token = c.req.query("token") ?? "";
 
     // Validate the token structurally (so we show the error page immediately
     // for obviously invalid links) but do NOT perform any DB write.
@@ -354,8 +335,7 @@ const unsubscribeRoutes: FastifyPluginAsync = async (app) => {
     // both a valid token and an invalid one render the form (valid) or the
     // error page (invalid).
     if (!token || token.length === 0) {
-      reply.status(400).header("Content-Type", "text/html; charset=utf-8");
-      return reply.send(unsubscribeErrorHtml());
+      return c.html(unsubscribeErrorHtml(), 400, HTML_HEADERS);
     }
 
     // Verify the token structure/signature only - no DB lookup here.
@@ -366,77 +346,63 @@ const unsubscribeRoutes: FastifyPluginAsync = async (app) => {
     try {
       verifyResult = verifyUnsubscribeToken(token);
     } catch {
-      reply.status(503).header("Content-Type", "text/html; charset=utf-8");
-      return reply.send(unsubscribeErrorHtml());
+      return c.html(unsubscribeErrorHtml(), 503, HTML_HEADERS);
     }
     if (!verifyResult.ok) {
-      reply.status(400).header("Content-Type", "text/html; charset=utf-8");
-      return reply.send(unsubscribeErrorHtml());
+      return c.html(unsubscribeErrorHtml(), 400, HTML_HEADERS);
     }
 
-    reply.status(200).header("Content-Type", "text/html; charset=utf-8");
-    return reply.send(unsubscribePageHtml(token));
+    return c.html(unsubscribePageHtml(token), 200, HTML_HEADERS);
   });
 
   // ---------------------------------------------------------------------------
   // POST /unsubscribe  (browser form submission)
   // ---------------------------------------------------------------------------
 
-  app.post<{
-    Body: Record<string, string> | { token?: string };
-  }>("/", async (request, reply) => {
-    if (!request.server.db) {
-      reply.status(503);
-      return { error: "Service unavailable." };
+  app.post("/", body, async (c) => {
+    if (!c.var.db) {
+      return c.json({ error: "Service unavailable." }, 503);
     }
 
-    const db: Db = request.server.db;
+    const db: Db = c.var.db;
 
     // Extract token from body (form field or JSON field)
-    const body = request.body as Record<string, unknown>;
-    const token = typeof body?.token === "string" ? body.token : "";
+    const reqBody = c.var.body as Record<string, unknown>;
+    const token = typeof reqBody?.token === "string" ? reqBody.token : "";
 
     if (!token || token.length === 0) {
-      const contentType = (request.headers["content-type"] ?? "").toLowerCase();
+      const contentType = (c.req.header("content-type") ?? "").toLowerCase();
       if (contentType.includes("application/json")) {
-        reply.status(400);
-        return { error: "Invalid unsubscribe link." };
+        return c.json({ error: "Invalid unsubscribe link." }, 400);
       }
-      reply.status(400).header("Content-Type", "text/html; charset=utf-8");
-      return reply.send(unsubscribeErrorHtml());
+      return c.html(unsubscribeErrorHtml(), 400, HTML_HEADERS);
     }
 
     const outcome = await resolveAndSuppress(db, token, SOURCE_PAGE);
 
-    const contentType = (request.headers["content-type"] ?? "").toLowerCase();
+    const contentType = (c.req.header("content-type") ?? "").toLowerCase();
     const wantsJson = contentType.includes("application/json");
 
     if (!outcome.ok) {
       if (outcome.missingKey) {
         // UNSUBSCRIBE_SIGNING_KEY not configured - server misconfiguration.
         if (wantsJson) {
-          reply.status(503);
-          return { error: "Service unavailable." };
+          return c.json({ error: "Service unavailable." }, 503);
         }
-        reply.status(503).header("Content-Type", "text/html; charset=utf-8");
-        return reply.send(unsubscribeErrorHtml());
+        return c.html(unsubscribeErrorHtml(), 503, HTML_HEADERS);
       }
       if (wantsJson) {
-        reply.status(400);
-        return { error: "Invalid unsubscribe link." };
+        return c.json({ error: "Invalid unsubscribe link." }, 400);
       }
-      reply.status(400).header("Content-Type", "text/html; charset=utf-8");
-      return reply.send(unsubscribeErrorHtml());
+      return c.html(unsubscribeErrorHtml(), 400, HTML_HEADERS);
     }
 
     if (wantsJson) {
-      reply.status(200);
-      return { unsubscribed: true };
+      return c.json({ unsubscribed: true }, 200);
     }
 
-    reply.status(200).header("Content-Type", "text/html; charset=utf-8");
-    return reply.send(unsubscribeSuccessHtml());
+    return c.html(unsubscribeSuccessHtml(), 200, HTML_HEADERS);
   });
-};
 
-export default unsubscribeRoutes;
+  return app;
+}

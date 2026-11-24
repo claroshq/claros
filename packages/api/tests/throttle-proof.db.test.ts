@@ -112,7 +112,7 @@ describe("Proof 4: PUT /v1/settings/throttle API validation", () => {
 
     expect(response.statusCode).toBe(400);
     const body = JSON.parse(response.body) as Record<string, unknown>;
-    // Fastify schema validation message references the field and constraint
+    // Validation message references the field and constraint
     expect(JSON.stringify(body)).toMatch(/max_emails_per_user_per_day|maximum|100/i);
 
     await app.close();

@@ -11,7 +11,7 @@
  * Installing creates templates and a flow in "draft" status. The user must
  * explicitly activate the flow to start enrollment. No LLM is required.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
 import { sql } from "drizzle-orm";
 import type { Db } from "../plugins/db.js";
 import {
@@ -21,17 +21,18 @@ import {
 } from "@claros/core";
 
 // ---------------------------------------------------------------------------
-// Route plugin
+// Routes
 // ---------------------------------------------------------------------------
 
-const libraryRoutes: FastifyPluginAsync = async (app) => {
+export default function libraryRoutes() {
+  const r = new RoleRouter();
   /**
    * GET /v1/library
    *
    * List available library flow sets.
    */
-  app.get("/", { config: { minRole: "member" } }, async () => {
-    return {
+  r.get("/", "member", async (c) => {
+    return c.json({
       flows: [
         {
           id: "welcome-onboarding",
@@ -46,7 +47,7 @@ const libraryRoutes: FastifyPluginAsync = async (app) => {
           })),
         },
       ],
-    };
+    });
   });
 
   /**
@@ -60,9 +61,9 @@ const libraryRoutes: FastifyPluginAsync = async (app) => {
    * Returns 200 with the created flow ID and template count.
    * Returns 409 if the flow already exists for this tenant (by name + source).
    */
-  app.post("/install", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.post("/install", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     // Check if already installed (by flow name + source = library)
     const existing = await db.execute<{ id: string }>(sql`
@@ -74,11 +75,10 @@ const libraryRoutes: FastifyPluginAsync = async (app) => {
     `);
 
     if (existing.rows.length > 0) {
-      reply.status(409);
-      return {
+      return c.json({
         error: "Library flow already installed.",
         flowId: existing.rows[0]!.id,
-      };
+      }, 409);
     }
 
     // Install templates (idempotent via ON CONFLICT DO NOTHING on tenant_id + slug)
@@ -140,11 +140,10 @@ const libraryRoutes: FastifyPluginAsync = async (app) => {
       flowCreated: true,
     };
 
-    return {
+    return c.json({
       message: "Library flow installed successfully. Set status to 'active' to begin enrollment.",
       ...result,
-    };
+    });
   });
-};
-
-export default libraryRoutes;
+  return r.app;
+}

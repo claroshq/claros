@@ -23,7 +23,7 @@ Both options will run the same HTTP API and the same engine behaviour. Postgres 
 | `packages/core` | Pure logic: flows, lifecycle state machine, enrollment, throttle gate, templates. No I/O |
 | `packages/adapters` | Email transports (Resend, SMTP), crypto, unsubscribe tokens |
 | `packages/brain-oss` | Optional LLM module: compile, decide, draft, assess prompts for any OpenAI-compatible endpoint |
-| `packages/api` | HTTP API: ingest, management, dashboard auth, public pages, webhooks |
+| `packages/api` | HTTP API on [Hono](https://hono.dev): ingest, management, dashboard auth, public pages, webhooks |
 | `packages/worker` | Background jobs: scan, trigger checks, step advancement, content generation, drain, reaper |
 | `packages/scheduler` | Recurring job schedule |
 | `drizzle/` | Database schema and migrations |

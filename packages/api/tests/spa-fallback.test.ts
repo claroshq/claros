@@ -20,7 +20,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FastifyInstance } from "fastify";
+import type { ClarosApp } from "../src/index.js";
 import { buildApp, resolvedDashboardDist } from "../src/app.js";
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe("SPA fallback (serveDashboard=true)", () => {
-  let app: FastifyInstance;
+  let app: ClarosApp;
 
   beforeAll(async () => {
     app = await buildApp({
@@ -120,7 +120,7 @@ describe("SPA fallback (serveDashboard=true)", () => {
 });
 
 describe("SPA serving disabled (serveDashboard=false)", () => {
-  let app: FastifyInstance;
+  let app: ClarosApp;
 
   beforeAll(async () => {
     app = await buildApp({
@@ -141,7 +141,7 @@ describe("SPA serving disabled (serveDashboard=false)", () => {
 });
 
 describe("SPA serving skipped gracefully when dist directory is missing", () => {
-  let app: FastifyInstance;
+  let app: ClarosApp;
 
   beforeAll(async () => {
     app = await buildApp({
@@ -191,7 +191,7 @@ describe("SPA serving skipped gracefully when dist directory is missing", () => 
 // ---------------------------------------------------------------------------
 
 describe("Auto resolution (no dashboardDist, no env var) - C1", () => {
-  let app: FastifyInstance;
+  let app: ClarosApp;
   // Track whether we created the directory so we only remove what we created.
   let createdDist = false;
   // Expected path derived from this test file's own location - same layout
@@ -294,7 +294,7 @@ describe("Auto resolution (no dashboardDist, no env var) - C1", () => {
 // ---------------------------------------------------------------------------
 
 describe("Warn-and-skip logs specific path and mechanism - C2", () => {
-  let app: FastifyInstance;
+  let app: ClarosApp;
   const warnMessages: string[] = [];
   const missingPath = "/this/path/does/not/exist/at/all";
 
@@ -316,7 +316,7 @@ describe("Warn-and-skip logs specific path and mechanism - C2", () => {
     };
 
     app = await buildApp({
-      logger: logger as unknown as import("fastify").FastifyServerOptions["logger"],
+      logger: logger as unknown as import("../src/http/logger.js").AppLogger,
       serveDashboard: true,
       dashboardDist: missingPath,
       dashboardUrl: "http://localhost:3000",

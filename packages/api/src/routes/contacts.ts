@@ -32,7 +32,6 @@
  *   - the timeline's transitions branch uses idx_transitions_contact
  *     (contact_id, transitioned_at DESC).
  */
-import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import {
@@ -44,6 +43,8 @@ import {
   type LifecycleConfig,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
+import type { AppContext } from "../http/env.js";
+import { RoleRouter } from "../http/router.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,15 +120,17 @@ const listQuerySchema = z.object({
   search: z.string().max(200).optional(),
 });
 
-function validationError(reply: any, issues: z.ZodIssue[]) {
-  reply.status(400);
-  return {
-    error: "Validation failed",
-    issues: issues.map((i) => ({
-      path: i.path.join("."),
-      message: i.message,
-    })),
-  };
+function validationError(c: AppContext, issues: z.ZodIssue[]) {
+  return c.json(
+    {
+      error: "Validation failed",
+      issues: issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    },
+    400,
+  );
 }
 
 function clampLimit(raw: string | undefined): number {
@@ -141,10 +144,11 @@ function isUuid(v: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Route plugin
+// Router
 // ---------------------------------------------------------------------------
 
-const contactsRoutes: FastifyPluginAsync = async (app) => {
+export default function contactsRoutes() {
+  const router = new RoleRouter();
   /**
    * GET /v1/contacts
    *
@@ -167,24 +171,14 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
    *
    * Response: { contacts: [...], next_cursor: string | null }
    */
-  app.get<{
-    Querystring: {
-      limit?: string;
-      after?: string;
-      lifecycle_state?: string;
-      engagement_depth?: string;
-      tenure_bucket?: string;
-      recency_bucket?: string;
-      search?: string;
-    };
-  }>("/", { config: { minRole: "member" } }, async (request, reply) => {
-    const parsed = listQuerySchema.safeParse(request.query);
+  router.get("/", "member", async (c) => {
+    const parsed = listQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
     const limit = clampLimit(parsed.data.limit);
     const fetchLimit = limit + 1;
     const cursor = parsed.data.after ? decodeCursor(parsed.data.after) : null;
@@ -271,7 +265,7 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
       ? encodeCursor(lastRow.created_at, lastRow.id)
       : null;
 
-    return { contacts: pageRows, next_cursor: nextCursor };
+    return c.json({ contacts: pageRows, next_cursor: nextCursor });
   });
 
   /**
@@ -283,13 +277,13 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
    *
    * Response: { contact: {...}, memberships: [...], suppression: {...} | null }
    */
-  app.get<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
-    if (!isUuid(request.params.id)) {
-      reply.status(404);
-      return { error: "Contact not found." };
+    const id = c.req.param("id")!;
+    if (!isUuid(id)) {
+      return c.json({ error: "Contact not found." }, 404);
     }
 
     const contactRows = (
@@ -298,14 +292,13 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
                lifecycle_state, engagement_depth, payment_status,
                first_seen_at, last_seen_at, activated_at, created_at
         FROM contacts
-        WHERE tenant_id = ${tenantId} AND id = ${request.params.id}::uuid
+        WHERE tenant_id = ${tenantId} AND id = ${id}::uuid
         LIMIT 1
       `)
     ).rows;
 
     if (contactRows.length === 0) {
-      reply.status(404);
-      return { error: "Contact not found." };
+      return c.json({ error: "Contact not found." }, 404);
     }
 
     const contact = contactRows[0]!;
@@ -316,7 +309,7 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
                m.entered_at, m.completed_at, m.exited_at, m.exit_reason
         FROM flow_memberships m
         JOIN flows f ON f.id = m.flow_id AND f.tenant_id = ${tenantId}
-        WHERE m.tenant_id = ${tenantId} AND m.contact_id = ${request.params.id}::uuid
+        WHERE m.tenant_id = ${tenantId} AND m.contact_id = ${id}::uuid
         ORDER BY m.entered_at DESC
       `)
     ).rows;
@@ -334,7 +327,7 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
       suppression = supRows[0] ?? null;
     }
 
-    return { contact, memberships, suppression };
+    return c.json({ contact, memberships, suppression });
   });
 
   /**
@@ -354,16 +347,13 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
    *   { kind: "message",    id, occurred_at, subject, status, feedback,
    *     flow_id, flow_name, flow_step_order }
    */
-  app.get<{
-    Params: { id: string };
-    Querystring: { limit?: string; after?: string };
-  }>("/:id/timeline", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  router.get("/:id/timeline", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
-    if (!isUuid(request.params.id)) {
-      reply.status(404);
-      return { error: "Contact not found." };
+    const id = c.req.param("id")!;
+    if (!isUuid(id)) {
+      return c.json({ error: "Contact not found." }, 404);
     }
 
     // Existence check with tenant scoping; the timeline of another tenant's
@@ -371,19 +361,19 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
     const exists = (
       await db.execute<{ id: string }>(sql`
         SELECT id FROM contacts
-        WHERE tenant_id = ${tenantId} AND id = ${request.params.id}::uuid
+        WHERE tenant_id = ${tenantId} AND id = ${id}::uuid
         LIMIT 1
       `)
     ).rows;
     if (exists.length === 0) {
-      reply.status(404);
-      return { error: "Contact not found." };
+      return c.json({ error: "Contact not found." }, 404);
     }
 
-    const limit = clampLimit(request.query.limit);
+    const query = c.req.query();
+    const limit = clampLimit(query.limit);
     const fetchLimit = limit + 1;
-    const cursor = request.query.after ? decodeCursor(request.query.after) : null;
-    const contactId = request.params.id;
+    const cursor = query.after ? decodeCursor(query.after) : null;
+    const contactId = id;
     // DESC keyset: rows strictly older than the cursor, applied inside each
     // branch so the branch LIMIT cannot cut off rows a later page needs.
     const eventCursor = cursor
@@ -455,8 +445,7 @@ const contactsRoutes: FastifyPluginAsync = async (app) => {
       ? encodeCursor(lastRow.occurred_at, lastRow.id)
       : null;
 
-    return { items: pageRows, next_cursor: nextCursor };
+    return c.json({ items: pageRows, next_cursor: nextCursor });
   });
-};
-
-export default contactsRoutes;
+  return router.app;
+}

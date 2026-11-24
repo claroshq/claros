@@ -3,7 +3,7 @@
  *
  * ALL tests run against an app built by buildApp (packages/api/src/app.ts),
  * using the same stub/mock db pattern as cloud/tests/ingress-coverage.test.ts.
- * No private Fastify instance is constructed; the real /v1 preHandler gate in
+ * No private app instance is constructed; the real /v1 auth gate in
  * app.ts is what is exercised.
  *
  * Two db fixtures are used:
@@ -33,7 +33,7 @@
  *   - /version does not include startedAt
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-import type { FastifyInstance } from "fastify";
+import type { ClarosApp } from "../src/index.js";
 import { buildApp } from "../src/index.js";
 import type { Db } from "../src/plugins/db.js";
 
@@ -82,8 +82,8 @@ const SESSION_COOKIE = "claros_session=test-session-id-for-diagnostics-unit-test
 // App fixtures
 // ---------------------------------------------------------------------------
 
-let appUnauth: FastifyInstance; // stub db - for 401 test (no cookie sent)
-let appAuth: FastifyInstance;   // mock db returning valid session - for 200 tests
+let appUnauth: ClarosApp; // stub db - for 401 test (no cookie sent)
+let appAuth: ClarosApp;   // mock db returning valid session - for 200 tests
 
 beforeAll(async () => {
   appUnauth = await buildApp({ logger: false, db: stubDb });
@@ -305,7 +305,7 @@ describe("GET /v1/diagnostics - authenticated (mock db resolves real tenant plug
 // ---------------------------------------------------------------------------
 
 describe("GET /version does NOT include startedAt", () => {
-  let appVersion: FastifyInstance;
+  let appVersion: ClarosApp;
 
   beforeAll(async () => {
     appVersion = await buildApp({ logger: false, role: "all", edition: "community" });

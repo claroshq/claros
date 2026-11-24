@@ -19,12 +19,12 @@
  *   4. If never completed, pending_email expires after 24 hours - no harm done.
  */
 import { randomBytes, createHash } from "node:crypto";
-import type { FastifyPluginAsync } from "fastify";
 import { eq, and, sql } from "drizzle-orm";
 import { users, sessions, tenants, transportConfigs } from "@claros/db/schema";
 import { resolveTransportAdapter } from "@claros/adapters";
 import { buildEmailChangeEmail, type TransactionalEmailInput } from "../transactional-email.js";
 import type { Db } from "../plugins/db.js";
+import { RoleRouter } from "../http/router.js";
 
 /** Email change verification token TTL: 24 hours. */
 const EMAIL_CHANGE_TTL_HOURS = 24;
@@ -39,14 +39,15 @@ function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-const profileRoutes: FastifyPluginAsync = async (app) => {
+export default function profileRoutes() {
+  const r = new RoleRouter();
   /**
    * GET /v1/profile
    * Get the current user's profile.
    */
-  app.get("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const userId = request.tenant!.userId;
+  r.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const userId = c.var.tenant!.userId;
 
     const rows = await db
       .select({
@@ -69,7 +70,7 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         ? user.pendingEmail
         : null;
 
-    return {
+    return c.json({
       profile: {
         id: user.id,
         email: user.email,
@@ -78,24 +79,23 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         pending_email: pendingEmail,
         created_at: user.createdAt,
       },
-    };
+    });
   });
 
   /**
    * PATCH /v1/profile
    * Update own name.
    */
-  app.patch<{ Body: { name?: string | null } }>(
+  r.patch(
     "/",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const userId = request.tenant!.userId;
+    "member",
+    async (c) => {
+      const db: Db = c.var.db;
+      const userId = c.var.tenant!.userId;
 
-      const { name } = request.body ?? {};
+      const { name } = (c.var.body as { name?: string | null } | undefined) ?? {};
       if (name !== undefined && name !== null && typeof name !== "string") {
-        reply.status(400);
-        return { error: "name must be a string or null." };
+        return c.json({ error: "name must be a string or null." }, 400);
       }
 
       const trimmedName = name === null ? null : (name?.trim() || null);
@@ -105,7 +105,7 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         .set({ name: trimmedName })
         .where(eq(users.id, userId));
 
-      return { ok: true };
+      return c.json({ ok: true });
     },
   );
 
@@ -114,18 +114,17 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
    * Request an email change. Sends verification link to the new address.
    * The old email remains active until the new one is verified.
    */
-  app.post<{ Body: { email: string } }>(
+  r.post(
     "/email",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const userId = request.tenant!.userId;
-      const tenantId = request.tenant!.id;
+    "member",
+    async (c) => {
+      const db: Db = c.var.db;
+      const userId = c.var.tenant!.userId;
+      const tenantId = c.var.tenant!.id;
 
-      const { email } = request.body ?? {};
+      const { email } = (c.var.body as { email: string } | undefined) ?? {};
       if (!email || typeof email !== "string" || !email.includes("@")) {
-        reply.status(400);
-        return { error: "A valid email address is required." };
+        return c.json({ error: "A valid email address is required." }, 400);
       }
 
       const newEmail = email.toLowerCase().trim();
@@ -138,8 +137,7 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (currentRows[0]?.email === newEmail) {
-        reply.status(400);
-        return { error: "That is already your current email." };
+        return c.json({ error: "That is already your current email." }, 400);
       }
 
       // Check if already taken at request time (early feedback, but we also
@@ -151,8 +149,7 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (existing.length > 0) {
-        reply.status(409);
-        return { error: "That email is already in use by another team member." };
+        return c.json({ error: "That email is already in use by another team member." }, 409);
       }
 
       // Generate verification token
@@ -240,12 +237,12 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         console.log("");
       }
 
-      return {
+      return c.json({
         ok: true,
         message: "Verification link sent to the new email address.",
         // In non-production, include URL for testing
         ...(process.env.NODE_ENV !== "production" ? { verify_url: verifyUrl } : {}),
-      };
+      });
     },
   );
 
@@ -254,18 +251,17 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
    * Confirm an email change by providing the verification token.
    * Checks for collision at verification time (handles race condition).
    */
-  app.post<{ Body: { token: string } }>(
+  r.post(
     "/email/verify",
-    { config: { minRole: "member" } },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const userId = request.tenant!.userId;
-      const tenantId = request.tenant!.id;
+    "member",
+    async (c) => {
+      const db: Db = c.var.db;
+      const userId = c.var.tenant!.userId;
+      const tenantId = c.var.tenant!.id;
 
-      const { token } = request.body ?? {};
+      const { token } = (c.var.body as { token: string } | undefined) ?? {};
       if (!token || typeof token !== "string") {
-        reply.status(400);
-        return { error: "Token is required." };
+        return c.json({ error: "Token is required." }, 400);
       }
 
       const tokenHash = hashToken(token);
@@ -283,20 +279,17 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
 
       const user = userRows[0];
       if (!user || !user.pendingEmail || !user.pendingEmailTokenHash || !user.pendingEmailExpiresAt) {
-        reply.status(400);
-        return { error: "No pending email change." };
+        return c.json({ error: "No pending email change." }, 400);
       }
 
       // Verify token
       if (user.pendingEmailTokenHash !== tokenHash) {
-        reply.status(400);
-        return { error: "Invalid verification token." };
+        return c.json({ error: "Invalid verification token." }, 400);
       }
 
       // Check expiry
       if (user.pendingEmailExpiresAt < new Date()) {
-        reply.status(400);
-        return { error: "Verification link has expired. Please request a new one." };
+        return c.json({ error: "Verification link has expired. Please request a new one." }, 400);
       }
 
       // Check collision AT VERIFICATION TIME
@@ -314,10 +307,9 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
           .set({ pendingEmail: null, pendingEmailTokenHash: null, pendingEmailExpiresAt: null })
           .where(eq(users.id, userId));
 
-        reply.status(409);
-        return {
+        return c.json({
           error: "That email address is now in use by another team member. Your email has not been changed.",
-        };
+        }, 409);
       }
 
       // Atomically swap the email and clear pending fields
@@ -331,9 +323,9 @@ const profileRoutes: FastifyPluginAsync = async (app) => {
         })
         .where(eq(users.id, userId));
 
-      return { ok: true, email: user.pendingEmail };
+      return c.json({ ok: true, email: user.pendingEmail });
     },
   );
-};
 
-export default profileRoutes;
+  return r.app;
+}

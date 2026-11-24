@@ -642,7 +642,7 @@ describe("authenticated /v1 scope", () => {
     if (!dbAvailable) return;
     const app = await buildApp({ logger: false, db, baseUrl: "http://localhost:3000" });
 
-    // No routes exist under /v1 yet, so Fastify returns 404.
+    // An unknown /v1 path is a 404 (auth checks run only on matched routes).
     // Once routes are added (task 7+), the preHandler will reject unauthenticated requests.
     const res = await app.inject({
       method: "GET",

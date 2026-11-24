@@ -12,10 +12,12 @@
  *   - 7-day TTL.
  */
 import { createHash } from "node:crypto";
-import type { FastifyPluginAsync } from "fastify";
+import { setCookie } from "hono/cookie";
 import { eq, and, isNull } from "drizzle-orm";
 import { invites, users, sessions, tenants } from "@claros/db/schema";
 import type { Db } from "../plugins/db.js";
+import { createRouter, parseBody } from "../http/router.js";
+import { parseForm } from "../http/body.js";
 
 /** Session TTL: 30 days (same as normal login). */
 const SESSION_TTL_DAYS = 30;
@@ -78,43 +80,29 @@ export interface InviteRouteOptions {
   dashboardUrl: string;
 }
 
-const inviteRoutes: FastifyPluginAsync<InviteRouteOptions> = async (app, opts) => {
+export default function inviteRoutes(opts: InviteRouteOptions) {
   const { dashboardUrl } = opts;
+  const app = createRouter();
 
-  // Register form body parser for this scope
-  app.addContentTypeParser(
-    "application/x-www-form-urlencoded",
-    { parseAs: "string" },
-    (_req, body, done) => {
-      const parsed: Record<string, string> = {};
-      if (typeof body === "string" && body.length > 0) {
-        for (const pair of body.split("&")) {
-          const eqIdx = pair.indexOf("=");
-          if (eqIdx === -1) continue;
-          const key = decodeURIComponent(pair.slice(0, eqIdx).replace(/\+/g, " "));
-          const value = decodeURIComponent(pair.slice(eqIdx + 1).replace(/\+/g, " "));
-          parsed[key] = value;
-        }
-      }
-      done(null, parsed);
-    },
-  );
+  // Form body parser for this scope (parseForm has the same semantics as the
+  // v0.6 parser: "+" is a space, pairs without "=" are skipped).
+  const body = parseBody({ parsers: { "application/x-www-form-urlencoded": parseForm } });
 
   /**
    * GET /invite/accept?token=xxx
    * Interstitial confirmation page. Does NOT consume the token.
    */
-  app.get<{ Querystring: { token?: string } }>(
+  app.get(
     "/accept",
-    async (request, reply) => {
+    async (c) => {
       const failRedirect = `${dashboardUrl}/login?error=invalid_invite`;
 
-      const { token } = request.query;
+      const token = c.req.query("token");
       if (!token || token.length === 0) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
-      const db: Db = request.server.db;
+      const db: Db = c.var.db;
       const tokenHash = hashToken(token);
 
       // Read-only lookup
@@ -131,7 +119,7 @@ const inviteRoutes: FastifyPluginAsync<InviteRouteOptions> = async (app, opts) =
 
       const row = rows[0];
       if (!row || row.acceptedAt !== null || row.expiresAt < new Date()) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       // Get tenant name for the interstitial
@@ -142,10 +130,10 @@ const inviteRoutes: FastifyPluginAsync<InviteRouteOptions> = async (app, opts) =
         .limit(1);
       const tenantName = tenantRows[0]?.name ?? "this workspace";
 
-      return reply
-        .header("cache-control", "no-store")
-        .type("text/html; charset=utf-8")
-        .send(renderAcceptPage(row.email, tenantName, token));
+      return c.html(renderAcceptPage(row.email, tenantName, token), 200, {
+        "cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+      });
     },
   );
 
@@ -153,17 +141,18 @@ const inviteRoutes: FastifyPluginAsync<InviteRouteOptions> = async (app, opts) =
    * POST /invite/accept
    * Consume the invite, create user, create session, redirect to dashboard.
    */
-  app.post<{ Body: { token?: string } }>(
+  app.post(
     "/accept",
-    async (request, reply) => {
+    body,
+    async (c) => {
       const failRedirect = `${dashboardUrl}/login?error=invalid_invite`;
 
-      const token = request.body?.token;
+      const token = (c.var.body as { token?: string } | undefined)?.token;
       if (!token || token.length === 0) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
-      const db: Db = request.server.db;
+      const db: Db = c.var.db;
       const tokenHash = hashToken(token);
       const now = new Date();
 
@@ -186,14 +175,14 @@ const inviteRoutes: FastifyPluginAsync<InviteRouteOptions> = async (app, opts) =
         });
 
       if (consumed.length === 0) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       const invite = consumed[0]!;
 
       // Check expiry (mark consumed regardless to prevent reuse)
       if (invite.expiresAt < now) {
-        return reply.redirect(failRedirect, 302);
+        return c.redirect(failRedirect, 302);
       }
 
       // Check if a user with this email already exists (reactivation or collision)
@@ -238,17 +227,17 @@ const inviteRoutes: FastifyPluginAsync<InviteRouteOptions> = async (app, opts) =
         .returning({ id: sessions.id });
 
       // Set session cookie
-      reply.setCookie(SESSION_COOKIE_NAME, session!.id, {
+      setCookie(c, SESSION_COOKIE_NAME, session!.id, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        sameSite: "Lax",
         path: "/",
         maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
       });
 
-      return reply.redirect(`${dashboardUrl}/`, 302);
+      return c.redirect(`${dashboardUrl}/`, 302);
     },
   );
-};
 
-export default inviteRoutes;
+  return app;
+}

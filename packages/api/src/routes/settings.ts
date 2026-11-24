@@ -66,7 +66,7 @@
  *   no operator action required when the provider ships. Validation only rejects
  *   values that are clearly not a known provider identifier.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { encrypt, decrypt, parseEncryptionKey, resolveTransportAdapter, SmtpTransportAdapter } from "@claros/adapters";
 import { transportConfigs, llmConfigs, tenants } from "@claros/db/schema";
@@ -78,6 +78,8 @@ import {
   verifyLlmCredentials,
 } from "../llm-providers.js";
 import type { Db } from "../plugins/db.js";
+import { RoleRouter, validatedBody } from "../http/router.js";
+import { validateBody, coerceInt, coerceBool, coerceString } from "../http/validate.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -109,11 +111,128 @@ function isKnownProvider(v: string): v is KnownProvider {
  */
 export const BRAIN_CONTEXT_MAX_CHARS = 4_000;
 
+const DAYS_OF_WEEK = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
 // ---------------------------------------------------------------------------
-// Route plugin
+// Body schemas
 // ---------------------------------------------------------------------------
 
-const settingsRoutes: FastifyPluginAsync = async (app) => {
+/*
+ * Same rules as the v0.6 JSON schemas: required fields, types, formats and
+ * bounds as declared there; unknown properties are removed and scalars are
+ * coerced the way v0.6 did (see validate.ts). Messages follow v0.6 wording
+ * ("must be <= 65535", `must match format "email"`).
+ */
+
+/** The "email" format v0.6 applied (ajv-formats, full mode). */
+const EMAIL_FORMAT =
+  /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
+
+/** HH:MM pattern for the throttle send window. */
+const HH_MM_PATTERN = "^([01]?[0-9]|2[0-3]):[0-5][0-9]$";
+
+/** JSON schema "number" with v0.6 coercion ("1.5" -> 1.5, true -> 1). */
+const coerceNumber = () =>
+  z.preprocess(
+    (v) =>
+      typeof v === "string" && v !== "" && !Number.isNaN(Number(v))
+        ? Number(v)
+        : typeof v === "boolean"
+          ? Number(v)
+          : v,
+    z.number(),
+  );
+
+/** { type: "string", minLength: 1 } */
+const nonEmptyString = () =>
+  coerceString().pipe(z.string().min(1, "must NOT have fewer than 1 characters"));
+
+/** { type: "integer", minimum, maximum? } */
+const boundedInt = (min: number, max?: number) => {
+  let n = z.number().min(min, `must be >= ${min}`);
+  if (max !== undefined) n = n.max(max, `must be <= ${max}`);
+  return coerceInt().pipe(n);
+};
+
+/** { type: ["string", "null"] } */
+const nullableString = () => coerceString().nullable();
+
+/** { type: ["number", "null"] }; v0.6 coerced "" to null for this type. */
+const nullableNumber = () => z.preprocess((v) => (v === "" ? null : v), coerceNumber().nullable());
+
+/** { type: "string", enum } */
+const enumOf = <T extends [string, ...string[]]>(values: T) =>
+  z.enum(values, { errorMap: () => ({ message: "must be equal to one of the allowed values" }) });
+
+/** { type: "string", pattern } */
+const patternString = (pattern: string) =>
+  coerceString().pipe(z.string().regex(new RegExp(pattern, "u"), `must match pattern "${pattern}"`));
+
+const transportBodySchema = z.object({
+  provider: coerceString(),
+  from_email: coerceString().pipe(z.string().regex(EMAIL_FORMAT, 'must match format "email"')),
+  from_name: coerceString().optional(),
+  api_key: nonEmptyString().optional(),
+  webhook_secret: coerceString().optional(),
+  host: nonEmptyString().optional(),
+  port: boundedInt(1, 65535).optional(),
+  secure: coerceBool().optional(),
+  username: coerceString().optional(),
+  password: coerceString().optional(),
+  reject_unauthorized: coerceBool().optional(),
+  daily_limit: boundedInt(1).optional(),
+});
+
+const llmBodySchema = z.object({
+  provider: coerceString(),
+  api_key: coerceString().optional(),
+  base_url: nonEmptyString().optional(),
+  model: nonEmptyString().optional(),
+  embedding_model: coerceString().optional(),
+});
+
+const tenantPatchBodySchema = z.object({
+  postal_address: coerceString().optional(),
+  brain_context: nullableString().optional(),
+  brand: z
+    .object(
+      {
+        brand_name: nullableString().optional(),
+        logo_url: nullableString().optional(),
+        logo_height: nullableNumber().optional(),
+        accent_color: nullableString().optional(),
+        footer_text: nullableString().optional(),
+        reply_to: nullableString().optional(),
+      },
+      { invalid_type_error: "must be object" },
+    )
+    .optional(),
+});
+
+const throttleBodySchema = z.object({
+  max_emails_per_user_per_day: boundedInt(0, 100).optional(),
+  max_emails_per_user_per_week: boundedInt(0, 500).optional(),
+  min_interval_between_emails_hours: coerceNumber()
+    .pipe(z.number().min(0, "must be >= 0").max(168, "must be <= 168"))
+    .optional(),
+  send_window_start: patternString(HH_MM_PATTERN).optional(),
+  send_window_end: patternString(HH_MM_PATTERN).optional(),
+  send_window_days: z.array(enumOf([...DAYS_OF_WEEK]), { invalid_type_error: "must be array" }).optional(),
+  send_window_timezone: enumOf(["contact_local", "tenant_fixed"]).optional(),
+  tenant_timezone: coerceString().optional(),
+  batch_size_per_tick: boundedInt(1, 100).optional(),
+});
+
+const testEmailBodySchema = z.object({
+  to: coerceString(),
+});
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+export default function settingsRoutes() {
+  const r = new RoleRouter();
   // -------------------------------------------------------------------------
   // PUT /v1/settings/transport
   // -------------------------------------------------------------------------
@@ -129,98 +248,55 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * then insert a fresh row. This keeps a history of previous configs
    * (is_active = false) while ensuring only one active row per tenant.
    */
-  app.put<{
-    Body: {
-      provider: string;
-      from_email: string;
-      from_name?: string;
-      // Resend fields
-      api_key?: string;
-      webhook_secret?: string;
-      // SMTP fields
-      host?: string;
-      port?: number;
-      secure?: boolean;
-      username?: string;
-      password?: string;
-      reject_unauthorized?: boolean;
-      // Shared
-      daily_limit?: number;
-    };
-  }>(
+  r.put(
     "/transport",
-    {
-      config: { minRole: "owner" as const },
-      schema: {
-        body: {
-          type: "object",
-          properties: {
-            provider: { type: "string" },
-            from_email: { type: "string", format: "email" },
-            from_name: { type: "string" },
-            api_key: { type: "string", minLength: 1 },
-            webhook_secret: { type: "string" },
-            host: { type: "string", minLength: 1 },
-            port: { type: "integer", minimum: 1, maximum: 65535 },
-            secure: { type: "boolean" },
-            username: { type: "string" },
-            password: { type: "string" },
-            reject_unauthorized: { type: "boolean" },
-            daily_limit: { type: "integer", minimum: 1 },
-          },
-          required: ["provider", "from_email"],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
+    "owner",
+    validatedBody(transportBodySchema),
+    async (c) => {
+      const v = validateBody(c, transportBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
       const {
         provider, from_email, from_name, api_key, webhook_secret, daily_limit,
         host, port, secure, username, password, reject_unauthorized,
-      } = request.body;
+      } = v.value;
 
       // Validate provider
       if (!isKnownProvider(provider)) {
-        reply.status(400);
-        return {
+        return c.json({
           error: `Unknown provider: "${provider}". Valid values: ${KNOWN_PROVIDERS.join(", ")}.`,
-        };
+        }, 400);
       }
 
       // Provider-specific field validation
       if (provider === "resend") {
         if (!api_key) {
-          reply.status(400);
-          return { error: "api_key is required for Resend." };
+          return c.json({ error: "api_key is required for Resend." }, 400);
         }
       } else if (provider === "smtp") {
         if (!host || port === undefined) {
-          reply.status(400);
-          return { error: "host and port are required for SMTP." };
+          return c.json({ error: "host and port are required for SMTP." }, 400);
         }
       }
 
       // Require ENCRYPTION_KEY
       const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
       if (!encryptionKeyEnv) {
-        reply.status(503);
-        return {
+        return c.json({
           error:
             "ENCRYPTION_KEY is not configured. " +
             "Set ENCRYPTION_KEY before storing transport credentials.",
-        };
+        }, 503);
       }
 
       let key: Buffer;
       try {
         key = parseEncryptionKey(encryptionKeyEnv);
       } catch (err) {
-        reply.status(503);
-        return {
+        return c.json({
           error: `ENCRYPTION_KEY is invalid: ${err instanceof Error ? err.message : String(err)}`,
-        };
+        }, 503);
       }
 
       // Build credential object based on provider
@@ -257,10 +333,9 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         try {
           const verification = await testAdapter.verify();
           if (!verification.ok) {
-            reply.status(422);
-            return {
+            return c.json({
               error: `SMTP verification failed: ${verification.error}. Nothing was stored.`,
-            };
+            }, 422);
           }
         } finally {
           testAdapter.close();
@@ -306,8 +381,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
           createdAt: transportConfigs.createdAt,
         });
 
-      reply.status(200);
-      return {
+      return c.json({
         transport: {
           id: inserted!.id,
           provider: inserted!.provider,
@@ -318,7 +392,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
           is_active: inserted!.isActive,
           created_at: inserted!.createdAt,
         },
-      };
+      });
     },
   );
 
@@ -334,9 +408,9 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * The response never includes api_key, webhook_secret, or the raw config envelope
    * in any form - not masked, not partially shown.
    */
-  app.get("/transport", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/transport", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select({
@@ -356,11 +430,11 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     if (rows.length === 0) {
-      return { transport: null };
+      return c.json({ transport: null });
     }
 
     const row = rows[0]!;
-    return {
+    return c.json({
       transport: {
         id: row.id,
         provider: row.provider,
@@ -371,7 +445,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         is_active: row.isActive,
         created_at: row.createdAt,
       },
-    };
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -406,44 +480,22 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * "text-embedding-3-small". Setting it here controls which model is used for
    * KB entry indexing and similarity search queries.
    */
-  app.put<{
-    Body: {
-      provider: string;
-      api_key?: string;
-      base_url?: string;
-      model?: string;
-      embedding_model?: string;
-    };
-  }>(
+  r.put(
     "/llm",
-    {
-      config: { minRole: "owner" as const },
-      schema: {
-        body: {
-          type: "object",
-          properties: {
-            provider: { type: "string" },
-            api_key: { type: "string" },
-            base_url: { type: "string", minLength: 1 },
-            model: { type: "string", minLength: 1 },
-            embedding_model: { type: "string" },
-          },
-          required: ["provider"],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const { provider, api_key, base_url, model, embedding_model } = request.body;
+    "owner",
+    validatedBody(llmBodySchema),
+    async (c) => {
+      const v = validateBody(c, llmBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const { provider, api_key, base_url, model, embedding_model } = v.value;
 
       // Validate provider
       if (!isKnownLlmProvider(provider)) {
-        reply.status(400);
-        return {
+        return c.json({
           error: `Unknown provider: "${provider}". Valid values: ${KNOWN_LLM_PROVIDERS.join(", ")}.`,
-        };
+        }, 400);
       }
 
       // Apply per-provider defaults; overrides win when present.
@@ -454,30 +506,27 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         embeddingModel: embedding_model,
       });
       if (!resolved.ok) {
-        reply.status(400);
-        return { error: resolved.error };
+        return c.json({ error: resolved.error }, 400);
       }
       const effective = resolved.config;
 
       // Require ENCRYPTION_KEY
       const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
       if (!encryptionKeyEnv) {
-        reply.status(503);
-        return {
+        return c.json({
           error:
             "ENCRYPTION_KEY is not configured. " +
             "Set ENCRYPTION_KEY before storing LLM credentials.",
-        };
+        }, 503);
       }
 
       let key: Buffer;
       try {
         key = parseEncryptionKey(encryptionKeyEnv);
       } catch (err) {
-        reply.status(503);
-        return {
+        return c.json({
           error: `ENCRYPTION_KEY is invalid: ${err instanceof Error ? err.message : String(err)}`,
-        };
+        }, 503);
       }
 
       // Verify the credentials before storing anything. A wrong key stored
@@ -489,7 +538,6 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         model: effective.model,
       });
       if (!verification.ok) {
-        reply.status(422);
         const prefix =
           verification.kind === "http"
             ? `${effective.baseUrl} rejected the credentials (HTTP ${verification.status})`
@@ -497,7 +545,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
               ? `${effective.baseUrl} did not answer within 10 seconds`
               : `${effective.baseUrl} could not be reached`;
         const said = verification.detail !== "" ? `: ${verification.detail}` : "";
-        return {
+        return c.json({
           error: `${prefix}${said}. Nothing was stored.`,
           verification: {
             ok: false,
@@ -505,7 +553,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
             status: verification.status,
             detail: verification.detail,
           },
-        };
+        }, 422);
       }
 
       // Build credential object and encrypt it.
@@ -555,8 +603,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
           createdAt: llmConfigs.createdAt,
         });
 
-      reply.status(200);
-      return {
+      return c.json({
         llm: {
           id: inserted!.id,
           provider: inserted!.provider,
@@ -567,7 +614,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
           created_at: inserted!.createdAt,
         },
         verification: { ok: true },
-      };
+      });
     },
   );
 
@@ -587,9 +634,9 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * undecryptable the endpoint still answers with model/base_url/
    * embedding_model set to null rather than failing the settings screen.
    */
-  app.get("/llm", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/llm", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select({
@@ -606,7 +653,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     if (rows.length === 0) {
-      return { llm: null };
+      return c.json({ llm: null });
     }
 
     const row = rows[0]!;
@@ -636,7 +683,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    return {
+    return c.json({
       llm: {
         id: row.id,
         provider: row.provider,
@@ -646,7 +693,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         is_active: row.isActive,
         created_at: row.createdAt,
       },
-    };
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -661,9 +708,9 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * postal_address, brand, brain_context. Does not return lifecycle/throttle
    * because those are managed by the templates route.
    */
-  app.get("/tenant", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/tenant", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select({
@@ -679,15 +726,14 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Tenant not found." };
+      return c.json({ error: "Tenant not found." }, 404);
     }
 
     const row = rows[0]!;
     const settings = (row.settings as Record<string, unknown> | null) ?? {};
     const brand = (settings.brand as Record<string, unknown> | undefined) ?? {};
 
-    return {
+    return c.json({
       tenant: {
         id: row.id,
         name: row.name,
@@ -705,7 +751,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         },
         created_at: row.createdAt,
       },
-    };
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -731,67 +777,31 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * that want to clear the address must supply a non-empty replacement; clearing
    * would block the drain and is likely a mistake).
    */
-  app.patch<{
-    Body: {
-      postal_address?: string;
-      brain_context?: string | null;
-      brand?: {
-        brand_name?: string | null;
-        logo_url?: string | null;
-        logo_height?: number | null;
-        accent_color?: string | null;
-        footer_text?: string | null;
-        reply_to?: string | null;
-      };
-    };
-  }>(
+  r.patch(
     "/tenant",
-    {
-      config: { minRole: "owner" as const },
-      schema: {
-        body: {
-          type: "object",
-          properties: {
-            postal_address: { type: "string" },
-            brain_context: { type: ["string", "null"] },
-            brand: {
-              type: "object",
-              properties: {
-                brand_name: { type: ["string", "null"] },
-                logo_url: { type: ["string", "null"] },
-                logo_height: { type: ["number", "null"] },
-                accent_color: { type: ["string", "null"] },
-                footer_text: { type: ["string", "null"] },
-                reply_to: { type: ["string", "null"] },
-              },
-              additionalProperties: false,
-            },
-          },
-          additionalProperties: false,
-        },
-      },
-    },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const { postal_address, brain_context, brand } = request.body;
+    "owner",
+    validatedBody(tenantPatchBodySchema),
+    async (c) => {
+      const v = validateBody(c, tenantPatchBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const { postal_address, brain_context, brand } = v.value;
 
       // Nothing to update
       if (postal_address === undefined && brain_context === undefined && brand === undefined) {
-        reply.status(400);
-        return {
+        return c.json({
           error: "No updatable fields provided. Supported: postal_address, brain_context, brand.",
-        };
+        }, 400);
       }
 
       // Validate postal_address if provided
       if (postal_address !== undefined && postal_address.trim().length === 0) {
-        reply.status(400);
-        return {
+        return c.json({
           error:
             "postal_address must be a non-empty string. " +
             "An empty postal address would block outgoing mail (CAN-SPAM compliance).",
-        };
+        }, 400);
       }
 
       // Validate brain_context if provided
@@ -800,12 +810,11 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         brain_context !== null &&
         brain_context.length > BRAIN_CONTEXT_MAX_CHARS
       ) {
-        reply.status(400);
-        return {
+        return c.json({
           error:
             `brain_context must be at most ${BRAIN_CONTEXT_MAX_CHARS} characters. ` +
             "It is injected into every LLM prompt; longer texts blow the context budget.",
-        };
+        }, 400);
       }
 
       // Validate brand fields if provided
@@ -815,31 +824,26 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
           try {
             const url = new URL(brand.logo_url);
             if (!["http:", "https:"].includes(url.protocol)) {
-              reply.status(400);
-              return { error: "brand.logo_url must be an http or https URL." };
+              return c.json({ error: "brand.logo_url must be an http or https URL." }, 400);
             }
           } catch {
-            reply.status(400);
-            return { error: "brand.logo_url must be a valid URL." };
+            return c.json({ error: "brand.logo_url must be a valid URL." }, 400);
           }
         }
         if (brand.accent_color !== undefined && brand.accent_color !== null) {
           if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(brand.accent_color)) {
-            reply.status(400);
-            return { error: "brand.accent_color must be a valid hex color (e.g. #2563eb)." };
+            return c.json({ error: "brand.accent_color must be a valid hex color (e.g. #2563eb)." }, 400);
           }
         }
         if (brand.reply_to !== undefined && brand.reply_to !== null) {
           // Basic email format check
           if (!brand.reply_to.includes("@") || brand.reply_to.trim().length < 3) {
-            reply.status(400);
-            return { error: "brand.reply_to must be a valid email address." };
+            return c.json({ error: "brand.reply_to must be a valid email address." }, 400);
           }
         }
         if (brand.logo_height !== undefined && brand.logo_height !== null) {
           if (brand.logo_height < 16 || brand.logo_height > 64) {
-            reply.status(400);
-            return { error: "brand.logo_height must be between 16 and 64." };
+            return c.json({ error: "brand.logo_height must be between 16 and 64." }, 400);
           }
         }
       }
@@ -852,8 +856,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (tenantRows.length === 0) {
-        reply.status(404);
-        return { error: "Tenant not found." };
+        return c.json({ error: "Tenant not found." }, 404);
       }
 
       const existing = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
@@ -893,8 +896,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
 
       const finalBrand = (updated.brand as Record<string, unknown> | undefined) ?? {};
 
-      reply.status(200);
-      return {
+      return c.json({
         tenant: {
           postal_address: (updated.postal_address as string | undefined) ?? null,
           brain_context: (updated.brain_context as string | undefined) ?? null,
@@ -907,7 +909,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
             reply_to: (finalBrand.reply_to as string | undefined) ?? null,
           },
         },
-      };
+      });
     },
   );
 
@@ -919,16 +921,14 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // Throttle settings
   // -------------------------------------------------------------------------
 
-  const DAYS_OF_WEEK = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
-
   /**
    * GET /v1/settings/throttle
    * Read the current throttle configuration.
    * Returns the resolved config (defaults filled in for missing fields).
    */
-  app.get("/throttle", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/throttle", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const tenantRows = await db
       .select({ settings: tenants.settings })
@@ -937,13 +937,13 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     if (tenantRows.length === 0) {
-      return { error: "Tenant not found." };
+      return c.json({ error: "Tenant not found." });
     }
 
     const settings = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
     const config = resolveThrottleConfig(settings.throttle ?? null);
 
-    return { throttle: config };
+    return c.json({ throttle: config });
   });
 
   /**
@@ -965,44 +965,16 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    *   - drain_interval_minutes: fixed at 15 min (pg-boss cron limitation)
    *   - critical_bypass_throttle: always true (critical emails always bypass)
    */
-  app.put<{
-    Body: {
-      max_emails_per_user_per_day?: number;
-      max_emails_per_user_per_week?: number;
-      min_interval_between_emails_hours?: number;
-      send_window_start?: string;
-      send_window_end?: string;
-      send_window_days?: Array<"mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun">;
-      send_window_timezone?: "contact_local" | "tenant_fixed";
-      tenant_timezone?: string;
-      batch_size_per_tick?: number;
-    };
-  }>(
+  r.put(
     "/throttle",
-    {
-      config: { minRole: "owner" as const },
-      schema: {
-        body: {
-          type: "object",
-          properties: {
-            max_emails_per_user_per_day: { type: "integer", minimum: 0, maximum: 100 },
-            max_emails_per_user_per_week: { type: "integer", minimum: 0, maximum: 500 },
-            min_interval_between_emails_hours: { type: "number", minimum: 0, maximum: 168 },
-            send_window_start: { type: "string", pattern: "^([01]?[0-9]|2[0-3]):[0-5][0-9]$" },
-            send_window_end: { type: "string", pattern: "^([01]?[0-9]|2[0-3]):[0-5][0-9]$" },
-            send_window_days: { type: "array", items: { type: "string", enum: DAYS_OF_WEEK } },
-            send_window_timezone: { type: "string", enum: ["contact_local", "tenant_fixed"] },
-            tenant_timezone: { type: "string" },
-            batch_size_per_tick: { type: "integer", minimum: 1, maximum: 100 },
-          },
-          additionalProperties: false,
-        },
-      },
-    },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const input = request.body;
+    "owner",
+    validatedBody(throttleBodySchema),
+    async (c) => {
+      const v = validateBody(c, throttleBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const input = v.value;
 
       const {
         max_emails_per_user_per_day,
@@ -1018,19 +990,16 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
 
       if (send_window_start !== undefined && send_window_end !== undefined) {
         if (send_window_start >= send_window_end) {
-          reply.status(400);
-          return { error: "send_window_end must be after send_window_start." };
+          return c.json({ error: "send_window_end must be after send_window_start." }, 400);
         }
       }
 
       if (send_window_days !== undefined && send_window_days.length === 0) {
-        reply.status(400);
-        return { error: "send_window_days must contain at least one day." };
+        return c.json({ error: "send_window_days must contain at least one day." }, 400);
       }
 
       if (send_window_timezone === "tenant_fixed" && (!tenant_timezone || tenant_timezone.trim().length === 0)) {
-        reply.status(400);
-        return { error: "tenant_timezone is required when send_window_timezone is 'tenant_fixed'." };
+        return c.json({ error: "tenant_timezone is required when send_window_timezone is 'tenant_fixed'." }, 400);
       }
 
       const tenantRows = await db
@@ -1040,8 +1009,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (tenantRows.length === 0) {
-        reply.status(404);
-        return { error: "Tenant not found." };
+        return c.json({ error: "Tenant not found." }, 404);
       }
 
       const existing = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
@@ -1064,7 +1032,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       await db.update(tenants).set({ settings: updatedSettings }).where(eq(tenants.id, tenantId));
 
       const resolved = resolveThrottleConfig(mergedThrottle);
-      return { throttle: resolved };
+      return c.json({ throttle: resolved });
     },
   );
 
@@ -1079,34 +1047,20 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
    * Prerequisites: transport must be configured, postal_address must be set.
    * If either is missing, returns 400 with an actionable message.
    */
-  app.post<{
-    Body: {
-      to: string;
-    };
-  }>(
+  r.post(
     "/test-email",
-    {
-      config: { minRole: "owner" as const },
-      schema: {
-        body: {
-          type: "object",
-          required: ["to"],
-          properties: {
-            to: { type: "string" },
-          },
-          additionalProperties: false,
-        },
-      },
-    },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const { to } = request.body;
+    "owner",
+    validatedBody(testEmailBodySchema),
+    async (c) => {
+      const v = validateBody(c, testEmailBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const { to } = v.value;
 
       // Validate recipient
       if (!to.includes("@") || to.trim().length < 3) {
-        reply.status(400);
-        return { error: "Invalid recipient email address." };
+        return c.json({ error: "Invalid recipient email address." }, 400);
       }
 
       // Resolve tenant settings (name, postal_address, brand)
@@ -1117,8 +1071,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
 
       if (tenantRows.length === 0) {
-        reply.status(404);
-        return { error: "Tenant not found." };
+        return c.json({ error: "Tenant not found." }, 404);
       }
 
       const tenantName = tenantRows[0]!.name;
@@ -1127,8 +1080,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       const brand = (settings.brand as BrandSettings | undefined) ?? {};
 
       if (!postalAddress || postalAddress.trim().length === 0) {
-        reply.status(400);
-        return { error: "Postal address is not configured. Set it in Settings before sending a test email." };
+        return c.json({ error: "Postal address is not configured. Set it in Settings before sending a test email." }, 400);
       }
 
       // Resolve transport
@@ -1146,16 +1098,14 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       `);
 
       if (configRows.rows.length === 0) {
-        reply.status(400);
-        return { error: "Email transport is not configured. Set it up in Settings before sending a test email." };
+        return c.json({ error: "Email transport is not configured. Set it up in Settings before sending a test email." }, 400);
       }
 
       const configRow = configRows.rows[0]!;
       const resolveResult = resolveTransportAdapter(configRow.provider, configRow.config);
 
       if (!resolveResult.ok) {
-        reply.status(500);
-        return { error: "Failed to initialize email transport. Check your transport configuration." };
+        return c.json({ error: "Failed to initialize email transport. Check your transport configuration." }, 500);
       }
 
       const adapter = resolveResult.transport.adapter;
@@ -1193,8 +1143,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       // The test-email must carry List-Unsubscribe headers like every real send.
       const signingKey = process.env.UNSUBSCRIBE_SIGNING_KEY;
       if (!signingKey) {
-        reply.status(400);
-        return { error: "UNSUBSCRIBE_SIGNING_KEY is not set. Set it before sending any email (including test emails)." };
+        return c.json({ error: "UNSUBSCRIBE_SIGNING_KEY is not set. Set it before sending any email (including test emails)." }, 400);
       }
 
       const testMessageId = `test-${Date.now()}`;
@@ -1238,18 +1187,17 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         });
 
         if (result.success) {
-          return { sent: true, to: to.trim() };
+          return c.json({ sent: true, to: to.trim() });
         }
 
-        reply.status(502);
-        return { error: "Transport rejected the message. Check your transport configuration." };
+        return c.json({ error: "Transport rejected the message. Check your transport configuration." }, 502);
       } catch (err) {
-        reply.status(502);
-        return { error: "Failed to send test email. Check your transport configuration and credentials." };
+        return c.json({ error: "Failed to send test email. Check your transport configuration and credentials." }, 502);
       }
     },
   );
-};
+  return r.app;
+}
 
 /** Simple HTML escape for test email content. */
 function escapeHtmlSimple(s: string): string {
@@ -1260,4 +1208,3 @@ function escapeHtmlSimple(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export default settingsRoutes;

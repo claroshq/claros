@@ -25,7 +25,8 @@
  * partition.
  */
 import { createHash, randomBytes } from "node:crypto";
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
+import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { apiKeys, contacts, events } from "@claros/db/schema";
@@ -68,15 +69,17 @@ const updateKeySchema = z
   })
   .strict();
 
-function validationError(reply: any, issues: z.ZodIssue[]) {
-  reply.status(400);
-  return {
-    error: "Validation failed",
-    issues: issues.map((i) => ({
-      path: i.path.join("."),
-      message: i.message,
-    })),
-  };
+function validationError(c: AppContext, issues: z.ZodIssue[]): Response {
+  return c.json(
+    {
+      error: "Validation failed",
+      issues: issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    },
+    400,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -122,40 +125,41 @@ const KEY_COLUMNS = {
 // Routes
 // ---------------------------------------------------------------------------
 
-const ingestionRoutes: FastifyPluginAsync = async (app) => {
+export default function ingestionRoutes() {
+  const r = new RoleRouter();
+
   /**
    * GET /v1/ingestion/keys
    * All keys for the tenant, active and revoked, oldest first.
    */
-  app.get("/keys", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/keys", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
     const rows = await db
       .select(KEY_COLUMNS)
       .from(apiKeys)
       .where(eq(apiKeys.tenantId, tenantId))
       .orderBy(apiKeys.createdAt);
-    return { keys: rows.map(serializeKey) };
+    return c.json({ keys: rows.map(serializeKey) });
   });
 
   /**
    * POST /v1/ingestion/keys
    * Create a key. The response includes `key`, the raw secret, exactly once.
    */
-  app.post("/keys", { config: { minRole: "member" } }, async (request, reply) => {
-    const parsed = createKeySchema.safeParse(request.body);
+  r.post("/keys", "member", async (c) => {
+    const parsed = createKeySchema.safeParse(c.var.body);
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
     const { kind, label, allowed_origins } = parsed.data;
 
     if (kind === "secret" && allowed_origins && allowed_origins.length > 0) {
-      reply.status(400);
-      return { error: "allowed_origins applies to publishable keys only." };
+      return c.json({ error: "allowed_origins applies to publishable keys only." }, 400);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const raw =
       (kind === "publishable" ? "cl_pub_" : "cl_live_") +
@@ -174,8 +178,7 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
       })
       .returning(KEY_COLUMNS);
 
-    reply.status(201);
-    return { key: raw, ...serializeKey(row!) };
+    return c.json({ key: raw, ...serializeKey(row!) }, 201);
   });
 
   /**
@@ -183,15 +186,15 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
    * Update label and/or allowed_origins. allowed_origins is publishable-only.
    * A key belonging to another tenant returns 404.
    */
-  app.patch("/keys/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const parsed = updateKeySchema.safeParse(request.body ?? {});
+  r.patch("/keys/:id", "member", async (c) => {
+    const params = { id: c.req.param("id")! };
+    const parsed = updateKeySchema.safeParse(c.var.body ?? {});
     if (!parsed.success) {
-      return validationError(reply, parsed.error.issues);
+      return validationError(c, parsed.error.issues);
     }
 
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const existing = await db
       .select({ id: apiKeys.id, kind: apiKeys.kind })
@@ -199,8 +202,7 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(apiKeys.id, params.id), eq(apiKeys.tenantId, tenantId)))
       .limit(1);
     if (existing.length === 0) {
-      reply.status(404);
-      return { error: "Key not found." };
+      return c.json({ error: "Key not found." }, 404);
     }
 
     const updates: Record<string, unknown> = {};
@@ -209,14 +211,12 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
     }
     if ("allowed_origins" in parsed.data) {
       if (existing[0]!.kind !== "publishable") {
-        reply.status(400);
-        return { error: "allowed_origins applies to publishable keys only." };
+        return c.json({ error: "allowed_origins applies to publishable keys only." }, 400);
       }
       updates.allowedOrigins = parsed.data.allowed_origins;
     }
     if (Object.keys(updates).length === 0) {
-      reply.status(400);
-      return { error: "Nothing to update." };
+      return c.json({ error: "Nothing to update." }, 400);
     }
 
     const [row] = await db
@@ -224,17 +224,17 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
       .set(updates)
       .where(eq(apiKeys.id, params.id))
       .returning(KEY_COLUMNS);
-    return serializeKey(row!);
+    return c.json(serializeKey(row!));
   });
 
   /**
    * POST /v1/ingestion/keys/:id/revoke
    * Sets revoked_at. Idempotent: revoking an already-revoked key returns 200.
    */
-  app.post("/keys/:id/revoke", { config: { minRole: "member" } }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.post("/keys/:id/revoke", "member", async (c) => {
+    const params = { id: c.req.param("id")! };
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const existing = await db
       .select({ id: apiKeys.id, revokedAt: apiKeys.revokedAt })
@@ -242,8 +242,7 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(apiKeys.id, params.id), eq(apiKeys.tenantId, tenantId)))
       .limit(1);
     if (existing.length === 0) {
-      reply.status(404);
-      return { error: "Key not found." };
+      return c.json({ error: "Key not found." }, 404);
     }
 
     if (existing[0]!.revokedAt === null) {
@@ -252,7 +251,7 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
         .set({ revokedAt: new Date() })
         .where(eq(apiKeys.id, params.id));
     }
-    return { success: true };
+    return c.json({ success: true });
   });
 
   /**
@@ -261,9 +260,9 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
    * days plus a 24h count. Both queries are bounded on received_at so only
    * the newest monthly partitions are touched.
    */
-  app.get("/status", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/status", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -287,7 +286,7 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(events.tenantId, tenantId), gte(events.receivedAt, oneDayAgo)));
 
     const last = lastRows[0];
-    return {
+    return c.json({
       last_event: last
         ? {
             type: last.type,
@@ -297,8 +296,8 @@ const ingestionRoutes: FastifyPluginAsync = async (app) => {
           }
         : null,
       events_last_24h: countRows[0]?.count ?? 0,
-    };
+    });
   });
-};
 
-export default ingestionRoutes;
+  return r.app;
+}

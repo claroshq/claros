@@ -1,8 +1,6 @@
 /**
  * Shared TypeScript augmentations and types for the API layer.
  */
-import type { FastifyRequest } from "fastify";
-
 // ---------------------------------------------------------------------------
 // Role system
 // ---------------------------------------------------------------------------
@@ -35,15 +33,4 @@ export interface TenantContext {
   userId: string;
   /** The authenticated user's role. */
   userRole: UserRole;
-}
-
-declare module "fastify" {
-  interface FastifyRequest {
-    /**
-     * Resolved tenant for this request.
-     * Null on public/unauthenticated routes (e.g. /health, /unsubscribe).
-     * Auth middleware sets this via request.tenant = { id, slug, userId, userRole }.
-     */
-    tenant: TenantContext | null;
-  }
 }

@@ -29,7 +29,7 @@
  * Used by `claros doctor` to compare the container's live environment against
  * the operator's local environment after a secret rotation or deploy.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { RoleRouter } from "../http/router.js";
 import { createHash } from "node:crypto";
 
 // Computed once at module load time so every request returns a stable value
@@ -67,66 +67,24 @@ function keyAbsent(): KeyResult {
   return { present: false, byteLength: null, fingerprint: null, decodeError: null };
 }
 
-const diagnosticsRoute: FastifyPluginAsync = async (app) => {
-  app.get(
-    "/",
-    {
-      config: { minRole: "member" as const },
-      schema: {
-        response: {
-          200: {
-            type: "object",
-            properties: {
-              commit:  { type: "string" },
-              edition: { type: "string" },
-              builtAt: { type: ["string", "null"] },
-              startedAt: { type: "string" },
-              keys: {
-                type: "object",
-                properties: {
-                  ENCRYPTION_KEY: {
-                    type: "object",
-                    properties: {
-                      present:     { type: "boolean" },
-                      byteLength:  { type: ["integer", "null"] },
-                      fingerprint: { type: ["string", "null"] },
-                      decodeError: { type: ["string", "null"] },
-                    },
-                  },
-                  UNSUBSCRIBE_SIGNING_KEY: {
-                    type: "object",
-                    properties: {
-                      present:     { type: "boolean" },
-                      byteLength:  { type: ["integer", "null"] },
-                      fingerprint: { type: ["string", "null"] },
-                      decodeError: { type: ["string", "null"] },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+export default function diagnosticsRoutes() {
+  const r = new RoleRouter();
+  r.get("/", "member", (c) => {
+    const encKey = process.env.ENCRYPTION_KEY;
+    const sigKey = process.env.UNSUBSCRIBE_SIGNING_KEY;
+
+    return c.json({
+      commit: process.env.CLAROS_COMMIT_SHA ?? "unknown",
+      edition: "community",
+      builtAt: process.env.CLAROS_BUILT_AT ?? null,
+      startedAt: PROCESS_STARTED_AT,
+      keys: {
+        // ENCRYPTION_KEY is base64-encoded (44 chars -> 32 bytes)
+        ENCRYPTION_KEY: encKey ? decodeAndFingerprint(encKey, "base64") : keyAbsent(),
+        // UNSUBSCRIBE_SIGNING_KEY is hex-encoded (64 chars -> 32 bytes)
+        UNSUBSCRIBE_SIGNING_KEY: sigKey ? decodeAndFingerprint(sigKey, "hex") : keyAbsent(),
       },
-    },
-    async () => {
-      const encKey = process.env.ENCRYPTION_KEY;
-      const sigKey = process.env.UNSUBSCRIBE_SIGNING_KEY;
-
-      return {
-        commit:  process.env.CLAROS_COMMIT_SHA ?? "unknown",
-        edition: "community",
-        builtAt: process.env.CLAROS_BUILT_AT   ?? null,
-        startedAt: PROCESS_STARTED_AT,
-        keys: {
-          // ENCRYPTION_KEY is base64-encoded (44 chars -> 32 bytes)
-          ENCRYPTION_KEY:         encKey ? decodeAndFingerprint(encKey, "base64") : keyAbsent(),
-          // UNSUBSCRIBE_SIGNING_KEY is hex-encoded (64 chars -> 32 bytes)
-          UNSUBSCRIBE_SIGNING_KEY: sigKey ? decodeAndFingerprint(sigKey, "hex")    : keyAbsent(),
-        },
-      };
-    },
-  );
-};
-
-export default diagnosticsRoute;
+    });
+  });
+  return r.app;
+}

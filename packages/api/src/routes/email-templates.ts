@@ -12,7 +12,9 @@
  * Editing a template changes the stored content but does NOT bypass the shell.
  * The template body is always wrapped in the branded shell at drain time.
  */
-import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+import { RoleRouter, validatedBody } from "../http/router.js";
+import { validateBody, coerceString } from "../http/validate.js";
 import { eq, and } from "drizzle-orm";
 import { templates } from "@claros/db/schema";
 import type { Db } from "../plugins/db.js";
@@ -33,18 +35,30 @@ const SUPPORTED_VARIABLES = [
   "flow.name",
 ] as const;
 
+/**
+ * PATCH /v1/email-templates/:id body. Same rules as the v0.6 JSON schema:
+ * subject and body_html are strings, body_text is a string or null, all
+ * optional; unknown properties are removed and scalars coerced to string.
+ */
+const patchTemplateBodySchema = z.object({
+  subject: coerceString().optional(),
+  body_html: coerceString().optional(),
+  body_text: coerceString().nullable().optional(),
+});
+
 // ---------------------------------------------------------------------------
-// Route plugin
+// Routes
 // ---------------------------------------------------------------------------
 
-const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
+export default function emailTemplatesRoutes() {
+  const r = new RoleRouter();
   /**
    * GET /v1/email-templates
    * List all email templates for the calling tenant.
    */
-  app.get("/", { config: { minRole: "member" } }, async (request) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
+  r.get("/", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
 
     const rows = await db
       .select({
@@ -62,7 +76,7 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
       .from(templates)
       .where(eq(templates.tenantId, tenantId));
 
-    return {
+    return c.json({
       templates: rows.map((r) => ({
         id: r.id,
         name: r.name,
@@ -76,17 +90,17 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
         created_at: r.createdAt,
       })),
       supported_variables: SUPPORTED_VARIABLES,
-    };
+    });
   });
 
   /**
    * GET /v1/email-templates/:id
    * Get a single template by ID.
    */
-  app.get<{ Params: { id: string } }>("/:id", { config: { minRole: "member" } }, async (request, reply) => {
-    const db: Db = request.server.db;
-    const tenantId = request.tenant!.id;
-    const { id } = request.params;
+  r.get("/:id", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const id = c.req.param("id")!;
 
     const rows = await db
       .select({
@@ -105,12 +119,11 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(templates.id, id), eq(templates.tenantId, tenantId)));
 
     if (rows.length === 0) {
-      reply.status(404);
-      return { error: "Template not found." };
+      return c.json({ error: "Template not found." }, 404);
     }
 
     const r = rows[0]!;
-    return {
+    return c.json({
       template: {
         id: r.id,
         name: r.name,
@@ -124,7 +137,7 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
         created_at: r.createdAt,
       },
       supported_variables: SUPPORTED_VARIABLES,
-    };
+    });
   });
 
   /**
@@ -132,51 +145,31 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
    * Update template content. Supports subject, body_html, body_text.
    * All fields are optional - only provided fields are updated.
    */
-  app.patch<{
-    Params: { id: string };
-    Body: {
-      subject?: string;
-      body_html?: string;
-      body_text?: string | null;
-    };
-  }>(
+  r.patch(
     "/:id",
-    {
-      config: { minRole: "member" as const },
-      schema: {
-        body: {
-          type: "object",
-          properties: {
-            subject: { type: "string" },
-            body_html: { type: "string" },
-            body_text: { type: ["string", "null"] },
-          },
-          additionalProperties: false,
-        },
-      },
-    },
-    async (request, reply) => {
-      const db: Db = request.server.db;
-      const tenantId = request.tenant!.id;
-      const { id } = request.params;
-      const { subject, body_html, body_text } = request.body;
+    "member",
+    validatedBody(patchTemplateBodySchema),
+    async (c) => {
+      const v = validateBody(c, patchTemplateBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const id = c.req.param("id")!;
+      const { subject, body_html, body_text } = v.value;
 
       // Must provide at least one field
       if (subject === undefined && body_html === undefined && body_text === undefined) {
-        reply.status(400);
-        return { error: "No updatable fields provided. Supported: subject, body_html, body_text." };
+        return c.json({ error: "No updatable fields provided. Supported: subject, body_html, body_text." }, 400);
       }
 
       // Validate non-empty subject
       if (subject !== undefined && subject.trim().length === 0) {
-        reply.status(400);
-        return { error: "subject must be a non-empty string." };
+        return c.json({ error: "subject must be a non-empty string." }, 400);
       }
 
       // Validate non-empty body_html
       if (body_html !== undefined && body_html.trim().length === 0) {
-        reply.status(400);
-        return { error: "body_html must be a non-empty string." };
+        return c.json({ error: "body_html must be a non-empty string." }, 400);
       }
 
       // Build update set
@@ -203,12 +196,11 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
         });
 
       if (result.length === 0) {
-        reply.status(404);
-        return { error: "Template not found." };
+        return c.json({ error: "Template not found." }, 404);
       }
 
       const r = result[0]!;
-      return {
+      return c.json({
         template: {
           id: r.id,
           name: r.name,
@@ -221,9 +213,8 @@ const emailTemplatesRoutes: FastifyPluginAsync = async (app) => {
           is_active: r.isActive,
           created_at: r.createdAt,
         },
-      };
+      });
     },
   );
-};
-
-export default emailTemplatesRoutes;
+  return r.app;
+}
