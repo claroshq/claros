@@ -16,7 +16,7 @@ Source: the v1 handoff (maintainer's private notes), decided items D1 to D20.
 
 **Multi-product instances (D9).** One instance serves many products. Code keeps the name `tenant`; user-facing text says "product".
 
-**CI and releases (D10, D20).** `check` runs on every pull request and push; `deploy` is manual only; `release` builds artifacts on tags, publishing stays manual. SemVer 2.0 (`vX.Y.Z`, pre-releases `-rc.N`), Keep a Changelog, a GitHub Release with upgrade notes per tag, Docker tags `X.Y.Z`, `X.Y`, `latest`, deprecation one release before removal. Release line: v0.7 (Hono + repository layer, Postgres), v0.8 (D1 + multi-product), v1.0.
+**CI and releases (D10, D20).** `check` runs on every pull request and push; `deploy` is manual only; `release` builds artifacts on tags, publishing stays manual. SemVer 2.0 (`vX.Y.Z`, pre-releases `-rc.N`), Keep a Changelog, a GitHub Release with upgrade notes per tag, Docker tags `X.Y.Z`, `X.Y`, `latest`, deprecation one release before removal. Release line: v0.7 (Hono, groundwork; shipped 2026-11-25), v0.8 (repository layer + D1 + multi-product), v1.0. The repository layer moved from v0.7 to v0.8 so the compatible Hono move could ship on its own.
 
 **Repository (D4, D13).** `claroshq/claros` is the single repository, with its existing history and tags. The new tree lands as normal commits on top of v0.6.4; no force-push. The previous private development repository is archived and its history is not published.
 

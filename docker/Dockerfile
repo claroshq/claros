@@ -65,21 +65,12 @@ EXPOSE 3000
 # General -> Virtual Machine Options -> VirtioFS) for reliable hot reload.
 # The server starts correctly either way; only reload-on-save is affected.
 #
-# Dashboard freshness: docker-compose.yml mounts ./apps over /app/apps, which
-# masks the dist built in this image with whatever apps/dashboard/dist on the
-# host happens to contain. Building the dashboard here, on every container
-# start, makes a stale dist impossible: the served assets always match the
-# mounted source. If the build fails the container exits instead of serving
-# old assets - a down container is loud, a stale one is silent.
-# Two build hygiene details:
-#   - rm -rf dist first: the image has no .git, so Tailwind's content scan
-#     does not apply .gitignore rules and would otherwise pick up class
-#     strings from the previous dist, bloating the CSS.
-#   - NODE_ENV=production for the build only: the compose environment sets
-#     NODE_ENV=development, which would make Vite bundle development React
-#     (roughly 1.7x the JS). The server itself still runs with
-#     NODE_ENV=development so the console login fallback keeps working.
-ENTRYPOINT ["sh", "-c", "rm -rf apps/dashboard/dist && NODE_ENV=production npm run build -w @claros/dashboard && exec node --import /app/node_modules/tsx/dist/esm/index.mjs --watch apps/server/src/main.ts \"$@\"", "sh"]
+# Startup (docker/dev-entrypoint.sh): reconcile the mounted workspaces'
+# node_modules with the lockfile, rebuild packages and the dashboard so the
+# running code always matches the mounted source, then start in watch mode.
+COPY docker/dev-entrypoint.sh /usr/local/bin/claros-dev-entrypoint
+RUN chmod +x /usr/local/bin/claros-dev-entrypoint
+ENTRYPOINT ["claros-dev-entrypoint"]
 CMD ["--role=all"]
 
 # Stage 3: Runner - production image, prod deps only.
