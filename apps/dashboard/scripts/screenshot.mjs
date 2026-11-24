@@ -586,8 +586,8 @@ for (const scheme of ["light", "dark"]) {
       body: JSON.stringify({
         tenant: {
           id: "t",
-          name: "Fundup",
-          slug: "fundup",
+          name: "Acme",
+          slug: "acme",
           plan: "free",
           postal_address: "1 Main St\nSpringfield",
           created_at: new Date().toISOString(),
