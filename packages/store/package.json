@@ -11,11 +11,15 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@claros/core": "*",
     "@claros/db": "*",
     "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
   }
 }

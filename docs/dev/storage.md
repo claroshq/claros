@@ -39,3 +39,9 @@ const candidates = await storeFor(db).workerDrain.claimBatch({ limit, now });
 ## Tests
 
 Behaviour is tested through the calling modules (the existing `*.db.test.ts` suites). From v0.8 the same suites run against both Postgres and D1.
+
+## Schemas and migrations
+
+- Postgres: `drizzle/schema` and `drizzle/migrations` (`npm run db:generate`).
+- SQLite / D1: `drizzle/schema-sqlite` and `drizzle/migrations-sqlite` (`npm run db:generate:sqlite`). Same tables, columns and index names; `packages/store/tests/schema-parity.test.ts` fails when the two drift.
+- SQLite type mapping: uuid -> text (generated in code), timestamptz -> integer milliseconds (Drizzle `timestamp_ms`, so values are `Date` on both sides), jsonb and text[] -> JSON text, boolean -> integer 0/1, date -> `YYYY-MM-DD` text. The knowledge base gets an FTS5 table (`kb_fts`) kept in sync by triggers instead of a pgvector index; `events` is a plain table instead of monthly partitions.

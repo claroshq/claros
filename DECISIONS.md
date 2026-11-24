@@ -46,3 +46,7 @@ Gaps found while preparing the first product's configuration, accepted as genera
 - **G29 AI opening line in a fixed template** (P5): template slot `{{brain.opening}}`, drafted with a length cap and shown in approvals.
 - **G30 Analytics sink** (P4, on the outbound webhook outbox): per-product `analytics: {sink: "statsraven" | "webhook", ...}` emitting flow and email events keyed to the product's user id; queued, retried, never blocks sending; no open events.
 - Extensions: `kb_select.tags_any_from_trait` (G18), per-step sender identity and eyebrow label (G13), step `expires_after`, product `brain.text_rules` applied after drafting (G19), history import resolving contacts by email (G21), trait-audience one-off sends through broadcasts (G9).
+
+## 2026-11-25: SQLite schema conventions
+
+SQLite / D1 stores timestamps as integer milliseconds (Drizzle `timestamp_ms`) rather than ISO-8601 text as first proposed: values round-trip as `Date` on both backends, comparisons stay numeric and index-friendly, and the Store interfaces need no conversion. JSON columns are text, ids are text UUIDs generated in code, the knowledge base uses FTS5. The two schemas are kept in step by a parity test.
