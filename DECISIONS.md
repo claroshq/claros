@@ -37,3 +37,12 @@ Source: the v1 handoff (maintainer's private notes), decided items D1 to D20.
 - "Private monorepo + public mirror" and the Cloud edition: removed. There is no hosted Claros service.
 - "Iron Rule 3: no Workers assumptions in core, Cloud on Containers": replaced by the runtime seams above.
 - "D1 disqualified, Neon stays": reversed; D1 is an additional backend.
+
+## 2026-11-24: Additions from the first product integration
+
+Gaps found while preparing the first product's configuration, accepted as general features:
+
+- **G28 Send-history conditions** (P4, with trait conditions): step and flow conditions on what a contact already received, `{history: {flow | action_type | topic, within, op: none | any | count_lt}}`, plus a built-in `first_contact`.
+- **G29 AI opening line in a fixed template** (P5): template slot `{{brain.opening}}`, drafted with a length cap and shown in approvals.
+- **G30 Analytics sink** (P4, on the outbound webhook outbox): per-product `analytics: {sink: "statsraven" | "webhook", ...}` emitting flow and email events keyed to the product's user id; queued, retried, never blocks sending; no open events.
+- Extensions: `kb_select.tags_any_from_trait` (G18), per-step sender identity and eyebrow label (G13), step `expires_after`, product `brain.text_rules` applied after drafting (G19), history import resolving contacts by email (G21), trait-audience one-off sends through broadcasts (G9).

@@ -33,7 +33,7 @@ function argValue(flag) {
   return i >= 0 ? args[i + 1] : null;
 }
 const PURGE_ONLY = args.includes("--purge");
-const TENANT_SLUG = argValue("--tenant-slug") ?? "fundup";
+const TENANT_SLUG = argValue("--tenant-slug") ?? "default";
 
 // ---------------------------------------------------------------------------
 // Safety gate: local-only

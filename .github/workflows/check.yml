@@ -50,6 +50,36 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  upgrade:
+    name: upgrade from v0.6.4
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: claros
+          POSTGRES_PASSWORD: claros
+          POSTGRES_DB: claros
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claros"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Restore v0.6.4 data, migrate, boot
+        env:
+          UPGRADE_ADMIN_URL: postgres://claros:claros@localhost:5432/postgres
+        run: npm run test:upgrade
+
   lint:
     name: shellcheck and docs
     runs-on: ubuntu-latest

@@ -25,3 +25,10 @@ bash scripts/check-docs.sh
 
 echo "==> tests"
 bash scripts/test.sh
+
+echo "==> upgrade from v0.6.4"
+if command -v psql >/dev/null 2>&1; then
+  UPGRADE_ADMIN_URL="${UPGRADE_ADMIN_URL:-postgres://claros:claros@localhost:5433/postgres}" bash scripts/test-upgrade.sh
+else
+  echo "psql not installed; skipping locally (CI runs it). Install: brew install libpq" >&2
+fi

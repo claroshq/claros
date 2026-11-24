@@ -14,7 +14,8 @@
     "test": "bash scripts/test.sh",
     "check": "bash scripts/check.sh",
     "db:generate": "drizzle-kit generate --config drizzle/drizzle.config.ts",
-    "db:migrate": "bash scripts/migrate.sh"
+    "db:migrate": "bash scripts/migrate.sh",
+    "test:upgrade": "bash scripts/test-upgrade.sh"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
