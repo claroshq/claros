@@ -36,6 +36,7 @@ The development template is `apps/worker/wrangler.jsonc`; `claros deploy` genera
 | `JOBS` | Queue producer and consumer (`claros-jobs`) | Jobs. Failed jobs are retried with exponential backoff (base 10 seconds, at most 15 minutes) up to 3 times. |
 | dead letter queue | Queue consumer (`claros-jobs-dlq`) | Jobs that failed every retry. They are logged with their payload. |
 | `ASSETS` | Static Assets (`apps/dashboard/dist`) | The dashboard. |
+| `EMAIL` | Send Email (`send_email`, no restrictions) | Cloudflare Email Service for `cloudflare` transports stored without an API token, transactional mail only. Added by `claros deploy`; commented out in the development template. See [Cloudflare Email Service on a Workers install](../guide/TRANSPORTS.md#cloudflare-email-service-on-a-workers-install). |
 | Cron Trigger | `*/5 * * * *` | Periodic jobs. |
 
 Variables and secrets:

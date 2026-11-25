@@ -30,6 +30,20 @@ export const RUN_WORKER_FIRST = [
 
 export const CRON = "*/5 * * * *";
 
+/**
+ * Cloudflare Email Service sending binding, read by the Worker as env.EMAIL
+ * (apps/worker/src/transports.ts) for `cloudflare` transports.
+ *
+ * https://developers.cloudflare.com/email-service/configuration/send-bindings/
+ * A binding with only `name` and no restriction attribute "can send to any
+ * recipient"; the sender must belong to a domain onboarded to Email Service,
+ * which Cloudflare checks at send time (E_SENDER_DOMAIN_NOT_AVAILABLE), not
+ * at deploy. So every deployed instance gets it: an instance without an
+ * onboarded domain or without a `cloudflare` transport never calls it, and
+ * Claros only routes transactional topics to `cloudflare` transports.
+ */
+export const SEND_EMAIL_BINDING = "EMAIL";
+
 export interface WranglerRoute {
   pattern: string;
   custom_domain: true;
@@ -49,6 +63,7 @@ export interface GeneratedConfig {
     consumers: Array<Record<string, unknown>>;
   };
   triggers: { crons: string[] };
+  send_email: Array<{ name: string }>;
   assets: Record<string, unknown>;
   vars: Record<string, string>;
   observability: { enabled: boolean };
@@ -111,6 +126,7 @@ export function generateConfig(input: TemplateInput): GeneratedConfig {
       ],
     },
     triggers: { crons: [CRON] },
+    send_email: [{ name: SEND_EMAIL_BINDING }],
     assets: {
       directory: assets.dashboardDir,
       binding: "ASSETS",
