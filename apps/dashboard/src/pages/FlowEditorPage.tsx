@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Pause, Play } from "lucide-react";
+import { MoreHorizontal, Pause, Play, X } from "lucide-react";
 import {
   compileFlow,
   createFlow,
@@ -313,6 +313,15 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
   const [notice, setNotice] = useState<string | null>(null);
   const [json, setJson] = useState<string | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [configNoticeDismissed, setConfigNoticeDismissed] = useState(readConfigNoticeDismissed);
+  const dismissConfigNotice = () => {
+    setConfigNoticeDismissed(true);
+    try {
+      localStorage.setItem(CONFIG_NOTICE_KEY, "1");
+    } catch {
+      // Storage unavailable (private mode): dismissed for this visit only.
+    }
+  };
   const [compileError, setCompileError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -662,6 +671,14 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
               </div>
               {flow && <Badge variant={statusVariant(flow.status)}>{flow.status}</Badge>}
               {isNew && <Badge variant="neutral">not saved yet</Badge>}
+              {flow?.slug && !archived && configNoticeDismissed && (
+                <Link
+                  to="/settings/config"
+                  title={`Managed in config as code (slug ${flow.slug}). The next claros apply of a document that lists this flow replaces edits made here.`}
+                >
+                  <Badge variant="muted">config as code</Badge>
+                </Link>
+              )}
             </div>
             {nameProblem && <p className="mt-1 text-[13px] text-danger" role="alert">Give the flow a name.</p>}
             <p className="mt-1.5 max-w-3xl text-[15px] leading-relaxed text-muted-foreground">{summarizeFlow(draft)}</p>
@@ -709,13 +726,22 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
 
       {/* Banners */}
       <div className="mt-5 space-y-3 empty:hidden">
-        {flow?.slug && !archived && (
+        {flow?.slug && !archived && !configNoticeDismissed && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-warning bg-warning-soft px-4 py-2.5 text-[14px] text-foreground" role="note">
             <span className="min-w-0 flex-1 basis-96">
               <span className="font-semibold">Managed in config as code</span> (slug <code className="font-mono text-[13px]">{flow.slug}</code>). The next{" "}
               <code className="font-mono text-[13px]">claros apply</code> of a document that lists this flow replaces edits made here. Change the document, or export it again after editing.
             </span>
             <Link to="/settings/config" className="shrink-0 text-[14px] font-medium text-accent-text hover:underline">Config as code</Link>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              title="Dismiss. A config as code badge stays next to the flow status."
+              onClick={dismissConfigNotice}
+              className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
           </div>
         )}
         {archived && (
@@ -833,6 +859,17 @@ function EditorSkeleton() {
       </div>
     </div>
   );
+}
+
+/** The config-as-code notice is shown until dismissed once (per browser), then a badge stands in for it. */
+const CONFIG_NOTICE_KEY = "claros.flowEditor.configNoticeDismissed";
+
+function readConfigNoticeDismissed(): boolean {
+  try {
+    return localStorage.getItem(CONFIG_NOTICE_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export default function FlowEditorPage() {
