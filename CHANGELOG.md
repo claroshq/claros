@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-11-25
+
 ### Added
 
 - Email template per flow: a flow can send in its own template instead of the product's. Flow editor, Delivery settings, **Email template**; `email_template` on `POST/PATCH /v1/flows` and in config documents (a built-in key or the id of one of the product's templates; `null` is the product default). At send time the flow's template wins when it exists, else the product's `brand.template`, else `brand.layout`. The Approvals preview uses the same order. The Templates page shows how many flows use each template, and a template a flow uses cannot be deleted (`409`). New column `flows.email_template`; Workers installs need `npx @claroshq/claros upgrade`. See [A template per flow](docs/guide/TEMPLATES.md#a-template-per-flow).
@@ -282,7 +284,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.9...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.10...HEAD
+[0.8.10]: https://github.com/claroshq/claros/compare/v0.8.9...v0.8.10
 [0.8.9]: https://github.com/claroshq/claros/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/claroshq/claros/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/claroshq/claros/compare/v0.8.6...v0.8.7
