@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Changed
+
+- Flow editor: the "Managed in config as code" notice can be dismissed. It stays dismissed in that browser, and a quiet **config as code** badge next to the flow status links to Settings, Config as code instead.
+
 ## [0.8.8] - 2026-11-25
 
 ### Added
