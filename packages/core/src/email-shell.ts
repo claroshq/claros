@@ -79,6 +79,21 @@ export interface BrandSettings {
 export const BRAND_LAYOUTS = ["narrow", "wide"] as const;
 export type BrandLayout = (typeof BRAND_LAYOUTS)[number];
 
+/**
+ * The font of every email. Set inline on <body> AND on every content cell:
+ * Outlook desktop (Word renderer) does not inherit a body font into tables
+ * and falls back to Times New Roman, and some webmail clients drop the
+ * <body> style. The mso-only <style> block pins Arial for Outlook, which
+ * does not know the system-font keywords.
+ */
+export const FONT_STACK = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+
+const MSO_FONT_STYLE = `<!--[if mso]>
+<style>
+body, table, td, p, a, li, h1, h2, h3, span { font-family: Arial, sans-serif !important; }
+</style>
+<![endif]-->`;
+
 /** Widest a paragraph renders in the wide layout, in CSS pixels. */
 export const TEXT_MEASURE = 680;
 
@@ -176,8 +191,8 @@ export function wrapInShell(input: EmailShellInput): string {
 
 /**
  * The narrow layout (the default): a centered card, max-width 600px, with
- * an Outlook ghost table. Its output must not change; existing products
- * render with it (tests/fixtures/email-shell pins it byte for byte).
+ * an Outlook ghost table. Existing products render with it; its output is
+ * pinned byte for byte in tests/fixtures/email-shell, change it deliberately.
  */
 function wrapInNarrowShell(input: EmailShellInput): string {
   const accent = safeAccentColor(input.brand.accent_color);
@@ -211,6 +226,7 @@ function wrapInNarrowShell(input: EmailShellInput): string {
 </xml>
 </noscript>
 <![endif]-->
+${MSO_FONT_STYLE}
 <style>
 /* Reset */
 body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -228,7 +244,7 @@ body { margin: 0; padding: 0; width: 100% !important; height: 100% !important; }
 }
 </style>
 </head>
-<body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:${FONT_STACK};">
 ${preheaderHtml(input.preheader)}<!-- Outlook max-width wrapper -->
 <!--[if mso]>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td>
@@ -240,19 +256,19 @@ ${preheaderHtml(input.preheader)}<!-- Outlook max-width wrapper -->
 </tr>
 <!-- Header: no bottom padding - flows directly into body content -->
 <tr>
-<td class="email-container" style="background-color:#ffffff;padding:28px 40px 0 40px;">
+<td class="email-container" style="font-family:${FONT_STACK};background-color:#ffffff;padding:28px 40px 0 40px;">
 ${headerContent}
 </td>
 </tr>
 <!-- Body content -->
 <tr>
-<td class="email-container email-content" style="background-color:#ffffff;padding:24px 40px 40px 40px;font-size:15px;line-height:1.65;color:#1a1a1a;">
+<td class="email-container email-content" style="font-family:${FONT_STACK};background-color:#ffffff;padding:24px 40px 40px 40px;font-size:15px;line-height:1.65;color:#1a1a1a;">
 ${input.eyebrow ? `<p class="email-eyebrow" style="margin:0 0 12px 0;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${esc(input.eyebrow)}</p>\n` : ""}${input.bodyHtml}
 </td>
 </tr>
 <!-- Footer -->
 <tr>
-<td class="email-container email-footer" style="background-color:#f9fafb;padding:20px 40px 24px 40px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280;">
+<td class="email-container email-footer" style="font-family:${FONT_STACK};background-color:#f9fafb;padding:20px 40px 24px 40px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280;">
 <p style="margin:0 0 6px 0;">${footerText}</p>
 ${input.complianceFooterHtml}
 </td>
@@ -325,6 +341,7 @@ function wrapInWideShell(input: EmailShellInput): string {
 </xml>
 </noscript>
 <![endif]-->
+${MSO_FONT_STYLE}
 <style>
 /* Reset */
 body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -347,7 +364,7 @@ body { margin: 0; padding: 0; width: 100% !important; height: 100% !important; }
 }
 </style>
 </head>
-<body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:${FONT_STACK};">
 ${preheaderHtml(input.preheader)}<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="email-body" style="width:100%;background-color:#f9fafb;">
 <tr>
 <td align="center" style="padding:24px 12px 40px 12px;">
@@ -358,19 +375,19 @@ ${preheaderHtml(input.preheader)}<table role="presentation" cellpadding="0" cell
 </tr>
 <!-- Header: no bottom padding - flows directly into body content -->
 <tr>
-<td class="email-container pad" align="left" style="background-color:#ffffff;padding:28px 40px 0 40px;">
+<td class="email-container pad" align="left" style="font-family:${FONT_STACK};background-color:#ffffff;padding:28px 40px 0 40px;">
 ${headerContent}
 </td>
 </tr>
 <!-- Body content -->
 <tr>
-<td class="email-container email-content pad" align="left" style="background-color:#ffffff;padding:24px 40px 40px 40px;font-size:15px;line-height:1.65;color:#1a1a1a;text-align:left;">
+<td class="email-container email-content pad" align="left" style="font-family:${FONT_STACK};background-color:#ffffff;padding:24px 40px 40px 40px;font-size:15px;line-height:1.65;color:#1a1a1a;text-align:left;">
 ${input.eyebrow ? `<p class="email-eyebrow" style="margin:0 0 12px 0;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${esc(input.eyebrow)}</p>\n` : ""}${applyWideBodyLayout(input.bodyHtml)}
 </td>
 </tr>
 <!-- Footer -->
 <tr>
-<td class="email-container email-footer pad" align="left" style="background-color:#f9fafb;padding:20px 40px 24px 40px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;">
+<td class="email-container email-footer pad" align="left" style="font-family:${FONT_STACK};background-color:#f9fafb;padding:20px 40px 24px 40px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;">
 <p style="margin:0 0 6px 0;">${footerText}</p>
 ${input.complianceFooterHtml}
 </td>

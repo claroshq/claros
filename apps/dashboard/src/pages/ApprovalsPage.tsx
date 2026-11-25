@@ -136,14 +136,15 @@ function QueueItem({ message, flowName, active, checked, onPreview, onToggleChec
 // ---------------------------------------------------------------------------
 
 function DraftBody({ message }: { message: Message }) {
-  if (message.body_html) {
+  const html = message.preview_html ?? message.body_html;
+  if (html) {
     return (
       <iframe
         sandbox=""
         referrerPolicy="no-referrer"
         title="Draft preview"
-        srcDoc={message.body_html}
-        className="h-[300px] w-full rounded-md border border-border bg-white sm:h-[420px]"
+        srcDoc={html}
+        className="h-[420px] w-full rounded-md border border-border bg-[#f9fafb] sm:h-[640px]"
       />
     );
   }

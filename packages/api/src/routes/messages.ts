@@ -31,7 +31,14 @@
 import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter, allowAdminKey } from "../http/router.js";
-import { QUEUE, pendingApprovalBatch } from "@claros/core";
+import {
+  QUEUE,
+  pendingApprovalBatch,
+  wrapInShell,
+  buildShellComplianceHtml,
+  stepPresentation,
+  type BrandSettings,
+} from "@claros/core";
 import { renderMarkdownToHtml, markdownToText } from "@claros/brain-oss";
 import { actorOf } from "../http/admin-auth.js";
 import type { AppContext } from "../http/env.js";
@@ -87,7 +94,46 @@ type MessageListRow = Record<string, unknown> & {
   imported?: boolean | null;
 };
 
-function serializeMessageRow(r: MessageListRow) {
+/**
+ * What the recipient's client will show: the body in the product's branded
+ * shell (brand, eyebrow, preheader, footer), rendered the same way as the
+ * drain does at send time. Only the unsubscribe link is a placeholder; the
+ * real one is signed per message when it is sent. Link tracking (UTM) is
+ * not applied. Null when the message has no HTML body.
+ */
+async function buildPreviews(db: Db, tenantId: string, rows: MessageListRow[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!rows.some((r) => r.body_html)) return out;
+  const tenant = await storeFor(db).workerDrain.getTenant(tenantId);
+  const settings = (tenant?.settings as Record<string, unknown> | null) ?? {};
+  const brand = (settings.brand as BrandSettings | undefined) ?? {};
+  const addr = typeof settings.postal_address === "string" ? settings.postal_address.trim() : "";
+  const footer = buildShellComplianceHtml(
+    "#",
+    addr || "No postal address set. Mail is held until one is set in Settings.",
+    tenant?.locale ?? null,
+  );
+  const plans = new Map<string, unknown>();
+  for (const flowId of new Set(rows.filter((r) => r.body_html).map((r) => r.flow_id))) {
+    const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: flowId });
+    plans.set(flowId, flow?.compiledPlan ?? null);
+  }
+  for (const r of rows) {
+    if (!r.body_html) continue;
+    const presentation = stepPresentation(plans.get(r.flow_id) ?? null, r.flow_step_order, r.brain_action_type);
+    out.set(r.id, wrapInShell({
+      bodyHtml: r.body_html,
+      brand,
+      tenantName: tenant?.name ?? "Our Team",
+      complianceFooterHtml: footer,
+      eyebrow: presentation.eyebrow,
+      preheader: presentation.preheader,
+    }));
+  }
+  return out;
+}
+
+function serializeMessageRow(r: MessageListRow, previewHtml: string | null = null) {
   let waiting_reason: string | null = null;
   if (r.status === "approved" && r.scheduled_send_at) {
     const scheduled = r.scheduled_send_at instanceof Date
@@ -114,6 +160,7 @@ function serializeMessageRow(r: MessageListRow) {
     status: r.status,
     subject: r.subject,
     body_html: r.body_html,
+    preview_html: previewHtml,
     body_text: r.body_text,
     brain_reasoning: r.brain_reasoning,
     brain_action_type: r.brain_action_type,
@@ -232,8 +279,9 @@ export default function messagesRoutes() {
       ? encodeCursor(lastRow.created_at, lastRow.id, lastRow.flow_class === "critical" ? 0 : 1)
       : null;
 
+    const previews = await buildPreviews(db, tenantId, pageRows);
     return c.json({
-      messages: pageRows.map(serializeMessageRow),
+      messages: pageRows.map((r) => serializeMessageRow(r, previews.get(r.id) ?? null)),
       next_cursor: nextCursor,
     });
   });

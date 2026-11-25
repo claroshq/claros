@@ -197,6 +197,7 @@ export {
   applyWideBodyLayout,
   BRAND_LAYOUTS,
   TEXT_MEASURE,
+  FONT_STACK,
   type BrandLayout,
   type BrandSettings,
   type EmailShellInput,
