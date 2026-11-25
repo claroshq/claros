@@ -242,6 +242,86 @@ describe("claros upgrade", () => {
     expect(order.indexOf("d1 migrations apply")).toBeLessThan(order.lastIndexOf("deploy --config " + join(env.configDir, "default", "wrangler.jsonc")));
   });
 
+  it("records a D1 Time Travel bookmark before migrating and prints the restore command", async () => {
+    const env = testEnv({ version: "0.8.0" });
+    await deploy(env.ctx, { domain: DOMAIN, nonInteractive: true });
+    env.cf.migrations.push("0005_next.sql");
+    env.cf.resetCalls();
+
+    const next = testEnv({ cf: env.cf, configDir: env.configDir, version: "0.8.1" });
+    const out = await upgrade(next.ctx, { nonInteractive: true });
+    expect(out.bookmark).toBe(env.cf.bookmark);
+    const info = env.cf.calls.find((c) => c.slice(0, 3).join(" ") === "d1 time-travel info")!;
+    expect(info).toEqual(["d1", "time-travel", "info", "DB", "--json", "--config", join(env.configDir, "default", "wrangler.jsonc")]);
+    const order = env.cf.calls.map((c) => c.slice(0, 3).join(" "));
+    expect(order.indexOf("d1 time-travel info")).toBeLessThan(order.indexOf("d1 migrations apply"));
+
+    expect(loadState(env.configDir, "default")!.lastUpgradeBackup).toEqual({
+      takenAt: "2026-11-25T12:00:00.000Z",
+      fromVersion: "0.8.0",
+      toVersion: "0.8.1",
+      bookmark: env.cf.bookmark,
+      sqlFile: out.backup,
+    });
+    expect(next.logs.join("\n")).toContain(`npx wrangler d1 time-travel restore claros-default --bookmark ${env.cf.bookmark}`);
+  });
+
+  it("exports only the regular tables (no FTS5 index or internal tables)", async () => {
+    const env = testEnv({ version: "0.8.0" });
+    await deploy(env.ctx, { domain: DOMAIN, nonInteractive: true });
+    env.cf.resetCalls();
+    const next = testEnv({ cf: env.cf, configDir: env.configDir, version: "0.8.1" });
+    await upgrade(next.ctx, { nonInteractive: true });
+
+    const exp = env.cf.calls.find((c) => c[0] === "d1" && c[1] === "export")!;
+    const tables = exp.flatMap((a, i) => (exp[i - 1] === "--table" ? [a] : []));
+    expect(tables).toEqual(["d1_migrations", "kb_entries", "tenants"]);
+    expect(exp.filter((a) => a === "--table")).toHaveLength(3);
+    expect(exp).toContain("--remote");
+    expect(next.warnings).toEqual([]);
+  });
+
+  it("only warns when the SQL export fails and the bookmark was taken", async () => {
+    const env = testEnv({ version: "0.8.0" });
+    await deploy(env.ctx, { domain: DOMAIN, nonInteractive: true });
+    env.cf.migrations.push("0005_next.sql");
+    env.cf.failExport = "✘ [ERROR] D1 Export error: something went wrong";
+    const next = testEnv({ cf: env.cf, configDir: env.configDir, version: "0.8.1" });
+    const out = await upgrade(next.ctx, { nonInteractive: true });
+
+    expect(out).toMatchObject({ upgraded: true, backup: null, bookmark: env.cf.bookmark });
+    expect(next.warnings.join("\n")).toMatch(/SQL export of D1 failed; going on with the Time Travel bookmark/);
+    expect(env.cf.applied.has("0005_next.sql")).toBe(true);
+    expect(loadState(env.configDir, "default")!.lastUpgradeBackup).toMatchObject({ bookmark: env.cf.bookmark, sqlFile: null });
+  });
+
+  it("goes on with the SQL export when no bookmark can be read", async () => {
+    const env = testEnv({ version: "0.8.0" });
+    await deploy(env.ctx, { domain: DOMAIN, nonInteractive: true });
+    env.cf.failBookmark = "✘ [ERROR] Time travel is not available for alpha D1 databases.";
+    const next = testEnv({ cf: env.cf, configDir: env.configDir, version: "0.8.1" });
+    const out = await upgrade(next.ctx, { nonInteractive: true });
+    expect(out).toMatchObject({ upgraded: true, bookmark: null });
+    expect(readFileSync(out.backup!, "utf8")).toContain("fake export");
+    expect(next.warnings.join("\n")).toMatch(/Could not read a D1 Time Travel bookmark/);
+  });
+
+  it("stops before migrating when neither the bookmark nor the export works", async () => {
+    const env = testEnv({ version: "0.8.0" });
+    await deploy(env.ctx, { domain: DOMAIN, nonInteractive: true });
+    env.cf.migrations.push("0005_next.sql");
+    env.cf.failBookmark = "✘ [ERROR] A request to the Cloudflare API failed.";
+    env.cf.failExport = "✘ [ERROR] D1 Export error: something went wrong";
+    env.cf.resetCalls();
+    const next = testEnv({ cf: env.cf, configDir: env.configDir, version: "0.8.1" });
+
+    await expect(upgrade(next.ctx, { nonInteractive: true })).rejects.toThrow(/Stopped before migrating: could not back up D1/);
+    expect(env.cf.applied.has("0005_next.sql")).toBe(false);
+    expect(env.cf.mutating()).toEqual([]);
+    expect(env.cf.calls.some((c) => c[0] === "d1" && c[1] === "migrations")).toBe(false);
+    expect(loadState(env.configDir, "default")).toMatchObject({ deployedVersion: "0.8.0", lastUpgradeBackup: null });
+  });
+
   it("refuses to downgrade", async () => {
     const env = testEnv({ version: "0.8.1" });
     await deploy(env.ctx, { domain: DOMAIN, nonInteractive: true });
@@ -264,6 +344,7 @@ describe("claros upgrade", () => {
     expect(env.cf.workers.get("claros-default")!.active).toBe(before);
     expect(loadState(env.configDir, "default")).toMatchObject({ deployedVersion: "0.8.0", versionId: before });
     expect(next.warnings.join("\n")).toMatch(/D1 migrations are not rolled back/);
+    expect(next.warnings.join("\n")).toContain(`Time Travel: npx wrangler d1 time-travel restore claros-default --bookmark ${env.cf.bookmark}`);
   });
 
   it("rolls back when the deploy itself fails", async () => {

@@ -114,6 +114,14 @@ export interface DeployResult {
 /** Name of the D1 binding in the generated configuration. */
 export const D1_BINDING = "DB";
 
+/**
+ * Tables `d1 export` can write: everything but SQLite and D1 internals and
+ * the FTS5 knowledge-base index (kb_fts and its shadow tables), which is
+ * rebuilt from kb_entries with `INSERT INTO kb_fts(kb_fts) VALUES('rebuild')`.
+ */
+export const D1_EXPORTABLE_TABLES_SQL =
+  "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'kb_fts%' ORDER BY name";
+
 export class Wrangler {
   constructor(
     private readonly run: Runner,
@@ -210,8 +218,31 @@ export class Wrangler {
     await this.ok(["d1", "migrations", "apply", D1_BINDING, "--remote", "--force", ...this.config()]);
   }
 
-  async d1Export(outputFile: string): Promise<void> {
-    await this.ok(["d1", "export", D1_BINDING, "--remote", "--skip-confirmation", "--output", outputFile, ...this.config()]);
+  /**
+   * The current D1 Time Travel bookmark of the remote database
+   * (`wrangler d1 time-travel info DB --json` prints `{ "bookmark": "..." }`).
+   */
+  async d1Bookmark(): Promise<string> {
+    const res = await this.ok(["d1", "time-travel", "info", D1_BINDING, "--json", ...this.config()]);
+    const bookmark = parseJsonOutput<{ bookmark?: unknown }>(res.stdout).bookmark;
+    if (typeof bookmark !== "string" || bookmark === "") throw new Error(`wrangler d1 time-travel info returned no bookmark: ${tail(res.stdout, 5)}`);
+    return bookmark;
+  }
+
+  /** Regular tables of the remote D1 database (no SQLite, D1 or FTS5 internals). */
+  async d1ExportableTables(): Promise<string[]> {
+    const [rows = []] = await this.d1Execute(D1_EXPORTABLE_TABLES_SQL);
+    return rows.map((r) => String(r.name));
+  }
+
+  /**
+   * Export the remote D1 database as SQL. `d1 export` refuses databases with
+   * virtual tables (FTS5), so callers pass the regular tables to export.
+   */
+  async d1Export(outputFile: string, tables: string[] = []): Promise<void> {
+    const args = ["d1", "export", D1_BINDING, "--remote", "--skip-confirmation", "--output", outputFile];
+    for (const t of tables) args.push("--table", t);
+    await this.ok([...args, ...this.config()]);
   }
 
   async deploy(opts: { secretsFile?: string } = {}): Promise<DeployResult> {

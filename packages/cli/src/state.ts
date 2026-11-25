@@ -35,6 +35,20 @@ export interface InstanceState {
   configHash: string | null;
   /** Secrets this CLI generated. Back this file up. */
   generatedSecrets: Partial<Record<SecretName, string>>;
+  /** Backup taken by the last `claros upgrade`, right before it migrated D1. */
+  lastUpgradeBackup: UpgradeBackup | null;
+}
+
+export interface UpgradeBackup {
+  /** When the backup was taken (ISO 8601). */
+  takenAt: string;
+  /** Claros version running before the upgrade. */
+  fromVersion: string | null;
+  toVersion: string;
+  /** D1 Time Travel bookmark (`wrangler d1 time-travel restore --bookmark`), null if it could not be read. */
+  bookmark: string | null;
+  /** SQL export of the regular tables (no FTS5 index), null if the export failed. */
+  sqlFile: string | null;
 }
 
 /** Instance names: lowercase letters, digits and hyphens. */
@@ -80,6 +94,7 @@ export function newState(name: string, accountId: string): InstanceState {
     versionId: null,
     configHash: null,
     generatedSecrets: {},
+    lastUpgradeBackup: null,
   };
 }
 
