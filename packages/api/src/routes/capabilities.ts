@@ -10,9 +10,12 @@
  * Callers: any dashboard session (member), a product admin key of any
  * scope, or an instance key with instance:read.
  *
- * Postgres keeps optional pgvector similarity search for the knowledge base
- * and the monthly-partitioned events table; D1 uses FTS5 and a plain events
- * table (DECISIONS.md D5). Every transport kind exists on both runtimes:
+ * kb.semantic: the knowledge base supports similarity search over
+ * embeddings, on Postgres with pgvector, on D1 with cosine similarity
+ * computed over the stored vectors (DECISIONS.md, "Embedding provider"). It is used once the
+ * product has an embedding provider; without one, entries are found by word
+ * matching on both backends. Postgres keeps the monthly-partitioned events
+ * table; D1 a plain events table (DECISIONS.md D5). Every transport kind exists on both runtimes:
  * on Node, Cloudflare Email Service goes through the REST API and SMTP
  * through nodemailer; on Workers, through the send_email binding (or the
  * REST API) and worker-mailer.
@@ -103,7 +106,7 @@ export default function capabilitiesRoutes(opts: { runtime?: Runtime } = {}) {
     return c.json({
       backend: postgres ? "postgres" : "d1",
       runtime,
-      kb: { semantic: postgres },
+      kb: { semantic: true },
       events: { partitioned: postgres },
       transports: [...TRANSPORT_KINDS],
       features: [...FEATURES],

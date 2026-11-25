@@ -52,7 +52,7 @@ describe("instance keys on D1", () => {
     const ik = await instanceKey(["instance:read"]);
     const res = await a.inject({ method: "GET", url: "/v1/capabilities", headers: { authorization: `Bearer ${ik}` } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ backend: "d1", runtime: "workers", kb: { semantic: false }, events: { partitioned: false } });
+    expect(res.json()).toMatchObject({ backend: "d1", runtime: "workers", kb: { semantic: true }, events: { partitioned: false } });
   });
 
   it("creates a product, gives it an admin key and erases a person everywhere", async () => {

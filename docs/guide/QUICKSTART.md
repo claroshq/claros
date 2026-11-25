@@ -103,7 +103,7 @@ Your test event created a contact, matched the welcome flow's trigger, generated
 
 ## What you can skip
 
-- **LLM provider**: not needed for the library flow or any fixed-content flow you write yourself. Add one later (Settings, LLM) for prompt-defined flows and AI-drafted copy.
+- **LLM provider**: not needed for the library flow or any fixed-content flow you write yourself. Add one later (Settings, AI providers) for prompt-defined flows and AI-drafted copy.
 - **`claros setup` wizard** (Docker image): the CLI wizard still exists for headless or scripted installs. The browser path replaces it for interactive use.
 
 ## Where to go next

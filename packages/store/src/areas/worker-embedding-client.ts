@@ -21,4 +21,6 @@ export interface WorkerEmbeddingLlmConfig {
 export interface WorkerEmbeddingClientQueries {
   /** The tenant's active LLM config, or null when none is active. */
   getActiveLlmConfig(tenantId: string): Promise<WorkerEmbeddingLlmConfig | null>;
+  /** The tenant's active embedding_configs row (same shape), or null when none is active. */
+  getActiveEmbeddingConfig(tenantId: string): Promise<WorkerEmbeddingLlmConfig | null>;
 }

@@ -2,6 +2,10 @@
  * Shared embedding client - resolves a tenant's embedding provider config and
  * calls the OpenAI-compatible /embeddings endpoint.
  *
+ * The provider comes from embedding_configs (Settings, Embeddings) or, for
+ * installs that predate it, from an embeddings-capable llm_configs row; see
+ * resolveEmbeddingProvider.
+ *
  * Used by:
  *   - embed-kb.ts (indexing: generate embeddings for kb_entries rows)
  *   - context-kb.ts (querying: embed the query text for similarity search)
@@ -14,6 +18,11 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
+import {
+  EMBEDDING_DIMENSIONS,
+  LLM_PROVIDERS_WITHOUT_EMBEDDINGS,
+  type EmbeddingConfigEnvelope,
+} from "@claros/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,6 +72,10 @@ export interface EmbeddingProviderResolved {
   apiKey: string;
   baseUrl: string;
   embeddingModel: string;
+  /** Send `dimensions` with this value, or undefined to leave it out. */
+  dimensions: number | undefined;
+  /** Where the settings came from. */
+  source: "embedding_config" | "llm_config";
 }
 
 export interface EmbeddingProviderFailure {
@@ -70,6 +83,11 @@ export interface EmbeddingProviderFailure {
   reason: string;
   /** true = permanent config error; false = should be treated as transient */
   permanent: boolean;
+  /**
+   * true = no embedding provider is configured. Not an error: the knowledge
+   * base works without embeddings (kb_context falls back to word matching).
+   */
+  notConfigured?: boolean;
 }
 
 export type EmbeddingProviderResult = EmbeddingProviderResolved | EmbeddingProviderFailure;
@@ -81,60 +99,87 @@ export type EmbeddingProviderResult = EmbeddingProviderResolved | EmbeddingProvi
 /**
  * Resolve the embedding provider configuration for a tenant.
  *
- * Reads the tenant's active llm_configs row, decrypts it, and returns the
- * connection parameters needed for an embedding call.
+ * Order:
+ *   1. The tenant's active embedding_configs row (Settings, Embeddings).
+ *   2. The active llm_configs row, as before embedding_configs existed, when
+ *      it can serve embeddings: an explicit embedding_model, or a provider
+ *      other than those in LLM_PROVIDERS_WITHOUT_EMBEDDINGS (Anthropic,
+ *      Ollama). Installs that embed with their OpenAI chat key keep working.
+ *   3. Otherwise notConfigured: not an error.
  *
  * Returns a failure descriptor (not a thrown error) so callers can decide
  * whether to record a permanent failure, retry, or skip silently.
  *
- * permanent=true failures: missing config, missing ENCRYPTION_KEY, decrypt error.
- * These are configuration problems that retrying will not fix.
+ * permanent=true failures: missing ENCRYPTION_KEY, decrypt error. These are
+ * configuration problems that retrying will not fix.
  */
 export async function resolveEmbeddingProvider(
   db: Db,
   tenantId: string,
 ): Promise<EmbeddingProviderResult> {
-  // Read the tenant's active LLM config
-  const llmConfig = await storeFor(db).workerEmbeddingClient.getActiveLlmConfig(tenantId);
+  const store = storeFor(db).workerEmbeddingClient;
 
-  if (llmConfig === null) {
+  const embeddingRow = await store.getActiveEmbeddingConfig(tenantId);
+  if (embeddingRow) {
+    const decrypted = decryptEnvelope<EmbeddingConfigEnvelope>(embeddingRow.config, "embedding");
+    if (!decrypted.ok) return decrypted;
+    const c = decrypted.value;
     return {
-      ok: false,
-      permanent: true,
-      reason:
-        `No active LLM configuration found for tenant ${tenantId}. ` +
-        "Add an LLM provider in Settings before KB entries can be embedded.",
+      ok: true,
+      apiKey: c.apiKey,
+      baseUrl: c.baseUrl.replace(/\/+$/, ""),
+      embeddingModel: c.model,
+      dimensions: c.sendDimensions ? EMBEDDING_DIMENSIONS : undefined,
+      source: "embedding_config",
     };
   }
 
+  const llmConfig = await store.getActiveLlmConfig(tenantId);
+  if (llmConfig !== null) {
+    const decrypted = decryptEnvelope<EmbeddingProviderConfig>(llmConfig.config, "LLM");
+    if (!decrypted.ok) return decrypted;
+    const c = decrypted.value;
+    if (c.embedding_model || !LLM_PROVIDERS_WITHOUT_EMBEDDINGS.includes(llmConfig.provider)) {
+      return {
+        ok: true,
+        apiKey: c.apiKey,
+        baseUrl: c.baseUrl.replace(/\/+$/, ""),
+        embeddingModel: c.embedding_model ?? DEFAULT_EMBEDDING_MODEL,
+        dimensions: undefined,
+        source: "llm_config",
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    permanent: true,
+    notConfigured: true,
+    reason:
+      `No embedding provider configured for tenant ${tenantId}. ` +
+      "Add one in Settings, Embeddings to enable semantic search; until then " +
+      "the knowledge base is searched by word matching.",
+  };
+}
+
+function decryptEnvelope<T>(
+  envelope: string,
+  what: string,
+): { ok: true; value: T } | EmbeddingProviderFailure {
   const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
   if (!encryptionKeyEnv) {
-    return {
-      ok: false,
-      permanent: true,
-      reason: "ENCRYPTION_KEY environment variable is not set.",
-    };
+    return { ok: false, permanent: true, reason: "ENCRYPTION_KEY environment variable is not set." };
   }
-
-  let providerConfig: EmbeddingProviderConfig;
   try {
     const key = parseEncryptionKey(encryptionKeyEnv);
-    const decrypted = decrypt(llmConfig.config, key);
-    providerConfig = JSON.parse(decrypted) as EmbeddingProviderConfig;
+    return { ok: true, value: JSON.parse(decrypt(envelope, key)) as T };
   } catch (err) {
     return {
       ok: false,
       permanent: true,
-      reason: `Failed to decrypt LLM configuration: ${err instanceof Error ? err.message : String(err)}`,
+      reason: `Failed to decrypt ${what} configuration: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-
-  return {
-    ok: true,
-    apiKey: providerConfig.apiKey,
-    baseUrl: providerConfig.baseUrl.replace(/\/+$/, ""),
-    embeddingModel: providerConfig.embedding_model ?? DEFAULT_EMBEDDING_MODEL,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -154,15 +199,18 @@ export async function resolveEmbeddingProvider(
  * @param apiKey  - API key for Authorization: Bearer.
  * @param model   - Embedding model identifier.
  * @param input   - Text to embed.
+ * @param dimensions - Sent as `dimensions` when given (models that can
+ *                     shorten their vectors, such as text-embedding-3-*).
  */
 export async function callEmbedding(
   baseUrl: string,
   apiKey: string,
   model: string,
   input: string,
+  dimensions?: number,
 ): Promise<number[]> {
   const url = `${baseUrl}/embeddings`;
-  const body = { model, input };
+  const body = { model, input, ...(dimensions !== undefined ? { dimensions } : {}) };
 
   const MAX_RETRIES = 3;
   const BASE_DELAY_MS = 1000;

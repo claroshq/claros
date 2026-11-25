@@ -79,6 +79,7 @@ import {
 import type { Db } from "../plugins/db.js";
 import { RoleRouter, validatedBody } from "../http/router.js";
 import { loadTransportSetup, registerTransportRoutes, saveRouting, sendTestEmail } from "./settings-transports.js";
+import { registerEmbeddingRoutes } from "./settings-embeddings.js";
 import { validateBody, coerceInt, coerceBool, coerceString } from "../http/validate.js";
 
 // ---------------------------------------------------------------------------
@@ -234,6 +235,7 @@ const testEmailBodySchema = z.object({
 export default function settingsRoutes() {
   const r = new RoleRouter();
   registerTransportRoutes(r);
+  registerEmbeddingRoutes(r);
   // -------------------------------------------------------------------------
   // PUT /v1/settings/transport
   // -------------------------------------------------------------------------

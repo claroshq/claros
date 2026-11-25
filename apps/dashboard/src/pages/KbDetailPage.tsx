@@ -11,7 +11,8 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useKbEntry, useUpdateKbEntry, useDeleteKbEntry } from "../kb.js";
 import type { KbEntry, FlowApiError } from "../api.js";
-import { Badge, type BadgeVariant } from "../components/ui/badge.js";
+import { Badge } from "../components/ui/badge.js";
+import { embeddingVariant, embeddingLabel } from "../kb-embedding.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Select } from "../components/ui/select.js";
@@ -19,22 +20,6 @@ import { Textarea } from "../components/ui/textarea.js";
 import { Skeleton } from "../components/ui/skeleton.js";
 
 const CONTENT_TYPES = ["markdown", "html", "text"] as const;
-
-function embeddingVariant(status: KbEntry["embedding_status"]): BadgeVariant {
-  switch (status) {
-    case "pending": return "warning";
-    case "failed": return "danger";
-    case null: return "success";
-  }
-}
-
-function embeddingLabel(status: KbEntry["embedding_status"]): string {
-  switch (status) {
-    case "pending": return "embedding";
-    case "failed": return "embed failed";
-    case null: return "embedded";
-  }
-}
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);

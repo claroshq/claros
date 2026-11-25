@@ -58,7 +58,7 @@ import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor, type ApiKbQueries, type KbImportEntry } from "@claros/store";
 import { QUEUE } from "@claros/core";
-import type { Db } from "../plugins/db.js";
+import type { Db, EnqueueFn } from "../plugins/db.js";
 
 /** A kb_entries row as the store returns it. */
 type KbEntryRow = NonNullable<Awaited<ReturnType<ApiKbQueries["findEntry"]>>>;
@@ -570,6 +570,7 @@ export default function kbRoutes() {
    *   embedding IS NULL AND (
    *     embedding_status IS NULL           - never enqueued
    *     OR embedding_status = 'failed'     - permanent failure
+   *     OR embedding_status = 'skipped'    - no embedding provider when it ran
    *     OR (embedding_status = 'pending'   - stale pending = likely orphan
    *         AND updated_at < now() - 15 min)
    *   )
@@ -664,78 +665,94 @@ export default function kbRoutes() {
       return c.json({ error: "Job queue is not available." }, 503);
     }
 
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-
-    // Count ALL qualifying entries (for the 'remaining' response field).
-    //
-    // Qualifying condition (idempotency + orphan recovery):
-    //   embedding IS NULL
-    //   AND (
-    //     embedding_status IS NULL                 -- never enqueued
-    //     OR embedding_status = 'failed'           -- permanent failure, fix and retry
-    //     OR (embedding_status = 'pending'         -- stale pending = likely orphan
-    //         AND updated_at < now() - 15 min)     --   (process died before boss.send())
-    //   )
-    //
-    // A 'pending' entry updated within the last 15 minutes is excluded: a live job
-    // is assumed. An expireInMinutes:10 job cannot remain active past 10 minutes, so
-    // anything still pending at 15 minutes has either orphaned or will self-expire.
-    // See RE_EMBED_ORPHAN_THRESHOLD_MINUTES for the full rationale and failure modes.
-    const allQualifying = await storeFor(db).apiKb.listReEmbedCandidateIds({
-      tenantId,
-      orphanThresholdMinutes: RE_EMBED_ORPHAN_THRESHOLD_MINUTES,
-    });
-
-    const totalQualifying = allQualifying.length;
-
-    if (totalQualifying === 0) {
-      return c.json({ enqueued: 0, remaining: 0, total_qualifying: 0, message: "No entries require re-embedding." }, 202);
-    }
-
-    // Apply the per-call cap.
-    const batch = allQualifying.slice(0, RE_EMBED_BATCH_CAP);
-    const remaining = totalQualifying - batch.length;
-    const ids = batch;
-
-    // Reset embedding_status to 'pending' and clear embedding_error for this batch.
-    await storeFor(db).apiKb.markEntriesPendingEmbedding({ tenantId, ids, now: new Date() });
-
-    // Enqueue a job for each entry in the batch.
-    // Failures are logged but do not abort the remaining enqueues.
-    let enqueued = 0;
-    for (const id of batch) {
-      try {
-        await enqueue(
-          QUEUE.KB_EMBED,
-          { kb_entry_id: id, tenant_id: tenantId },
-          {
-            singletonKey: id,
-            expireInMinutes: 10,
-            retryLimit: 3,
-            retryDelay: 60,
-          },
-        );
-        enqueued++;
-      } catch (err) {
-        console.warn(
-          `[kb] re-embed: failed to enqueue job for entry ${id}:`,
-          err,
-        );
-      }
-    }
-
-    return c.json({
-      enqueued,
-      remaining,
-      total_qualifying: totalQualifying,
-      message:
-        remaining > 0
-          ? `Re-embedding enqueued for ${enqueued} entries. Call again to process ${remaining} more.`
-          : `Re-embedding enqueued for ${enqueued} entries.`,
-    }, 202);
+    const result = await startReEmbed(c.var.db, c.var.tenant!.id, enqueue);
+    return c.json(result, 202);
   });
   return r.app;
+}
+
+/** Result of one re-embed batch (POST /v1/kb/re-embed response body). */
+export interface ReEmbedResult {
+  enqueued: number;
+  remaining: number;
+  total_qualifying: number;
+  message: string;
+}
+
+/**
+ * Enqueue one batch (RE_EMBED_BATCH_CAP) of the tenant's entries that need
+ * embedding. Shared by POST /v1/kb/re-embed and the embedding settings
+ * routes, which start the first batch after the provider changes.
+ */
+export async function startReEmbed(db: Db, tenantId: string, enqueue: EnqueueFn): Promise<ReEmbedResult> {
+  // Count ALL qualifying entries (for the 'remaining' response field).
+  //
+  // Qualifying condition (idempotency + orphan recovery):
+  //   embedding IS NULL
+  //   AND (
+  //     embedding_status IS NULL                 -- never enqueued
+  //     OR embedding_status = 'failed'           -- permanent failure, fix and retry
+  //     OR embedding_status = 'skipped'          -- no provider when it last ran
+  //     OR (embedding_status = 'pending'         -- stale pending = likely orphan
+  //         AND updated_at < now() - 15 min)     --   (process died before boss.send())
+  //   )
+  //
+  // A 'pending' entry updated within the last 15 minutes is excluded: a live job
+  // is assumed. An expireInMinutes:10 job cannot remain active past 10 minutes, so
+  // anything still pending at 15 minutes has either orphaned or will self-expire.
+  // See RE_EMBED_ORPHAN_THRESHOLD_MINUTES for the full rationale and failure modes.
+  const allQualifying = await storeFor(db).apiKb.listReEmbedCandidateIds({
+    tenantId,
+    orphanThresholdMinutes: RE_EMBED_ORPHAN_THRESHOLD_MINUTES,
+  });
+
+  const totalQualifying = allQualifying.length;
+
+  if (totalQualifying === 0) {
+    return { enqueued: 0, remaining: 0, total_qualifying: 0, message: "No entries require re-embedding." };
+  }
+
+  // Apply the per-call cap.
+  const batch = allQualifying.slice(0, RE_EMBED_BATCH_CAP);
+  const remaining = totalQualifying - batch.length;
+  const ids = batch;
+
+  // Reset embedding_status to 'pending' and clear embedding_error for this batch.
+  await storeFor(db).apiKb.markEntriesPendingEmbedding({ tenantId, ids, now: new Date() });
+
+  // Enqueue a job for each entry in the batch.
+  // Failures are logged but do not abort the remaining enqueues.
+  let enqueued = 0;
+  for (const id of batch) {
+    try {
+      await enqueue(
+        QUEUE.KB_EMBED,
+        { kb_entry_id: id, tenant_id: tenantId },
+        {
+          singletonKey: id,
+          expireInMinutes: 10,
+          retryLimit: 3,
+          retryDelay: 60,
+        },
+      );
+      enqueued++;
+    } catch (err) {
+      console.warn(
+        `[kb] re-embed: failed to enqueue job for entry ${id}:`,
+        err,
+      );
+    }
+  }
+
+  return {
+    enqueued,
+    remaining,
+    total_qualifying: totalQualifying,
+    message:
+      remaining > 0
+        ? `Re-embedding enqueued for ${enqueued} entries. Call again to process ${remaining} more.`
+        : `Re-embedding enqueued for ${enqueued} entries.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

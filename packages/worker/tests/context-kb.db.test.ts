@@ -23,9 +23,12 @@
  *
  * Edge cases:
  * - Inactive entries (is_active=false) are excluded from results.
- * - Entries without embeddings are excluded from results.
+ * - Entries without embeddings are excluded from semantic results.
  * - When the explicit kb_ref is not found, similarity results fill all slots.
- * - Provider config failure for query embedding returns undefined gracefully.
+ *
+ * Keyword fallback (no embedding provider, or a failed query embedding):
+ * - Entries sharing enough non-stop words with the query are returned,
+ *   embedded or not; kb_ref works without an embedding.
  *
  * Requires local Postgres (docker compose up postgres).
  */
@@ -412,7 +415,7 @@ describe("buildKbContextSection - graceful degradation", () => {
     expect(result).not.toContain("No Embedding Entry");
   });
 
-  it("provider config failure returns undefined without throwing", async () => {
+  it("no provider and no word match returns undefined without throwing", async () => {
     if (!dbAvailable) return;
     // Use otherTenantId which has no llm_configs row
     const vec = makeVector([0, 1, 2]);
@@ -420,8 +423,68 @@ describe("buildKbContextSection - graceful degradation", () => {
 
     const result = await buildKbContextSection(db, otherTenantId, "query");
     expect(result).toBeUndefined();
-    // fetch must not have been called (provider resolution failed before the call)
+    // fetch must not have been called (no provider: no embedding call)
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: keyword fallback (no embedding provider, or a failed query embedding)
+// ---------------------------------------------------------------------------
+
+async function insertPlainEntry(title: string, content: string, tenantId: string, isActive = true): Promise<string> {
+  const result = await db.execute<{ id: string }>(sql`
+    INSERT INTO kb_entries (tenant_id, title, content, content_type, source, is_active, embedding_status)
+    VALUES (${tenantId}::uuid, ${title}, ${content}, 'markdown', 'manual', ${isActive}, 'skipped')
+    RETURNING id
+  `);
+  return result.rows[0]!.id;
+}
+
+describe("buildKbContextSection - keyword fallback", () => {
+  it("no provider: unembedded entries are found by shared words, most shared first", async () => {
+    if (!dbAvailable) return;
+    await insertPlainEntry("Webhooks and the API", "A webhook posts each new record to your URL.", otherTenantId);
+    await insertPlainEntry("Plans and quota", "Pricing plans: Free, Pro and Business. The monthly quota counts companies.", otherTenantId);
+    await insertPlainEntry("Hiring signals", "Career pages show which team is hiring.", otherTenantId);
+    await insertPlainEntry("Quota (inactive)", "Pricing plans quota monthly.", otherTenantId, false);
+
+    const result = await buildKbContextSection(
+      db,
+      otherTenantId,
+      "Explain the pricing plans and the monthly quota: nurture_value",
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result).toBeDefined();
+    expect(result).toContain("[Plans and quota]");
+    expect(result).not.toContain("Webhooks and the API");
+    expect(result).not.toContain("Hiring signals");
+    expect(result).not.toContain("inactive");
+  });
+
+  it("stop words alone do not make a match", async () => {
+    if (!dbAvailable) return;
+    await insertPlainEntry("Generic", "This is about the thing that they have for you.", otherTenantId);
+    const result = await buildKbContextSection(db, otherTenantId, "what about the thing for you: nurture_value");
+    // "thing" is the only shared non-stop word: below the 2-word minimum.
+    expect(result).toBeUndefined();
+  });
+
+  it("kb_ref finds an entry without an embedding", async () => {
+    if (!dbAvailable) return;
+    await insertPlainEntry("Founding price", "Lock the founding price before it ends.", otherTenantId);
+    const result = await buildKbContextSection(db, otherTenantId, "unrelated words", "Founding price");
+    expect(result).toContain("[Founding price]");
+  });
+
+  it("provider configured but the query embedding fails: falls back to words", async () => {
+    if (!dbAvailable) return;
+    await insertPlainEntry("Plans and quota", "Pricing plans and the monthly quota.", testTenantId);
+    mockFetch.mockResolvedValue({ ok: false, status: 401, text: async () => "bad key" });
+
+    const result = await buildKbContextSection(db, testTenantId, "pricing plans quota: nurture_value");
+    expect(mockFetch).toHaveBeenCalled();
+    expect(result).toContain("[Plans and quota]");
   });
 });
 

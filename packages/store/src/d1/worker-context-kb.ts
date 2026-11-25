@@ -7,7 +7,7 @@
  * first, top `limit`), like pgvector's `<=>`. The caller applies the
  * similarity floor. A dimension mismatch throws, as pgvector does.
  */
-import { and, eq, isNotNull, ne } from "drizzle-orm";
+import { and, asc, eq, isNotNull, ne } from "drizzle-orm";
 import { kbEntries } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { WorkerContextKbQueries, WorkerKbSimilarityRow } from "../areas/worker-context-kb.js";
@@ -29,7 +29,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
 export function d1WorkerContextKb(db: D1Db): WorkerContextKbQueries {
   return {
-    async findEmbeddedEntryByTitle({ tenantId, title }) {
+    async findActiveEntryByTitle({ tenantId, title }) {
       const rows = await db
         .select({ id: kbEntries.id, title: kbEntries.title, content: kbEntries.content })
         .from(kbEntries)
@@ -38,7 +38,6 @@ export function d1WorkerContextKb(db: D1Db): WorkerContextKbQueries {
             eq(kbEntries.tenantId, tenantId),
             eq(kbEntries.title, title),
             eq(kbEntries.isActive, true),
-            isNotNull(kbEntries.embedding),
           ),
         )
         .limit(1);
@@ -82,6 +81,21 @@ export function d1WorkerContextKb(db: D1Db): WorkerContextKbQueries {
           similarity: String(r.similarity),
         }),
       );
+    },
+
+    async listActiveEntries({ tenantId, limit, excludeId }) {
+      return db
+        .select({ id: kbEntries.id, title: kbEntries.title, content: kbEntries.content })
+        .from(kbEntries)
+        .where(
+          and(
+            eq(kbEntries.tenantId, tenantId),
+            eq(kbEntries.isActive, true),
+            excludeId ? ne(kbEntries.id, excludeId) : undefined,
+          ),
+        )
+        .orderBy(asc(kbEntries.createdAt), asc(kbEntries.id))
+        .limit(limit);
     },
   };
 }

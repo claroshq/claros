@@ -147,7 +147,7 @@ All variables are read by the server process unless noted. The only hard require
 
 | Variable | Default | What it does | Get it wrong |
 |---|---|---|---|
-| `ENCRYPTION_KEY` | none | AES-256-GCM key for transport and LLM credentials at rest. Generate: `openssl rand -base64 32` | Server boots with a warning, but saving transport/LLM settings, flow compilation, and KB embeddings fail at first use. Losing it makes all stored credentials unreadable; back it up with the database |
+| `ENCRYPTION_KEY` | none | AES-256-GCM key for transport, LLM and embedding credentials at rest. Generate: `openssl rand -base64 32` | Server boots with a warning, but saving transport/LLM settings, flow compilation, and KB embeddings fail at first use. Losing it makes all stored credentials unreadable; back it up with the database |
 | `UNSUBSCRIBE_SIGNING_KEY` | none | HMAC key signing one-click unsubscribe tokens. Generate: `openssl rand -hex 32` | Sending fails closed: messages stay `approved` and the drain skips them. Once real email has been delivered, changing it breaks unsubscribe links already in inboxes. Treat as permanent |
 
 ### URLs
@@ -214,7 +214,7 @@ Changing transport replaces the active row; old credentials stay in the table (i
 
 ### LLM provider
 
-Optional. Required only for prompt-defined flow compilation, AI-drafted content, and KB embeddings. Configured at Settings → LLM or:
+Optional. Required only for prompt-defined flow compilation and AI-drafted content. Configured at Settings → AI providers or:
 
 ```bash
 echo '{"provider":"openai","api_key":"sk-...","model":"gpt-4o-mini"}' \
@@ -223,12 +223,14 @@ echo '{"provider":"openai","api_key":"sk-...","model":"gpt-4o-mini"}' \
 
 | Provider | Default base URL | Default model | Notes |
 |---|---|---|---|
-| `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | Embeddings via `text-embedding-3-small` |
-| `anthropic` | `https://api.anthropic.com/v1` | `claude-sonnet-4-6` | Uses Anthropic's OpenAI-compatible endpoint; no embeddings endpoint, so KB features need a second provider |
-| `ollama` | `http://localhost:11434/v1` | `llama3` | Local models; embedding dimension rarely matches the required 1536, so KB embeddings are effectively OpenAI-only |
+| `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | Also serves KB embeddings (`text-embedding-3-small`) unless an embedding provider is set |
+| `anthropic` | `https://api.anthropic.com/v1` | `claude-sonnet-4-6` | Uses Anthropic's OpenAI-compatible endpoint. Anthropic has no embeddings API: for semantic KB search, set an [embedding provider](KB.md#embedding-provider) |
+| `ollama` | `http://localhost:11434/v1` | `llama3` | Local models; not used for embeddings (their vectors are not 1536-dimensional) |
 | `custom` | (required) | (required) | Any OpenAI-compatible `/v1/chat/completions` endpoint: Gemini, Groq, vLLM, Azure, etc. |
 
-The embedding model defaults to `text-embedding-3-small` and must produce 1536-dimensional vectors. Credentials are verified against the provider with a minimal API call before being saved, and stored encrypted.
+Credentials are verified against the provider with a minimal API call before being saved, and stored encrypted.
+
+Knowledge base embeddings are optional and have their own provider (Settings → AI providers → Embeddings, or `PUT /v1/settings/embeddings`): OpenAI or any OpenAI-compatible endpoint that returns 1536-dimensional vectors. Without one, the knowledge base is searched by word matching. See [Search and embeddings](KB.md#search-and-embeddings).
 
 Costs: compilation is one call per prompt change. AI content is three calls (decide, draft, assess) per message per contact. That is why `gpt-4o-mini` is the default.
 

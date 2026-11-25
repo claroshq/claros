@@ -17,10 +17,11 @@ export interface WorkerKbSimilarityRow {
 
 export interface WorkerContextKbQueries {
   /**
-   * An active, embedded KB entry of the tenant with this exact
-   * (case-sensitive) title, or null.
+   * An active KB entry of the tenant with this exact (case-sensitive) title,
+   * or null. Whether it has an embedding does not matter: a kb_ref names the
+   * entry explicitly.
    */
-  findEmbeddedEntryByTitle(input: {
+  findActiveEntryByTitle(input: {
     tenantId: string;
     title: string;
   }): Promise<{ id: string; title: string; content: string } | null>;
@@ -35,4 +36,14 @@ export interface WorkerContextKbQueries {
     limit: number;
     excludeId: string | null;
   }): Promise<WorkerKbSimilarityRow[]>;
+  /**
+   * The tenant's active KB entries, embedded or not, oldest first (created_at,
+   * then id), optionally excluding one entry id, at most `limit` rows. Input of
+   * the keyword fallback when no embedding provider is configured.
+   */
+  listActiveEntries(input: {
+    tenantId: string;
+    limit: number;
+    excludeId: string | null;
+  }): Promise<Array<{ id: string; title: string; content: string }>>;
 }

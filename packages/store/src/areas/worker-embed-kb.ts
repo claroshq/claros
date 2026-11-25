@@ -22,4 +22,6 @@ export interface WorkerEmbedKbQueries {
   saveEmbedding(tenantId: string, kbEntryId: string, embedding: number[]): Promise<void>;
   /** Record a permanent embedding failure: embedding_status = 'failed', embedding_error = reason (caller truncates). */
   markEmbeddingFailed(tenantId: string, kbEntryId: string, reason: string): Promise<void>;
+  /** No embedding provider configured: embedding_status = 'skipped', embedding and embedding_error cleared. */
+  markEmbeddingSkipped(tenantId: string, kbEntryId: string): Promise<void>;
 }

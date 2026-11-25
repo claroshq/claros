@@ -98,11 +98,19 @@ export function d1ApiKb(db: D1Db): ApiKbQueries {
             sql`(
               ${kbEntries.embeddingStatus} IS NULL
               OR ${kbEntries.embeddingStatus} = 'failed'
+              OR ${kbEntries.embeddingStatus} = 'skipped'
               OR (${kbEntries.embeddingStatus} = 'pending' AND ${kbEntries.updatedAt} < ${cutoff.getTime()})
             )`,
           ),
         );
       return rows.map((r) => r.id);
+    },
+
+    async clearEmbeddings({ tenantId }) {
+      await db
+        .update(kbEntries)
+        .set({ embedding: null, embeddingStatus: "skipped", embeddingError: null })
+        .where(eq(kbEntries.tenantId, tenantId));
     },
 
     async markEntriesPendingEmbedding({ tenantId, ids, now }) {

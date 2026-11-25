@@ -10,14 +10,13 @@ import type {
 
 export function pgWorkerContextKb(db: PgDb): WorkerContextKbQueries {
   return {
-    async findEmbeddedEntryByTitle({ tenantId, title }) {
+    async findActiveEntryByTitle({ tenantId, title }) {
       const rows = await db.execute<{ id: string; title: string; content: string }>(sql`
         SELECT id, title, content
         FROM kb_entries
         WHERE tenant_id = ${tenantId}::uuid
           AND title = ${title}
           AND is_active = true
-          AND embedding IS NOT NULL
         LIMIT 1
       `);
 
@@ -39,6 +38,19 @@ export function pgWorkerContextKb(db: PgDb): WorkerContextKbQueries {
           AND embedding IS NOT NULL
           ${excludeId ? sql`AND id != ${excludeId}::uuid` : sql``}
         ORDER BY embedding <=> ${vectorLiteral}::vector
+        LIMIT ${limit}
+      `);
+      return rows.rows;
+    },
+
+    async listActiveEntries({ tenantId, limit, excludeId }) {
+      const rows = await db.execute<{ id: string; title: string; content: string }>(sql`
+        SELECT id, title, content
+        FROM kb_entries
+        WHERE tenant_id = ${tenantId}::uuid
+          AND is_active = true
+          ${excludeId ? sql`AND id != ${excludeId}::uuid` : sql``}
+        ORDER BY created_at ASC, id ASC
         LIMIT ${limit}
       `);
       return rows.rows;

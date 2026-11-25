@@ -112,12 +112,19 @@ export interface ApiKbQueries {
   deleteEntry(args: { tenantId: string; id: string }): Promise<void>;
   /**
    * Ids of the tenant's entries that need (re-)embedding: no embedding and
-   * status null, 'failed', or 'pending' older than the orphan threshold
-   * (measured against the database clock).
+   * status null, 'failed', 'skipped', or 'pending' older than the orphan
+   * threshold (measured against the database clock).
    */
   listReEmbedCandidateIds(args: { tenantId: string; orphanThresholdMinutes: number }): Promise<string[]>;
   /** Set embedding_status = 'pending', clear embedding_error for the tenant's given entries. */
   markEntriesPendingEmbedding(args: { tenantId: string; ids: string[]; now: Date }): Promise<void>;
+  /**
+   * Drop every stored vector of the tenant (the embedding model changed, old
+   * vectors are incomparable): embedding_status = 'skipped' (no vector, no
+   * job queued; a re-embed candidate), embedding_error cleared. updated_at is
+   * left alone: this is not an edit.
+   */
+  clearEmbeddings(args: { tenantId: string }): Promise<void>;
   /** The tenant's entry with this external key, or null. */
   findEntryByExternalKey(args: { tenantId: string; externalKey: string }): Promise<ApiKbEntryRow | null>;
   /**

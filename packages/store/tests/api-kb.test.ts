@@ -2,7 +2,7 @@
  * Contract tests for the apiKb store area (every backend).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { testBackends, type Backend } from "./support/backends.js";
 
@@ -131,12 +131,40 @@ for (const factory of testBackends()) {
       const never = await mk("never", { embeddingStatus: null });
       const failed = await mk("failed", { embeddingStatus: "failed", embeddingError: "dims" });
       const orphan = await mk("orphan", { embeddingStatus: "pending", updatedAt: old });
+      const skipped = await mk("skipped", { embeddingStatus: "skipped" });
       await mk("inflight", { embeddingStatus: "pending", updatedAt: fresh });
       await mk("done", { embeddingStatus: null, embedding: vec });
       await b.store.apiKb.createEntry(entry(await b.newTenant(), "other"));
 
       const ids = await b.store.apiKb.listReEmbedCandidateIds({ tenantId: t, orphanThresholdMinutes: 10 });
-      expect([...ids].sort()).toEqual([never, failed, orphan].sort());
+      expect([...ids].sort()).toEqual([never, failed, orphan, skipped].sort());
+    });
+
+    it("clearEmbeddings drops the tenant's vectors, marks skipped, keeps updated_at", async () => {
+      const t = await b.newTenant();
+      const other = await b.newTenant();
+      const old = new Date(Date.UTC(2026, 0, 2));
+      const vec = Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0));
+      const mine = randomUUID();
+      const failed = randomUUID();
+      const fresh = randomUUID();
+      const foreign = randomUUID();
+      await b.db.insert(b.schema.kbEntries).values([
+        { ...entry(t, "mine"), id: mine, embedding: vec, updatedAt: old },
+        { ...entry(t, "failed"), id: failed, embeddingStatus: "failed", embeddingError: "x", updatedAt: old },
+        { ...entry(t, "fresh"), id: fresh, embedding: vec, embeddingStatus: "pending", updatedAt: new Date() },
+        { ...entry(other, "foreign"), id: foreign, embedding: vec },
+      ]);
+      await b.store.apiKb.clearEmbeddings({ tenantId: t });
+      const rows = await b.db.select().from(b.schema.kbEntries).where(inArray(b.schema.kbEntries.id, [mine, failed, fresh, foreign]));
+      const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+      expect(byId[mine]).toMatchObject({ embedding: null, embeddingStatus: "skipped", embeddingError: null });
+      expect(byId[mine]!.updatedAt!.getTime()).toBe(old.getTime());
+      expect(byId[failed]).toMatchObject({ embeddingStatus: "skipped", embeddingError: null });
+      expect(byId[foreign]!.embedding).toEqual(vec);
+      // Cleared entries are re-embed candidates at once, recently edited ones too.
+      const ids = await b.store.apiKb.listReEmbedCandidateIds({ tenantId: t, orphanThresholdMinutes: 15 });
+      expect([...ids].sort()).toEqual([mine, failed, fresh].sort());
     });
 
     it("markEntriesPendingEmbedding updates only the tenant's given entries (more than one chunk)", async () => {

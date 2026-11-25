@@ -134,12 +134,20 @@ export function pgApiKb(db: PgDb): ApiKbQueries {
             sql`(
               ${kbEntries.embeddingStatus as any} IS NULL
               OR ${kbEntries.embeddingStatus as any} = 'failed'
+              OR ${kbEntries.embeddingStatus as any} = 'skipped'
               OR (${kbEntries.embeddingStatus as any} = 'pending'
                   AND ${kbEntries.updatedAt} < ${sql.raw(orphanThreshold)})
             )`,
           ),
         );
       return allQualifying.map((r) => r.id);
+    },
+
+    async clearEmbeddings({ tenantId }) {
+      await db
+        .update(kbEntries)
+        .set({ embedding: null, embeddingStatus: "skipped", embeddingError: null })
+        .where(eq(kbEntries.tenantId, tenantId));
     },
 
     async markEntriesPendingEmbedding({ tenantId, ids, now }) {

@@ -36,5 +36,21 @@ for (const factory of testBackends()) {
       expect(await b.store.workerEmbeddingClient.getActiveLlmConfig(inactiveOnly)).toBeNull();
       expect(await b.store.workerEmbeddingClient.getActiveLlmConfig(none)).toBeNull();
     });
+
+    it("getActiveEmbeddingConfig reads embedding_configs only", async () => {
+      const t = await b.newTenant();
+      await b.db.insert(b.schema.llmConfigs).values({ tenantId: t, provider: "openai", config: "llm" });
+      expect(await b.store.workerEmbeddingClient.getActiveEmbeddingConfig(t)).toBeNull();
+      await b.db.insert(b.schema.embeddingConfigs).values([
+        { tenantId: t, provider: "custom", config: "old", isActive: false },
+        { tenantId: t, provider: "openai", config: "emb" },
+      ]);
+      expect(await b.store.workerEmbeddingClient.getActiveEmbeddingConfig(t)).toMatchObject({
+        tenantId: t,
+        provider: "openai",
+        config: "emb",
+        isActive: true,
+      });
+    });
   });
 }

@@ -6,11 +6,15 @@
  * kb_entry_id so only one embedding job runs per entry at a time.
  *
  * Embedding model:
- *   Resolved from the tenant's active llm_configs row via resolveEmbeddingProvider().
- *   The decrypted config shape is { apiKey, baseUrl, model, embedding_model? }.
- *   embedding_model defaults to "text-embedding-3-small" when absent.
- *   The baseUrl and apiKey carry over from the chat config; the embedding call
- *   hits <baseUrl>/embeddings (OpenAI-compatible endpoint).
+ *   Resolved by resolveEmbeddingProvider(): the tenant's embedding_configs row,
+ *   else an embeddings-capable llm_configs row (installs that predate
+ *   embedding_configs). The call hits <baseUrl>/embeddings (OpenAI-compatible).
+ *
+ * No provider configured:
+ *   Not a failure. The entry is marked embedding_status = 'skipped' and the
+ *   knowledge base serves it by word matching (context-kb.ts); pinned entries,
+ *   kb_select and kb_ref never needed a vector. Configuring a provider
+ *   re-embeds skipped entries (PUT /v1/settings/embeddings, POST /v1/kb/re-embed).
  *
  * Content truncation:
  *   OpenAI embedding models accept up to 8191 tokens (~32K chars). Long
@@ -47,7 +51,7 @@
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
-import type { KbEmbedJobData } from "@claros/core";
+import { EMBEDDING_DIMENSIONS, type KbEmbedJobData } from "@claros/core";
 import {
   resolveEmbeddingProvider,
   callEmbedding,
@@ -64,7 +68,7 @@ export { EmbeddingPermanentError, DEFAULT_EMBEDDING_MODEL };
 type Db = NodePgDatabase<Record<string, never>>;
 
 /** Expected dimensionality of kb_entries.embedding (vector(1536)). */
-const EXPECTED_DIMENSIONS = 1536;
+const EXPECTED_DIMENSIONS = EMBEDDING_DIMENSIONS;
 
 /**
  * Maximum character count before truncating content for embedding.
@@ -107,6 +111,10 @@ export async function handleKbEmbedJob(
   //    Permanent failures (missing config, decrypt error) return ok=false with permanent=true.
   const providerResult = await resolveEmbeddingProvider(db, tenant_id);
   if (!providerResult.ok) {
+    if (providerResult.notConfigured) {
+      await storeFor(db).workerEmbedKb.markEmbeddingSkipped(tenant_id, kb_entry_id);
+      return;
+    }
     if (providerResult.permanent) {
       await markPermanentFailure(db, kb_entry_id, tenant_id, providerResult.reason);
       console.error(`[kb-embed] permanent failure for entry ${kb_entry_id}: ${providerResult.reason}`);
@@ -116,7 +124,7 @@ export async function handleKbEmbedJob(
     throw new Error(`[kb-embed] provider resolution failed: ${providerResult.reason}`);
   }
 
-  const { apiKey, baseUrl, embeddingModel } = providerResult;
+  const { apiKey, baseUrl, embeddingModel, dimensions } = providerResult;
 
   // 3. Truncate content if necessary
   let content = entry.content;
@@ -135,7 +143,7 @@ export async function handleKbEmbedJob(
   //    All other throws (network, 429, 5xx) = re-throw for pg-boss retry.
   let embedding: number[];
   try {
-    embedding = await callEmbedding(baseUrl, apiKey, embeddingModel, content);
+    embedding = await callEmbedding(baseUrl, apiKey, embeddingModel, content, dimensions);
   } catch (err) {
     if (err instanceof EmbeddingPermanentError) {
       await markPermanentFailure(db, kb_entry_id, tenant_id, err.message);
@@ -150,7 +158,7 @@ export async function handleKbEmbedJob(
     const reason =
       `Embedding model "${embeddingModel}" returned a vector of ` +
       `${embedding.length} dimensions, but kb_entries.embedding is vector(${EXPECTED_DIMENSIONS}). ` +
-      `Change the embedding_model in your LLM configuration to a model that ` +
+      `Choose an embedding model in Settings, Embeddings that ` +
       `produces ${EXPECTED_DIMENSIONS}-dimensional vectors (e.g., ` +
       `"text-embedding-3-small" or "text-embedding-ada-002").`;
     await markPermanentFailure(db, kb_entry_id, tenant_id, reason);
