@@ -50,3 +50,14 @@ Gaps found while preparing the first product's configuration, accepted as genera
 ## 2026-11-25: SQLite schema conventions
 
 SQLite / D1 stores timestamps as integer milliseconds (Drizzle `timestamp_ms`) rather than ISO-8601 text as first proposed: values round-trip as `Date` on both backends, comparisons stay numeric and index-friendly, and the Store interfaces need no conversion. JSON columns are text, ids are text UUIDs generated in code, the knowledge base uses FTS5. The two schemas are kept in step by a parity test.
+
+## 2026-11-25: Multi-product instance layer (expand step)
+
+Defaults taken while implementing the instance layer; the maintainer may override:
+
+- The user's home product (`users.tenant_id`) keeps v0.6 semantics: `users.role` decides access there. Other products need a `memberships` row. Writers keep the home product's membership in step.
+- One user row per person: inviting an email that belongs to an active user of another product adds a membership. Removing a member from a non-home product deletes the membership and that product's sessions only.
+- Instance admins act as owner in every product. The migration makes the active owners of the oldest product instance admins.
+- The request's product comes from `X-Claros-Product`, then `?product=`, then the session's product. Archived products are read-only (writes answer 409); workers keep running for them until a later release stops ingestion and sending.
+- Product slugs: 2 to 63 characters of `[a-z0-9-]`, fixed after creation. Instance settings keys: `^[a-z0-9][a-z0-9._-]{0,63}$`.
+- Admin and instance API keys can be stored but do not authenticate ingestion; their own authentication comes with the management API (P4).
