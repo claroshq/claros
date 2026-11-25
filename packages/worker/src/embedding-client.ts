@@ -11,9 +11,8 @@
  * indexing and querying paths. Model consistency is critical: a query vector
  * produced by a different model than the stored entry vectors is incomparable.
  */
-import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { llmConfigs } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 
 // ---------------------------------------------------------------------------
@@ -96,13 +95,9 @@ export async function resolveEmbeddingProvider(
   tenantId: string,
 ): Promise<EmbeddingProviderResult> {
   // Read the tenant's active LLM config
-  const llmRows = await db
-    .select()
-    .from(llmConfigs)
-    .where(and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)))
-    .limit(1);
+  const llmConfig = await storeFor(db).workerEmbeddingClient.getActiveLlmConfig(tenantId);
 
-  if (llmRows.length === 0) {
+  if (llmConfig === null) {
     return {
       ok: false,
       permanent: true,
@@ -111,8 +106,6 @@ export async function resolveEmbeddingProvider(
         "Add an LLM provider in Settings before KB entries can be embedded.",
     };
   }
-
-  const llmConfig = llmRows[0]!;
 
   const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
   if (!encryptionKeyEnv) {

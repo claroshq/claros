@@ -6,5 +6,7 @@
  * ../d1/worker-counter-rollover.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface WorkerCounterRolloverQueries {}
+export interface WorkerCounterRolloverQueries {
+  /** Shift current engagement buckets to prev and zero current for contacts not reset in 15 days; returns rows updated. */
+  rollEngagementCounters(now: Date): Promise<number>;
+}

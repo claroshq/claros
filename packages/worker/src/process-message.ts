@@ -11,8 +11,8 @@
  * The processing logic is identical to processOneContentMessage in content.ts.
  * This file reuses that function directly after claiming the single message.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 import type { ProcessMessageJobData } from "@claros/core";
 import { processOneContentMessage, type ContentCandidate } from "./content.js";
 
@@ -48,30 +48,13 @@ export async function handleProcessMessage(
   const now = new Date();
 
   // Attempt to claim this single message (CAS: pending_generation -> generating)
-  const claimed = await db.execute<{
-    id: string;
-    tenant_id: string;
-    contact_id: string;
-    flow_id: string;
-    membership_id: string;
-    flow_step_order: number | null;
-    brain_action_type: string | null;
-  }>(sql`
-    UPDATE lifecycle_messages
-    SET status = 'generating', updated_at = ${now}
-    WHERE id = ${messageId}
-      AND tenant_id = ${tenantId}
-      AND status = 'pending_generation'
-    RETURNING id, tenant_id, contact_id, flow_id, membership_id,
-              flow_step_order, brain_action_type
-  `);
+  const row = await storeFor(db).workerProcessMessage.claimPendingGenerationMessage(tenantId, messageId, now);
 
-  if (claimed.rows.length === 0) {
+  if (row === null) {
     // Already claimed by cron tick or another job - no-op
     return { claimed: false };
   }
 
-  const row = claimed.rows[0]!;
   const candidate: ContentCandidate = {
     id: row.id,
     tenantId: row.tenant_id,

@@ -6,5 +6,16 @@
  * ../d1/worker-transport-resolver.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface WorkerTransportResolverQueries {}
+
+/** A transport_configs row (config is the encrypted envelope as text). */
+export interface WorkerTransportConfigRow {
+  provider: string;
+  config: string;
+  from_email: string;
+  from_name: string | null;
+}
+
+export interface WorkerTransportResolverQueries {
+  /** The tenant's active transport config, or null when none is active. */
+  getActiveTransportConfig(tenantId: string): Promise<WorkerTransportConfigRow | null>;
+}

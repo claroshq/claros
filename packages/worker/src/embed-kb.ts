@@ -45,9 +45,8 @@
  *   kb_entries.embedding_status: null|'pending'|'failed'.
  *   Non-NULL embedding = success (status cleared to null; vector is the evidence).
  */
-import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { kbEntries } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { KbEmbedJobData } from "@claros/core";
 import {
   resolveEmbeddingProvider,
@@ -94,21 +93,15 @@ export async function handleKbEmbedJob(
   const { kb_entry_id, tenant_id } = data;
 
   // 1. Read the kb_entries row
-  const rows = await db
-    .select()
-    .from(kbEntries)
-    .where(and(eq(kbEntries.id, kb_entry_id), eq(kbEntries.tenantId, tenant_id)))
-    .limit(1);
+  const entry = await storeFor(db).workerEmbedKb.getKbEntry(tenant_id, kb_entry_id);
 
-  if (rows.length === 0) {
+  if (entry === null) {
     // Entry deleted between enqueue and processing - not an error, just skip.
     console.warn(
       `[kb-embed] entry ${kb_entry_id} not found for tenant ${tenant_id}, skipping`,
     );
     return;
   }
-
-  const entry = rows[0]!;
 
   // 2. Resolve the tenant's embedding provider config.
   //    Permanent failures (missing config, decrypt error) return ok=false with permanent=true.
@@ -166,15 +159,7 @@ export async function handleKbEmbedJob(
   }
 
   // 6. Write the embedding back, clearing embedding_status (vector = success).
-  await db
-    .update(kbEntries)
-    .set({
-      embedding: embedding,
-      embeddingStatus: null,
-      embeddingError: null,
-      updatedAt: new Date(),
-    } as any)
-    .where(and(eq(kbEntries.id, kb_entry_id), eq(kbEntries.tenantId, tenant_id)));
+  await storeFor(db).workerEmbedKb.saveEmbedding(tenant_id, kb_entry_id, embedding);
 }
 
 // ---------------------------------------------------------------------------
@@ -192,12 +177,5 @@ async function markPermanentFailure(
   tenantId: string,
   reason: string,
 ): Promise<void> {
-  await db
-    .update(kbEntries)
-    .set({
-      embeddingStatus: "failed",
-      embeddingError: reason.slice(0, 2000),
-      updatedAt: new Date(),
-    } as any)
-    .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
+  await storeFor(db).workerEmbedKb.markEmbeddingFailed(tenantId, kbEntryId, reason.slice(0, 2000));
 }

@@ -33,8 +33,8 @@
  *   resets a row to 'approved' first, drain's success write hits 0 rows and the
  *   contact gets a retry.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 
 // ---------------------------------------------------------------------------
 // Constants (from spec Appendix B)
@@ -100,12 +100,10 @@ export async function processReapTick(
 
   const threshold = new Date(now.getTime() - REAP_STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
 
-  // Optional tenant scope fragment. When tenantIds is provided, only those
-  // tenants' messages are processed. When omitted (production default), the
-  // fragment is a no-op (TRUE).
-  const tenantFilter = tenantIds && tenantIds.length > 0
-    ? sql`AND tenant_id IN (${sql.join(tenantIds.map((id) => sql`${id}`), sql`, `)})`
-    : sql``;
+  // Optional tenant scope. When tenantIds is provided, only those tenants'
+  // messages are processed. When omitted (production default), all tenants.
+  const scope = { threshold, now, maxRetryCount: MAX_RETRY_COUNT, tenantIds };
+  const store = storeFor(db).workerReap;
 
   // ---------------------------------------------------------------------------
   // Recover 'sending' messages (stuck drain)
@@ -115,38 +113,21 @@ export async function processReapTick(
   // ---------------------------------------------------------------------------
 
   // Retry: retry_count < MAX_RETRY_COUNT -> reset to 'approved'
-  const sendingRetried = await db.execute<{ id: string; tenant_id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'approved',
-      retry_count = retry_count + 1,
-      updated_at = ${now}
-    WHERE status = 'sending'
-      AND updated_at < ${threshold}
-      AND retry_count < ${MAX_RETRY_COUNT}
-      ${tenantFilter}
-    RETURNING id, tenant_id
-  `);
+  const sendingRetried = await store.retryStuckMessages({
+    ...scope,
+    stuckStatus: "sending",
+    retryStatus: "approved",
+  });
 
-  stats.sendingRetried = sendingRetried.rows.length;
+  stats.sendingRetried = sendingRetried.length;
 
   // Fail: retry_count >= MAX_RETRY_COUNT -> terminal 'failed'
-  const sendingFailed = await db.execute<{ id: string; tenant_id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'failed',
-      updated_at = ${now}
-    WHERE status = 'sending'
-      AND updated_at < ${threshold}
-      AND retry_count >= ${MAX_RETRY_COUNT}
-      ${tenantFilter}
-    RETURNING id, tenant_id
-  `);
+  const sendingFailed = await store.failStuckMessages({ ...scope, stuckStatus: "sending" });
 
-  stats.sendingFailed = sendingFailed.rows.length;
+  stats.sendingFailed = sendingFailed.length;
 
-  if (sendingFailed.rows.length > 0) {
-    for (const row of sendingFailed.rows) {
+  if (sendingFailed.length > 0) {
+    for (const row of sendingFailed) {
       console.error(
         `[reap] message ${row.id} (tenant ${row.tenant_id}) permanently failed: ` +
           `stuck in 'sending' after ${MAX_RETRY_COUNT} retries`,
@@ -159,38 +140,21 @@ export async function processReapTick(
   // ---------------------------------------------------------------------------
 
   // Retry: retry_count < MAX_RETRY_COUNT -> reset to 'pending_generation'
-  const generatingRetried = await db.execute<{ id: string; tenant_id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'pending_generation',
-      retry_count = retry_count + 1,
-      updated_at = ${now}
-    WHERE status = 'generating'
-      AND updated_at < ${threshold}
-      AND retry_count < ${MAX_RETRY_COUNT}
-      ${tenantFilter}
-    RETURNING id, tenant_id
-  `);
+  const generatingRetried = await store.retryStuckMessages({
+    ...scope,
+    stuckStatus: "generating",
+    retryStatus: "pending_generation",
+  });
 
-  stats.generatingRetried = generatingRetried.rows.length;
+  stats.generatingRetried = generatingRetried.length;
 
   // Fail: retry_count >= MAX_RETRY_COUNT -> terminal 'failed'
-  const generatingFailed = await db.execute<{ id: string; tenant_id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'failed',
-      updated_at = ${now}
-    WHERE status = 'generating'
-      AND updated_at < ${threshold}
-      AND retry_count >= ${MAX_RETRY_COUNT}
-      ${tenantFilter}
-    RETURNING id, tenant_id
-  `);
+  const generatingFailed = await store.failStuckMessages({ ...scope, stuckStatus: "generating" });
 
-  stats.generatingFailed = generatingFailed.rows.length;
+  stats.generatingFailed = generatingFailed.length;
 
-  if (generatingFailed.rows.length > 0) {
-    for (const row of generatingFailed.rows) {
+  if (generatingFailed.length > 0) {
+    for (const row of generatingFailed) {
       console.error(
         `[reap] message ${row.id} (tenant ${row.tenant_id}) permanently failed: ` +
           `stuck in 'generating' after ${MAX_RETRY_COUNT} retries`,
@@ -209,38 +173,21 @@ export async function processReapTick(
   // ---------------------------------------------------------------------------
 
   // Retry: retry_count < MAX_RETRY_COUNT -> reset to 'pending_generation'
-  const awaitingContentRetried = await db.execute<{ id: string; tenant_id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'pending_generation',
-      retry_count = retry_count + 1,
-      updated_at = ${now}
-    WHERE status = 'awaiting_content'
-      AND updated_at < ${threshold}
-      AND retry_count < ${MAX_RETRY_COUNT}
-      ${tenantFilter}
-    RETURNING id, tenant_id
-  `);
+  const awaitingContentRetried = await store.retryStuckMessages({
+    ...scope,
+    stuckStatus: "awaiting_content",
+    retryStatus: "pending_generation",
+  });
 
-  stats.awaitingContentRetried = awaitingContentRetried.rows.length;
+  stats.awaitingContentRetried = awaitingContentRetried.length;
 
   // Fail: retry_count >= MAX_RETRY_COUNT -> terminal 'failed'
-  const awaitingContentFailed = await db.execute<{ id: string; tenant_id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'failed',
-      updated_at = ${now}
-    WHERE status = 'awaiting_content'
-      AND updated_at < ${threshold}
-      AND retry_count >= ${MAX_RETRY_COUNT}
-      ${tenantFilter}
-    RETURNING id, tenant_id
-  `);
+  const awaitingContentFailed = await store.failStuckMessages({ ...scope, stuckStatus: "awaiting_content" });
 
-  stats.awaitingContentFailed = awaitingContentFailed.rows.length;
+  stats.awaitingContentFailed = awaitingContentFailed.length;
 
-  if (awaitingContentFailed.rows.length > 0) {
-    for (const row of awaitingContentFailed.rows) {
+  if (awaitingContentFailed.length > 0) {
+    for (const row of awaitingContentFailed) {
       console.error(
         `[reap] message ${row.id} (tenant ${row.tenant_id}) permanently failed: ` +
           `stuck in 'awaiting_content' after ${MAX_RETRY_COUNT} retries`,

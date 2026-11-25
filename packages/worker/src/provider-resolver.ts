@@ -7,9 +7,8 @@
  * any knowledge of tenants, llm_configs, or encryption; it receives an
  * already-constructed LlmProvider as a parameter.
  */
-import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { llmConfigs } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import { OpenAICompatibleProvider, type LlmProvider, type LlmProviderConfig } from "@claros/brain-oss";
 
@@ -55,21 +54,15 @@ export async function resolveTenantProvider(
   tenantId: string,
 ): Promise<ProviderResolutionResult> {
   // 1. Read the tenant's active LLM config
-  const llmRows = await db
-    .select()
-    .from(llmConfigs)
-    .where(and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)))
-    .limit(1);
+  const llmConfig = await storeFor(db).workerProviderResolver.getActiveLlmConfig(tenantId);
 
-  if (llmRows.length === 0) {
+  if (llmConfig === null) {
     return {
       ok: false,
       reason:
         "No LLM configuration found. Add an LLM provider in Settings before compiling flows.",
     };
   }
-
-  const llmConfig = llmRows[0]!;
 
   // 2. Read ENCRYPTION_KEY
   const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
