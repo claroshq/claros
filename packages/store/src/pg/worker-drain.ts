@@ -281,7 +281,7 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
 
     async getTenant(tenantId) {
       const tenantRow = await db
-        .select({ name: tenants.name, settings: tenants.settings })
+        .select({ name: tenants.name, settings: tenants.settings, publicHost: tenants.publicHost })
         .from(tenants)
         .where(eq(tenants.id, tenantId))
         .limit(1);

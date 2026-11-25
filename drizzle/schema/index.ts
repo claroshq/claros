@@ -21,3 +21,4 @@ export { messageEvents } from "./message-events.js";
 export { retentionGridSnapshots } from "./retention-grid-snapshots.js";
 export { memberships } from "./memberships.js";
 export { instanceSettings } from "./instance-settings.js";
+export { claimTokens } from "./claim-tokens.js";

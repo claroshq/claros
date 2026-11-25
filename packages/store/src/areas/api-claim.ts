@@ -19,4 +19,17 @@ export interface ApiClaimQueries {
   createOwnerUser(args: { tenantId: string; email: string }): Promise<string | null>;
   /** Create a session for the user and return its id. */
   createSession(args: { tenantId: string; userId: string; expiresAt: Date }): Promise<string>;
+  /**
+   * Insert a claim token (SHA-256 hex hash) unless one with the same hash
+   * exists (ON CONFLICT DO NOTHING). Seeds the table from a token given to
+   * the app directly; a consumed token stays consumed.
+   */
+  ensureClaimToken(args: { tokenHash: string; expiresAt: Date }): Promise<void>;
+  /** True when the token hash exists, is unconsumed and expires after `now`. */
+  isClaimTokenValid(args: { tokenHash: string; now: Date }): Promise<boolean>;
+  /**
+   * Consume the token: atomic CAS (UPDATE ... WHERE consumed_at IS NULL AND
+   * expires_at > now). True for exactly one of N concurrent callers.
+   */
+  consumeClaimToken(args: { tokenHash: string; now: Date }): Promise<boolean>;
 }

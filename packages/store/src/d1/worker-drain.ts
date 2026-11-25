@@ -233,7 +233,7 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
 
     async getTenant(tenantId) {
       const rows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
+        .select({ name: tenants.name, settings: tenants.settings, publicHost: tenants.publicHost })
         .from(tenants)
         .where(eq(tenants.id, tenantId))
         .limit(1);

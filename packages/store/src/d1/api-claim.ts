@@ -5,8 +5,8 @@
  * ON CONFLICT DO NOTHING with an id generated here; the membership insert
  * selects that user row, so it is written only when this caller's user was.
  */
-import { users, tenants, sessions } from "@claros/db/schema-sqlite";
-import { eq, sql } from "drizzle-orm";
+import { users, tenants, sessions, claimTokens } from "@claros/db/schema-sqlite";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type { D1Db } from "./db.js";
 import type { ApiClaimQueries } from "../areas/api-claim.js";
 import { rawBatch } from "./raw-batch.js";
@@ -44,6 +44,28 @@ export function d1ApiClaim(db: D1Db): ApiClaimQueries {
         .values({ tenantId, userId, expiresAt })
         .returning({ id: sessions.id });
       return session!.id;
+    },
+
+    async ensureClaimToken({ tokenHash, expiresAt }) {
+      await db.insert(claimTokens).values({ tokenHash, expiresAt }).onConflictDoNothing();
+    },
+
+    async isClaimTokenValid({ tokenHash, now }) {
+      const rows = await db
+        .select({ id: claimTokens.id })
+        .from(claimTokens)
+        .where(and(eq(claimTokens.tokenHash, tokenHash), isNull(claimTokens.consumedAt), gt(claimTokens.expiresAt, now)))
+        .limit(1);
+      return rows.length > 0;
+    },
+
+    async consumeClaimToken({ tokenHash, now }) {
+      const rows = await db
+        .update(claimTokens)
+        .set({ consumedAt: now })
+        .where(and(eq(claimTokens.tokenHash, tokenHash), isNull(claimTokens.consumedAt), gt(claimTokens.expiresAt, now)))
+        .returning({ id: claimTokens.id });
+      return rows.length > 0;
     },
   };
 }

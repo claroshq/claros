@@ -112,6 +112,14 @@ export function resolveBaseUrl(override?: string): string {
 }
 
 /**
+ * The base URL for links in a product's mail: https://<public_host> when
+ * the product has a public host, else the instance base URL.
+ */
+export function productLinkBaseUrl(baseUrl: string, publicHost: string | null | undefined): string {
+  return publicHost ? `https://${publicHost}` : baseUrl;
+}
+
+/**
  * The set of loopback hostnames and address prefixes that are never valid
  * in production. IPv4 loopback covers the full 127.0.0.0/8 range.
  * IPv6 loopback appears both as "::1" (URL.hostname without brackets) and

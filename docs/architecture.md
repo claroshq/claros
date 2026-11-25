@@ -27,7 +27,10 @@ Both options will run the same HTTP API and the same engine behaviour. Postgres 
 | `packages/worker` | Background jobs: scan, trigger checks, step advancement, content generation, drain, reaper |
 | `packages/scheduler` | Recurring job schedule |
 | `drizzle/` | Database schema and migrations |
-| `apps/server` | Node entry point, operator CLI (`claros`) |
+| `apps/server` | Node entry point, operator CLI for Docker installs |
+| `apps/worker` | Cloudflare Workers entry point (D1, Queues, cron, Static Assets) |
+| `packages/store` | Every database query, with Postgres and SQLite / D1 implementations |
+| `packages/cli` | `npx claros deploy`: installs and upgrades Claros in a Cloudflare account |
 | `apps/dashboard` | React dashboard |
 
 ## Tenancy

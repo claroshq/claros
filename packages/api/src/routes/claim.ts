@@ -1,22 +1,25 @@
 /**
  * Claim route - first-account creation for fresh installs.
  *
- * When no users exist, the server logs a one-time claim URL at startup.
- * GET /claim?token=<token> renders a form where the installer enters their
- * email. POST /claim consumes the token, creates the owner, and signs them in.
+ * When no users exist, a one-time claim URL is minted: the Node server mints
+ * it at startup and logs it; on Cloudflare Workers the deploy CLI
+ * (`claros deploy`, `claros claim-url`) mints it. GET /claim?token=<token>
+ * renders a form where the installer enters their email. POST /claim
+ * consumes the token, creates the owner, and signs them in.
  *
  * Design decisions:
- * - Token is stored in memory only (never persisted), regenerated on each restart.
- *   Justification: nothing is claimed yet so no state to lose; latest logs win.
- * - Single-use: consumed on successful POST, set to null in the closure.
- *   Justification: the first person to reach the URL becomes the owner;
- *   concurrent requests race on the DB insert (ON CONFLICT catches it).
- * - No expiry while zero users: a 10-minute TTL would strand the installer
- *   (recovery is "restart the container and read the new URL").
+ * - Tokens live in the claim_tokens table, hashed (SHA-256 hex); the raw
+ *   token is only in the URL. Works the same on every instance behind a
+ *   load balancer and on Workers, which have no startup step.
+ * - 24 hour expiry. Node mints a new token on every restart while unclaimed
+ *   and deletes older unconsumed ones (latest logs win).
+ * - Single-use: POST consumes the token with an atomic CAS before creating
+ *   the owner, so exactly one of N concurrent claims proceeds.
  * - After an owner exists: GET /claim returns a redirect to /login regardless
- *   of token validity. The claim surface disappears entirely once claimed.
+ *   of token validity. With the per-request gate (Workers) the routes answer
+ *   404 instead, as if they were not mounted.
  */
-import { randomBytes, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { setCookie } from "hono/cookie";
 import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
@@ -26,13 +29,35 @@ import type { BodyParser } from "../http/body.js";
 
 const SESSION_TTL_DAYS = 30;
 
+/** Lifetime of a claim token. */
+export const CLAIM_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** The stored form of a claim token: SHA-256, hex. The deploy CLI computes the same. */
+export function hashClaimToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 interface ClaimRouteOptions {
-  /** The in-memory claim token. Null means claim is not active. */
-  getClaimToken: () => string | null;
-  /** Consume the token after successful claim. */
-  consumeClaimToken: () => void;
   /** Dashboard URL for post-claim redirect. */
   dashboardUrl: string;
+  /**
+   * A raw token handed to the app (buildApp's `claimToken` option). It is
+   * written to claim_tokens (hashed, 24 hour expiry) on the first claim
+   * request unless it is already there; the Node server also writes it at boot.
+   */
+  seedToken?: string | null;
+  /**
+   * Per-request gate: when it resolves false the routes answer 404 as if
+   * they were not mounted. Used on Workers, where the routes are mounted
+   * only while no user exists.
+   */
+  isOpen?: (db: Db) => Promise<boolean>;
+  /** Create the default tenant when it is missing (Workers have no boot seed). */
+  seedDefaultTenant?: boolean;
+  /** Called after a successful claim (lets the gate close at once). */
+  onClaimed?: () => void;
+  /** How to get a new link, shown on the invalid-link page. */
+  newLinkHint?: "logs" | "cli";
 }
 
 /**
@@ -50,12 +75,54 @@ const parseClaimForm: BodyParser = (body) => {
   return parsed;
 };
 
+/** Escape a value for an HTML attribute. */
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 /** v0.6 sent HTML with `type("text/html")`, which Fastify completed to this value. */
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
 
+const INVALID_HINT_LOGS = `<p>This link is invalid or has expired. Each server start mints a new
+          claim URL (valid for 24 hours) and the previous one stops working.</p>
+          <p>Fix: open the URL from the latest server logs.</p>
+          <pre>docker compose logs app | grep "claim"</pre>`;
+
+const INVALID_HINT_CLI = `<p>This link is invalid or has expired. Claim links are valid for 24 hours
+          and work once.</p>
+          <p>Fix: mint a new one with</p>
+          <pre>npx claros claim-url</pre>`;
+
 export default function claimRoutes(opts: ClaimRouteOptions) {
-  const { getClaimToken, consumeClaimToken, dashboardUrl } = opts;
+  const { dashboardUrl } = opts;
   const app = createRouter();
+  const invalidHint = opts.newLinkHint === "cli" ? INVALID_HINT_CLI : INVALID_HINT_LOGS;
+
+  // The seed token is written once per app (lazily, so building the app
+  // never touches the database).
+  let seeded: Promise<void> | null = null;
+  const ensureSeed = (db: Db): Promise<void> => {
+    if (!opts.seedToken) return Promise.resolve();
+    if (!seeded) {
+      seeded = storeFor(db)
+        .apiClaim.ensureClaimToken({
+          tokenHash: hashClaimToken(opts.seedToken),
+          expiresAt: new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+        })
+        .catch((err) => {
+          seeded = null;
+          throw err;
+        });
+    }
+    return seeded;
+  };
+
+  /** True when the token is a live claim token. */
+  const tokenIsValid = async (db: Db, token: string | undefined): Promise<boolean> => {
+    if (!token) return false;
+    await ensureSeed(db);
+    return storeFor(db).apiClaim.isClaimTokenValid({ tokenHash: hashClaimToken(token), now: new Date() });
+  };
 
   /**
    * GET /claim?token=<token>
@@ -64,6 +131,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
    */
   app.get("/", async (c) => {
     const db: Db = c.var.db;
+    if (opts.isOpen && !(await opts.isOpen(db))) return c.notFound();
 
     // If any user exists, claim is over.
     if (await storeFor(db).apiClaim.anyUserExists()) {
@@ -71,20 +139,13 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
     }
 
     const token = c.req.query("token");
-    const validToken = getClaimToken();
-    if (!token || !validToken || token !== validToken) {
+    if (!(await tokenIsValid(db, token))) {
       return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
         <body style="font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;">
           <h1>Invalid claim link</h1>
-          <p>This link is invalid or has expired. Each server instance generates
-          its own claim URL at startup. If you are running multiple instances
-          behind a load balancer, the request may have reached a different
-          instance than the one that printed the URL.</p>
-          <p>Fix: scale to one instance for the initial claim, or check the logs
-          of the instance that received this request.</p>
-          <pre>docker compose logs app | grep "claim"</pre>
+          ${invalidHint}
         </body></html>
       `, 403, HTML_HEADERS);
     }
@@ -103,7 +164,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
         <h1>Claim your account</h1>
         <p>Enter your email to become the owner of this Claros instance. This is a one-time action.</p>
         <form method="POST" action="/claim">
-          <input type="hidden" name="token" value="${token}" />
+          <input type="hidden" name="token" value="${escapeAttr(token!)}" />
           <label for="email">Your email address</label>
           <input type="email" id="email" name="email" required placeholder="you@company.com" autofocus />
           <button type="submit">Create owner account</button>
@@ -118,6 +179,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
    */
   app.post("/", parseBody({ parsers: { "application/x-www-form-urlencoded": parseClaimForm } }), async (c) => {
     const db: Db = c.var.db;
+    if (opts.isOpen && !(await opts.isOpen(db))) return c.notFound();
 
     // If any user exists, claim is over.
     if (await storeFor(db).apiClaim.anyUserExists()) {
@@ -129,8 +191,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
     const token = body?.token;
     const email = body?.email?.toLowerCase().trim();
 
-    const validToken = getClaimToken();
-    if (!token || !validToken || token !== validToken) {
+    if (!(await tokenIsValid(db, token))) {
       return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
@@ -153,8 +214,12 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
       `, 400, HTML_HEADERS);
     }
 
-    // Find the default tenant (created by bootstrapSeed).
-    const tenantId = await storeFor(db).apiClaim.findDefaultTenantId();
+    // Find the default tenant (created by bootstrapSeed; on Workers, here).
+    let tenantId = await storeFor(db).apiClaim.findDefaultTenantId();
+    if (tenantId === null && opts.seedDefaultTenant) {
+      await storeFor(db).serverMain.bootstrapSeed(null);
+      tenantId = await storeFor(db).apiClaim.findDefaultTenantId();
+    }
 
     if (tenantId === null) {
       return c.html(`
@@ -167,6 +232,13 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
       `, 500, HTML_HEADERS);
     }
 
+    // Consume the claim token (single-use, CAS): exactly one request goes on.
+    const consumed = await storeFor(db).apiClaim.consumeClaimToken({ tokenHash: hashClaimToken(token!), now: new Date() });
+    if (!consumed) {
+      // A concurrent claim consumed it first.
+      return c.redirect(`${dashboardUrl}/login`, 302);
+    }
+
     // Create the owner user.
     const newUserId = await storeFor(db).apiClaim.createOwnerUser({ tenantId, email });
 
@@ -174,9 +246,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
       // Race condition: another request created a user. Redirect to login.
       return c.redirect(`${dashboardUrl}/login`, 302);
     }
-
-    // Consume the claim token (single-use).
-    consumeClaimToken();
+    opts.onClaimed?.();
 
     // Create a session and sign the user in.
     const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);

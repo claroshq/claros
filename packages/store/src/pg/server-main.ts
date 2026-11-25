@@ -1,8 +1,8 @@
 /**
  * Postgres implementation of the queries used by apps/server/src/main.ts.
  */
-import { eq } from "drizzle-orm";
-import { memberships, tenants, users } from "@claros/db/schema";
+import { eq, isNull } from "drizzle-orm";
+import { claimTokens, memberships, tenants, users } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { BootstrapSeedResult, ServerMainQueries } from "../areas/server-main.js";
 
@@ -69,6 +69,13 @@ export function pgServerMain(db: PgDb): ServerMainQueries {
         .from(users)
         .limit(1);
       return userCount.length > 0;
+    },
+
+    async replaceClaimToken({ tokenHash, expiresAt }) {
+      await db.transaction(async (tx) => {
+        await tx.delete(claimTokens).where(isNull(claimTokens.consumedAt));
+        await tx.insert(claimTokens).values({ tokenHash, expiresAt });
+      });
     },
   };
 }

@@ -1,8 +1,8 @@
 /**
  * Postgres implementation of the queries used by packages/api/src/routes/claim.ts.
  */
-import { users, tenants, sessions, memberships } from "@claros/db/schema";
-import { eq } from "drizzle-orm";
+import { users, tenants, sessions, memberships, claimTokens } from "@claros/db/schema";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import type { PgDb } from "./db.js";
 import type { ApiClaimQueries } from "../areas/api-claim.js";
 
@@ -44,6 +44,28 @@ export function pgApiClaim(db: PgDb): ApiClaimQueries {
         .values({ tenantId, userId, expiresAt })
         .returning({ id: sessions.id });
       return session!.id;
+    },
+
+    async ensureClaimToken({ tokenHash, expiresAt }) {
+      await db.insert(claimTokens).values({ tokenHash, expiresAt }).onConflictDoNothing();
+    },
+
+    async isClaimTokenValid({ tokenHash, now }) {
+      const rows = await db
+        .select({ id: claimTokens.id })
+        .from(claimTokens)
+        .where(and(eq(claimTokens.tokenHash, tokenHash), isNull(claimTokens.consumedAt), gt(claimTokens.expiresAt, now)))
+        .limit(1);
+      return rows.length > 0;
+    },
+
+    async consumeClaimToken({ tokenHash, now }) {
+      const rows = await db
+        .update(claimTokens)
+        .set({ consumedAt: now })
+        .where(and(eq(claimTokens.tokenHash, tokenHash), isNull(claimTokens.consumedAt), gt(claimTokens.expiresAt, now)))
+        .returning({ id: claimTokens.id });
+      return rows.length > 0;
     },
   };
 }

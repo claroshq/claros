@@ -101,7 +101,9 @@ COPY --from=builder /app/drizzle/package.json drizzle/
 COPY --from=builder /app/drizzle/dist drizzle/dist
 COPY --from=builder /app/drizzle/migrations drizzle/migrations
 
-RUN npm ci --omit=dev
+# Install production dependencies of the server and the workspaces it uses
+# only (not the Cloudflare deploy CLI or the Workers runtime).
+RUN npm ci --omit=dev --workspace=@claros/server --include-workspace-root=false
 
 # Make the claros CLI available as a short command in PATH.
 RUN chmod +x /app/apps/server/bin/claros.mjs \

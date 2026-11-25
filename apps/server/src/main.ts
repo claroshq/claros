@@ -11,6 +11,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { buildApp } from "@claros/api/node";
+import { CLAIM_TOKEN_TTL_MS, hashClaimToken } from "@claros/api";
 import { storeFor } from "@claros/store";
 import { createBoss, startWorker } from "@claros/worker";
 import { startScheduler } from "@claros/scheduler";
@@ -288,7 +289,9 @@ async function start(): Promise<void> {
   // simultaneously and each inserts a tenant row, producing duplicates.
   // Claim flow: when no users exist, generate a one-time claim token and log
   // a prominent URL. The person opens it in a browser to create the first owner.
-  // Regenerated on every restart while unclaimed (latest logs win).
+  // Regenerated on every restart while unclaimed (latest logs win): the token
+  // is stored hashed in claim_tokens (24 hour expiry) and older unconsumed
+  // tokens are deleted, so any API instance can serve the claim.
   let claimToken: string | null = null;
   if (role === "all" || role === "api") {
     await bootstrapSeed(db);
@@ -297,6 +300,10 @@ async function start(): Promise<void> {
     if (!(await storeFor(db).serverMain.hasAnyUser())) {
       const { randomBytes: rb } = await import("node:crypto");
       claimToken = rb(32).toString("base64url");
+      await storeFor(db).serverMain.replaceClaimToken({
+        tokenHash: hashClaimToken(claimToken),
+        expiresAt: new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+      });
     }
   }
 
@@ -361,7 +368,8 @@ async function start(): Promise<void> {
         console.log("║                                                             ║");
         console.log(`║  ${claimUrl}`);
         console.log("║                                                             ║");
-        console.log("║  This link is single-use and regenerates on each restart.   ║");
+        console.log("║  This link is single-use, valid for 24 hours, and           ║");
+        console.log("║  regenerates on each restart.                               ║");
         console.log("╚══════════════════════════════════════════════════════════════╝");
         console.log("");
       }

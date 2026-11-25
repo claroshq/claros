@@ -125,7 +125,7 @@ export function d1ApiSettings(db: D1Db): ApiSettingsQueries {
 
     async findTenantNameAndSettings(tenantId) {
       const rows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
+        .select({ name: tenants.name, settings: tenants.settings, publicHost: tenants.publicHost })
         .from(tenants)
         .where(eq(tenants.id, tenantId))
         .limit(1);

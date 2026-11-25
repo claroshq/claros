@@ -2,7 +2,7 @@
  * Postgres implementation of the queries used by packages/api/src/routes/unsubscribe.ts.
  */
 import { eq, and, sql } from "drizzle-orm";
-import { lifecycleMessages } from "@claros/db/schema";
+import { lifecycleMessages, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { ApiUnsubscribeQueries } from "../areas/api-unsubscribe.js";
 
@@ -32,6 +32,11 @@ export function pgApiUnsubscribe(db: PgDb): ApiUnsubscribeQueries {
         VALUES (${tenantId}::uuid, ${email}, ${reason}, ${source})
         ON CONFLICT (tenant_id, lower(email)) DO NOTHING
       `);
+    },
+
+    async findTenantIdByPublicHost(host) {
+      const rows = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.publicHost, host)).limit(1);
+      return rows[0]?.id ?? null;
     },
   };
 }
