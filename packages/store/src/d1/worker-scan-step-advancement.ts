@@ -2,7 +2,7 @@
  * SQLite / Cloudflare D1 implementation of the queries used by packages/worker/src/scan-step-advancement.ts
  * (a direct port of ../pg/worker-scan-step-advancement.ts: plain selects and CAS updates).
  */
-import { eq, and, gt, gte } from "drizzle-orm";
+import { eq, and, gt, gte, sql } from "drizzle-orm";
 import {
   tenants,
   contacts,
@@ -258,6 +258,8 @@ export function d1WorkerScanStepAdvancement(db: D1Db): WorkerScanStepAdvancement
           flowStepOrder: stepOrder,
           status: "pending_generation",
           brainActionType: actionType,
+          // The flow's topic at creation time (G8a).
+          topicId: sql`(SELECT topic_id FROM flows WHERE id = ${flowId} AND tenant_id = ${tenantId})`,
         })
         .onConflictDoNothing()
         .returning({ id: lifecycleMessages.id });

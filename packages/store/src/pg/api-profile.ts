@@ -80,6 +80,7 @@ export function pgApiProfile(db: PgDb): ApiProfileQueries {
         SELECT provider, config::text AS config, from_email, from_name
         FROM transport_configs
         WHERE tenant_id = ${tenantId}::uuid AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       return transports.rows[0] ?? null;

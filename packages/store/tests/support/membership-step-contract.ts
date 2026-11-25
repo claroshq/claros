@@ -3,6 +3,7 @@
  * (workerScanStepAdvancement and workerAdvanceMembership): both expose the
  * same flow/contact/event reads and membership CAS writes.
  */
+import { randomUUID } from "node:crypto";
 import { it, expect } from "vitest";
 import { eq } from "drizzle-orm";
 import type { Backend } from "./backends.js";
@@ -155,5 +156,20 @@ export function membershipStepContract(getB: () => Backend, area: (b: Backend) =
     const created = new Date("2026-11-02T00:00:00Z");
     await insertMessage(b, { tenantId: t, contactId: c, flowId: f, membershipId: m, flowStepOrder: 2, createdAt: created });
     expect(await q.getStepMessageCreatedAt({ membershipId: m, stepOrder: 2 })).toEqual(created);
+  });
+
+  it("createStepMessage copies the flow's topic onto the message (null without one)", async () => {
+    const { b, t, c, f, m, q } = await setup();
+    const input = { tenantId: t, contactId: c, flowId: f, membershipId: m, stepOrder: 1, actionType: "nudge" };
+    const first = await q.createStepMessage(input);
+    const read = async (id: string) =>
+      (await b.db.select().from(b.schema.lifecycleMessages).where(eq(b.schema.lifecycleMessages.id, id)))[0];
+    expect((await read(first!)).topicId).toBeNull();
+
+    const topicId = randomUUID();
+    await b.db.insert(b.schema.topics).values({ id: topicId, tenantId: t, slug: `s-${topicId.slice(0, 8)}`, name: "News", kind: "marketing" });
+    await b.db.update(b.schema.flows).set({ topicId }).where(eq(b.schema.flows.id, f));
+    const second = await q.createStepMessage({ ...input, stepOrder: 2 });
+    expect((await read(second!)).topicId).toBe(topicId);
   });
 }

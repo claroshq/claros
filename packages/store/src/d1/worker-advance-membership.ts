@@ -2,7 +2,7 @@
  * SQLite / Cloudflare D1 implementation of the queries used by packages/worker/src/advance-membership.ts
  * (a direct port of ../pg/worker-advance-membership.ts: plain selects and CAS updates).
  */
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import {
   contacts,
   events,
@@ -180,6 +180,8 @@ export function d1WorkerAdvanceMembership(db: D1Db): WorkerAdvanceMembershipQuer
           flowStepOrder: stepOrder,
           status: "pending_generation",
           brainActionType: actionType,
+          // The flow's topic at creation time (G8a).
+          topicId: sql`(SELECT topic_id FROM flows WHERE id = ${flowId} AND tenant_id = ${tenantId})`,
         })
         .onConflictDoNothing()
         .returning({ id: lifecycleMessages.id });

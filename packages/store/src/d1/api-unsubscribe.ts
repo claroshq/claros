@@ -10,6 +10,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { lifecycleMessages, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiUnsubscribeQueries } from "../areas/api-unsubscribe.js";
+import { listContactTopicStatuses, setContactTopicStatuses } from "./contact-topics.js";
 
 export function d1ApiUnsubscribe(db: D1Db): ApiUnsubscribeQueries {
   return {
@@ -18,6 +19,8 @@ export function d1ApiUnsubscribe(db: D1Db): ApiUnsubscribeQueries {
         .select({
           recipientAddress: lifecycleMessages.recipientAddress,
           status: lifecycleMessages.status,
+          contactId: lifecycleMessages.contactId,
+          topicId: lifecycleMessages.topicId,
         })
         .from(lifecycleMessages)
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.tenantId, tenantId)))
@@ -38,6 +41,14 @@ export function d1ApiUnsubscribe(db: D1Db): ApiUnsubscribeQueries {
     async findTenantIdByPublicHost(host) {
       const rows = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.publicHost, host)).limit(1);
       return rows[0]?.id ?? null;
+    },
+
+    listContactTopics({ tenantId, contactId }) {
+      return listContactTopicStatuses(db, tenantId, contactId);
+    },
+
+    setContactTopicStatuses(input) {
+      return setContactTopicStatuses(db, input);
     },
   };
 }

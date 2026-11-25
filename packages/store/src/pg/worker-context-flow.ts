@@ -37,6 +37,7 @@ export function pgWorkerContextFlow(db: PgDb): WorkerContextFlowQueries {
         FROM transport_configs
         WHERE tenant_id = ${tenantId}::uuid
           AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       if (transportRows.rows.length === 0) return { found: false };

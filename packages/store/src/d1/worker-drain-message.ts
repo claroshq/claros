@@ -32,6 +32,7 @@ export function d1WorkerDrainMessage(db: D1Db): WorkerDrainMessageQueries {
           body_html: lifecycleMessages.bodyHtml,
           body_text: lifecycleMessages.bodyText,
           retry_count: lifecycleMessages.retryCount,
+          topic_id: lifecycleMessages.topicId,
         });
       return rows[0] ?? null;
     },

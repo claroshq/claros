@@ -17,5 +17,8 @@ export const transportConfigs = sqliteTable("transport_configs", {
   fromEmail: text("from_email").notNull(),
   fromName: text("from_name"),
   dailyLimit: integer("daily_limit"),
+  kind: text("kind"), // resend|smtp|cloudflare; null on rows from earlier releases (readers use provider)
+  name: text("name"),
+  replyTo: text("reply_to"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
 });

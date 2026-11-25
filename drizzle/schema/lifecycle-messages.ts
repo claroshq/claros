@@ -51,6 +51,12 @@ export const lifecycleMessages = pgTable(
     // is still resolvable. Column was originally named delivered_to; renamed before migration
     // 0015 was ever applied to production.
     recipientAddress: text("recipient_address"),
+    /** Topic copied from the flow when the message is created (G8a); null = no topic. */
+    topicId: uuid("topic_id"),
+    /** Transport the message was sent through (transport_configs.id), when known. */
+    transportId: uuid("transport_id"),
+    /** Why the message reached a terminal non-sent state (topic_unsubscribed, transport_policy), when recorded. */
+    statusReason: text("status_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },

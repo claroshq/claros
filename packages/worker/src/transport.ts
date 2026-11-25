@@ -25,13 +25,36 @@ export type {
 // ---------------------------------------------------------------------------
 
 import type { TransportAdapter } from "@claros/adapters";
+import type { TransportRoute } from "@claros/core";
+
+export type { TransportRoute } from "@claros/core";
+
+/** The transport_configs row behind a resolved adapter. */
+export interface TransportInfo {
+  id: string;
+  /** resend | smtp | cloudflare */
+  kind: string;
+  fromEmail: string;
+  fromName: string | null;
+  replyTo: string | null;
+  dailyLimit: number | null;
+}
 
 /**
- * Resolves a TransportAdapter for a given tenant. Returns null if the tenant
- * has no active transport configured (the message stays approved and is
- * retried next tick).
+ * An adapter resolved for a tenant. `transportInfo` is set by the database
+ * resolver; adapters handed in by tests may omit it (the drain then reads
+ * the sender and daily limit of the tenant's active transport as before).
  */
-export type TransportResolver = (tenantId: string) => Promise<TransportAdapter | null>;
+export interface TenantTransportAdapter extends TransportAdapter {
+  readonly transportInfo?: TransportInfo;
+}
+
+/**
+ * Resolves a TransportAdapter for a given tenant and route ('default' when
+ * omitted). Returns null if the tenant has no active transport configured
+ * (the message stays approved and is retried next tick).
+ */
+export type TransportResolver = (tenantId: string, route?: TransportRoute) => Promise<TenantTransportAdapter | null>;
 
 // ---------------------------------------------------------------------------
 // Null resolver (fallback when no transport is configured)

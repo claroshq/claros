@@ -300,6 +300,7 @@ export default function PersonPage() {
   }
 
   const { contact, memberships, suppression } = contactQuery.data;
+  const topicStatuses = contactQuery.data.topics ?? [];
   const displayName = contact.name ?? contact.email ?? contact.external_id;
   const propertyEntries = Object.entries(contact.properties ?? {});
 
@@ -455,6 +456,29 @@ export default function PersonPage() {
               </dl>
             )}
           </RailCard>
+
+          {topicStatuses.length > 0 && (
+            <RailCard title="Topics">
+              <ul className="space-y-2.5">
+                {topicStatuses.map((t) => (
+                  <li key={t.topic_id} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-[14px] text-foreground">{t.name}</span>
+                    {t.kind === "transactional" ? (
+                      <Badge variant="muted">transactional</Badge>
+                    ) : (
+                      <Badge
+                        variant={t.status === "subscribed" ? "success" : "neutral"}
+                        title={t.default ? "Topic default (no choice recorded)" : t.source ? `Set via ${t.source}` : undefined}
+                      >
+                        {t.status}
+                        {t.default ? " (default)" : ""}
+                      </Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </RailCard>
+          )}
 
           <RailCard title="Flows">
             {memberships.length === 0 ? (

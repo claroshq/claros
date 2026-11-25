@@ -21,7 +21,7 @@ Both options will run the same HTTP API and the same engine behaviour. Postgres 
 | Package | Role |
 |---|---|
 | `packages/core` | Pure logic: flows, lifecycle state machine, enrollment, throttle gate, templates. No I/O |
-| `packages/adapters` | Email transports (Resend, SMTP), crypto, unsubscribe tokens |
+| `packages/adapters` | Email transports (Resend, SMTP, Cloudflare Email Service), crypto, unsubscribe tokens |
 | `packages/brain-oss` | Optional LLM module: compile, decide, draft, assess prompts for any OpenAI-compatible endpoint |
 | `packages/api` | HTTP API on [Hono](https://hono.dev): ingest, management, dashboard auth, public pages, webhooks |
 | `packages/worker` | Background jobs: scan, trigger checks, step advancement, content generation, drain, reaper |
@@ -42,7 +42,8 @@ Every product-owned table carries `tenant_id` (user-facing name: product) and ev
 - The LLM runs only at flow compile time and content draft time, never in the send path.
 - Message state transitions use compare-and-swap on status; delivery feedback only moves forward.
 - Suppression is checked before anything else at send time.
-- Every outgoing message carries RFC 8058 one-click unsubscribe headers and a compliant footer.
+- Every outgoing message carries a compliant footer and, unless its topic kind is `transactional`, RFC 8058 one-click unsubscribe headers (the transactional exception is unreleased, planned for v0.8).
+- A topic unsubscribe blocks that topic's mail (not transactional topics); a cloudflare transport sends transactional-topic mail only (unreleased, planned for v0.8).
 - Drain is round-robin across tenants so a large tenant cannot starve a small one.
 
 ## Capability differences between backends (planned)
@@ -51,7 +52,7 @@ Every product-owned table carries `tenant_id` (user-facing name: product) and ev
 |---|---|---|
 | Knowledge base search | pgvector similarity when an embedding model is configured, full-text fallback | SQLite FTS5 (`bm25`) |
 | Event storage | monthly partitioned `events` | plain `events` with a daily rollup and retention |
-| Transports | Resend, SMTP, Cloudflare Email Service (REST) | Resend, SMTP, Cloudflare Email Service (binding) |
+| Transports (several per product, routed by topic kind; Cloudflare Email Service for transactional mail only) | Resend, SMTP (nodemailer), Cloudflare Email Service (REST API) | Resend, SMTP (worker-mailer), Cloudflare Email Service (`send_email` binding, else REST API) |
 | Custom domains from the CLI | no (use your reverse proxy) | yes |
 | Scale target | larger installs; partitioned events (not benchmarked) | small and medium installs; one database per instance |
 

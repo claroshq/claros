@@ -14,7 +14,7 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
 import type { DrainMessageJobData } from "@claros/core";
-import { processOneMessage, type DrainCandidate, type MessageOutcome } from "./drain.js";
+import { processOneMessage, routeMessage, type DrainCandidate, type MessageOutcome } from "./drain.js";
 import type { TransportResolver } from "./transport.js";
 import { resolveBaseUrl } from "./compliance.js";
 
@@ -80,10 +80,19 @@ export async function handleDrainMessage(
     bodyHtml: row.body_html,
     bodyText: row.body_text,
     retryCount: row.retry_count,
+    topicId: row.topic_id ?? null,
   };
 
+  // Transactional-topic messages take the transactional route (G26).
+  const routed = await routeMessage(db, candidate, adapter, resolveTransport);
+  if (routed.adapter === null) {
+    // No usable transport on that route: back to 'approved' for the cron drain.
+    await storeFor(db).workerDrain.releaseClaim(candidate.id, now);
+    return { claimed: true };
+  }
+
   const baseUrl = resolveBaseUrl();
-  const outcome = await processOneMessage(db, candidate, now, adapter, baseUrl);
+  const outcome = await processOneMessage(db, candidate, now, routed.adapter, baseUrl, undefined, undefined, routed.topic);
 
   return { claimed: true, outcome };
 }

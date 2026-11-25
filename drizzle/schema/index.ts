@@ -22,3 +22,5 @@ export { retentionGridSnapshots } from "./retention-grid-snapshots.js";
 export { memberships } from "./memberships.js";
 export { instanceSettings } from "./instance-settings.js";
 export { claimTokens } from "./claim-tokens.js";
+export { topics } from "./topics.js";
+export { contactTopics } from "./contact-topics.js";

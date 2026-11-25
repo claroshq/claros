@@ -1,7 +1,7 @@
 /**
  * SQLite / Cloudflare D1 implementation of the queries in ../areas/worker-context-flow.ts.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import { flows, tenants, transportConfigs } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { WorkerContextFlowQueries } from "../areas/worker-context-flow.js";
@@ -22,6 +22,7 @@ export function d1WorkerContextFlow(db: D1Db): WorkerContextFlowQueries {
         .select({ fromName: transportConfigs.fromName })
         .from(transportConfigs)
         .where(and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)))
+        .orderBy(asc(transportConfigs.createdAt), asc(transportConfigs.id))
         .limit(1);
       if (rows.length === 0) return { found: false };
       return { found: true, fromName: rows[0]!.fromName };

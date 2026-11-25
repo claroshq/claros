@@ -284,3 +284,16 @@ describe("missing signing key", () => {
     ).toThrow(/UNSUBSCRIBE_SIGNING_KEY/);
   });
 });
+
+describe("unsubscribe token topicId (G8a)", () => {
+  const KEY = "topic-token-test-key";
+  it("carries an optional topicId; tokens without it verify as before", async () => {
+    const { generateUnsubscribeToken: gen, verifyUnsubscribeToken: verify } = await import("../src/unsubscribe-token.js");
+    const withTopic = verify(gen("t-1", "m-1", KEY, { topicId: "topic-1" }), KEY);
+    expect(withTopic).toEqual({ ok: true, payload: { tenantId: "t-1", messageId: "m-1", v: 1, topicId: "topic-1" } });
+    const legacy = verify(gen("t-1", "m-1", KEY), KEY);
+    expect(legacy).toEqual({ ok: true, payload: { tenantId: "t-1", messageId: "m-1", v: 1 } });
+    // Same inputs without a topic produce the same token as before topics.
+    expect(gen("t-1", "m-1", KEY, { topicId: null })).toBe(gen("t-1", "m-1", KEY));
+  });
+});

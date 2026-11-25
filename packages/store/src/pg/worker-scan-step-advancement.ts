@@ -1,7 +1,7 @@
 /**
  * Postgres implementation of the queries used by packages/worker/src/scan-step-advancement.ts.
  */
-import { eq, and, gt, gte } from "drizzle-orm";
+import { eq, and, gt, gte, sql } from "drizzle-orm";
 import {
   tenants,
   contacts,
@@ -257,6 +257,8 @@ export function pgWorkerScanStepAdvancement(db: PgDb): WorkerScanStepAdvancement
           flowStepOrder: stepOrder,
           status: "pending_generation",
           brainActionType: actionType,
+          // The flow's topic at creation time (G8a).
+          topicId: sql`(SELECT topic_id FROM flows WHERE id = ${flowId} AND tenant_id = ${tenantId})`,
         })
         .onConflictDoNothing()
         .returning({ id: lifecycleMessages.id });

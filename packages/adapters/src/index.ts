@@ -35,7 +35,20 @@ export {
 } from "./smtp.js";
 
 export {
+  CloudflareTransportAdapter,
+  type CloudflareAdapterConfig,
+  type CloudflareSendEmailBinding,
+} from "./cloudflare.js";
+
+export {
+  setTransportRuntime,
+  transportRuntime,
+  type TransportRuntime,
+} from "./transport-runtime.js";
+
+export {
   resolveTransportAdapter,
+  SUPPORTED_TRANSPORT_KINDS,
   type ResolvedTransport,
   type TransportResolutionFailure,
   type ResolveTransportResult,

@@ -26,6 +26,7 @@ export function pgApiAuth(db: PgDb): ApiAuthQueries {
         FROM transport_configs
         WHERE tenant_id = ${tenantId}::uuid
           AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       return rows.rows[0] ?? null;

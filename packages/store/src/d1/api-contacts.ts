@@ -14,6 +14,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { D1Db } from "./db.js";
 import type { ApiContactsQueries, ContactListRow } from "../areas/api-contacts.js";
+import { listContactTopicStatuses } from "./contact-topics.js";
 
 const DAY_MS = 86_400_000;
 
@@ -211,6 +212,10 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
       return rows.map((r) =>
         convert<Record<string, unknown>>(r, ["occurred_at"], ["properties", "context", "metadata"]),
       );
+    },
+
+    listContactTopics({ tenantId, contactId }) {
+      return listContactTopicStatuses(db, tenantId, contactId);
     },
   };
 }

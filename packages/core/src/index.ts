@@ -177,3 +177,20 @@ export {
   type EmailShellInput,
   type TextShellInput,
 } from "./email-shell.js";
+
+export {
+  TOPIC_KINDS,
+  TRANSPORT_KINDS,
+  TOPIC_SLUG_PATTERN,
+  isTopicKind,
+  isTransportKind,
+  routeForTopicKind,
+  selectTransport,
+  transportPolicyAllows,
+  topicBlocks,
+  carriesListUnsubscribe,
+  type TopicKind,
+  type TransportKind,
+  type TransportRoute,
+  type TransportRouting,
+} from "./topics-transports.js";

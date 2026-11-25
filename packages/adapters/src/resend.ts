@@ -77,6 +77,15 @@ interface ResendErrorBody {
   statusCode: number;
 }
 
+/**
+ * Resend tag values may contain only ASCII letters, numbers, underscores and
+ * dashes, at most 256 characters (https://resend.com/docs/api-reference/emails/send-email).
+ * Ids are UUIDs and pass unchanged; anything else is made safe.
+ */
+function resendTagValue(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 256);
+}
+
 // ---------------------------------------------------------------------------
 // ResendTransportAdapter
 // ---------------------------------------------------------------------------
@@ -115,6 +124,10 @@ export class ResendTransportAdapter implements TransportAdapter {
       html: params.bodyHtml,
       text: params.bodyText,
       headers: params.headers ?? {},
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
+      ...(params.tags && Object.keys(params.tags).length > 0
+        ? { tags: Object.entries(params.tags).map(([name, value]) => ({ name, value: resendTagValue(value) })) }
+        : {}),
     };
 
     let response: Response;

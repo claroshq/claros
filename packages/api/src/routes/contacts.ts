@@ -273,7 +273,21 @@ export default function contactsRoutes() {
       suppression = await storeFor(db).apiContacts.findSuppression({ tenantId, email: contact.email });
     }
 
-    return c.json({ contact, memberships, suppression });
+    // Topic statuses (G8a): every topic of the product with the contact's
+    // explicit status, or the topic default ("default": true) when none is set.
+    const topicRows = await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId: id });
+    const topics = topicRows.map((t) => ({
+      topic_id: t.topicId,
+      slug: t.slug,
+      name: t.name,
+      kind: t.kind,
+      status: t.status ?? (t.defaultSubscribed ? "subscribed" : "unsubscribed"),
+      default: t.status === null,
+      source: t.source,
+      updated_at: t.updatedAt,
+    }));
+
+    return c.json({ contact, memberships, suppression, topics });
   });
 
   /**

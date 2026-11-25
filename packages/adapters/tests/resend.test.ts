@@ -119,6 +119,32 @@ describe("ResendTransportAdapter", () => {
       expect(call[1].method).toBe("POST");
     });
 
+    it("sends reply_to and tags (name/value pairs) when given, and omits them otherwise", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(mockResponse(200, { id: "msg-id" }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const adapter = new ResendTransportAdapter({ apiKey: TEST_API_KEY });
+      await adapter.send(
+        makeParams({
+          replyTo: "support@example.com",
+          tags: { claros_tenant: "t-1", claros_message_id: "m-1", claros_flow: "flow 1/x" },
+        }),
+      );
+      await adapter.send(makeParams());
+
+      const withExtras = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+      expect(withExtras.reply_to).toBe("support@example.com");
+      expect(withExtras.tags).toEqual([
+        { name: "claros_tenant", value: "t-1" },
+        { name: "claros_message_id", value: "m-1" },
+        // Resend allows only letters, digits, _ and - in tag values.
+        { name: "claros_flow", value: "flow_1_x" },
+      ]);
+      const plain = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
+      expect(plain).not.toHaveProperty("reply_to");
+      expect(plain).not.toHaveProperty("tags");
+    });
+
     it("includes fromName in the from field when provided", async () => {
       const fetchMock = vi.fn().mockResolvedValue(mockResponse(200, { id: "msg-id" }));
       vi.stubGlobal("fetch", fetchMock);

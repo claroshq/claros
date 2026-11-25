@@ -128,6 +128,8 @@ export interface Flow {
   compiled_at: string | null;
   compile_status: "pending" | "ready" | "failed" | null;
   compile_error: string | null;
+  /** Topic of the flow's messages; absent from servers before topics. */
+  topic_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -206,6 +208,7 @@ export interface UpdateFlowInput {
   content_mode?: Flow["content_mode"];
   status?: Flow["status"];
   approval_mode?: Flow["approval_mode"];
+  topic_id?: string | null;
 }
 
 function parseFlowError(status: number, body: unknown): FlowApiError {
@@ -693,6 +696,154 @@ export async function putTransport(
   return body;
 }
 
+// ---------------------------------------------------------------------------
+// Transports (several per product, with routing) and topics
+// ---------------------------------------------------------------------------
+
+export type TransportKind = "resend" | "smtp" | "cloudflare";
+export type TopicKind = "marketing" | "lifecycle" | "transactional";
+
+export interface TransportItem {
+  id: string;
+  kind: TransportKind;
+  provider: string;
+  name: string | null;
+  from_email: string;
+  from_name: string | null;
+  reply_to: string | null;
+  daily_limit: number | null;
+  dkim_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface TransportRouting {
+  transactional: string | null;
+  default: string | null;
+}
+
+export interface TransportsResponse {
+  transports: TransportItem[];
+  routing: TransportRouting;
+  /** The transport each route resolves to today (routing, else the oldest active transport). */
+  effective: TransportRouting;
+}
+
+export interface NewTransportInput {
+  kind: TransportKind;
+  name?: string | null;
+  from_email: string;
+  from_name?: string | null;
+  reply_to?: string | null;
+  daily_limit?: number | null;
+  api_key?: string;
+  webhook_secret?: string;
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  username?: string;
+  password?: string;
+  reject_unauthorized?: boolean;
+  account_id?: string;
+  api_token?: string;
+}
+
+async function jsonOrThrow<T>(res: Response): Promise<T> {
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw parseFlowError(res.status, body);
+  return body as T;
+}
+
+/** GET /v1/settings/transports - active transports and routing, never credentials. */
+export async function fetchTransports(): Promise<TransportsResponse> {
+  return jsonOrThrow(await apiFetch("/v1/settings/transports"));
+}
+
+/** POST /v1/settings/transports - add a transport (credentials encrypted server-side). */
+export async function createTransport(input: NewTransportInput): Promise<{ transport: TransportItem }> {
+  return jsonOrThrow(
+    await apiFetch("/v1/settings/transports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+/** DELETE /v1/settings/transports/:id - deactivate (kept for history). */
+export async function deleteTransport(id: string): Promise<void> {
+  await jsonOrThrow(await apiFetch(`/v1/settings/transports/${id}`, { method: "DELETE" }));
+}
+
+/** POST /v1/settings/transports/:id/test - branded test email through one transport. */
+export async function testTransport(id: string, to: string): Promise<{ sent: boolean; to: string }> {
+  return jsonOrThrow(
+    await apiFetch(`/v1/settings/transports/${id}/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to }),
+    }),
+  );
+}
+
+/** PUT /v1/settings/transport-routing - null clears a route. */
+export async function putTransportRouting(
+  routing: Partial<TransportRouting>,
+): Promise<{ routing: TransportRouting; effective: TransportRouting; warnings: string[] }> {
+  return jsonOrThrow(
+    await apiFetch("/v1/settings/transport-routing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(routing),
+    }),
+  );
+}
+
+export interface Topic {
+  id: string;
+  slug: string;
+  name: string;
+  kind: TopicKind;
+  description: string | null;
+  default_subscribed: boolean;
+  created_at: string;
+}
+
+export interface TopicInput {
+  slug: string;
+  name: string;
+  kind: TopicKind;
+  description?: string | null;
+  default_subscribed?: boolean;
+}
+
+/** GET /v1/topics */
+export async function fetchTopics(): Promise<{ topics: Topic[] }> {
+  return jsonOrThrow(await apiFetch("/v1/topics"));
+}
+
+/** POST /v1/topics */
+export async function createTopic(input: TopicInput): Promise<{ topic: Topic }> {
+  return jsonOrThrow(
+    await apiFetch("/v1/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+/** PATCH /v1/topics/:id (the slug is fixed) */
+export async function patchTopic(id: string, input: Partial<Omit<TopicInput, "slug">>): Promise<{ topic: Topic }> {
+  return jsonOrThrow(
+    await apiFetch(`/v1/topics/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
 /** GET /v1/settings/llm - active config, never credentials. */
 export async function fetchLlm(): Promise<{ llm: LlmConfig | null }> {
   const res = await apiFetch("/v1/settings/llm");
@@ -903,10 +1054,24 @@ export interface Suppression {
   created_at: string;
 }
 
+/** A contact's status for one topic (G8a); `default` = no explicit choice, the topic default applies. */
+export interface ContactTopicStatus {
+  topic_id: string;
+  slug: string;
+  name: string;
+  kind: TopicKind;
+  status: "subscribed" | "unsubscribed";
+  default: boolean;
+  source: string | null;
+  updated_at: string | null;
+}
+
 export interface ContactResponse {
   contact: ContactDetail;
   memberships: Membership[];
   suppression: Suppression | null;
+  /** Absent from servers before topics. */
+  topics?: ContactTopicStatus[];
 }
 
 export interface ContactsPage {

@@ -68,6 +68,7 @@ import { Skeleton } from "../components/ui/skeleton.js";
 import { TemplateEditorBySlug } from "../components/template-editor.js";
 import { StepWriter, buildPlanBody, type StepData } from "../components/step-writer.js";
 import { useLlm } from "../settings.js";
+import { FlowTopicPicker } from "../components/flow-topic-picker.js";
 
 // ---------------------------------------------------------------------------
 // Constants derived from the engine (packages/core/src/lifecycle/states.ts)
@@ -1894,6 +1895,7 @@ export default function FlowEditorPage() {
           {/* Main column */}
           <div className="min-w-0 flex-1">
             {existingFlow && <TriggerSummary flow={existingFlow} />}
+            {existingFlow && <FlowTopicPicker flow={existingFlow} disabled={flowReadOnly} />}
 
             <div className="mt-8">
               {isFixedContentEditor ? fixedContentSurface : aiSurface}

@@ -41,6 +41,22 @@
  *   9. On transport permanent failure: mark 'failed' immediately (not left for reap).
  *  10. On transport transient failure: message stays at 'sending' for reap to retry.
  *
+ * Topics and transports (G8a, G26, D16, D18):
+ *   - Topic gate, right after the suppression check (suppression always wins):
+ *     a message whose topic the contact unsubscribed from (or never subscribed
+ *     to when the topic's default_subscribed is false) is suppressed with
+ *     status_reason 'topic_unsubscribed'. Transactional topics skip this gate.
+ *   - Routing: messages with a transactional-kind topic use the product's
+ *     transactional route, everything else the default route (see
+ *     transport-resolver.ts).
+ *   - Transport policy (hard guard, default deny): right before the send, a
+ *     message routed to a `cloudflare` transport whose topic kind is not
+ *     'transactional' is marked 'failed' with status_reason 'transport_policy'
+ *     (no retry).
+ *   - List-Unsubscribe (D18): omitted on transactional-topic messages; every
+ *     other message carries it. The postal footer is always present.
+ *   - daily_limit is per transport.
+ *
  * NOTE: After task 14, the drain sends nothing in any real deployment. The
  * transport resolver returns null until Phase 4 builds real adapters (tasks
  * 26-32b). Messages that pass the throttle gate remain at 'approved' and are
@@ -73,8 +89,12 @@ import {
   type BrandSettings,
   type ThrottleGateInput,
   type ThrottleVerdict,
+  routeForTopicKind,
+  topicBlocks,
+  transportPolicyAllows,
+  carriesListUnsubscribe,
 } from "@claros/core";
-import type { TransportAdapter, TransportResolver } from "./transport.js";
+import type { TenantTransportAdapter, TransportResolver } from "./transport.js";
 import {
   buildComplianceOutput,
   checkBaseUrl,
@@ -100,6 +120,8 @@ export interface DrainCandidate {
   bodyHtml: string | null;
   bodyText: string | null;
   retryCount: number | null;
+  /** Topic of the message (copied from the flow at creation); null/absent = no topic. */
+  topicId?: string | null;
 }
 
 /** Strategy for fetching a batch of drain candidates. */
@@ -134,6 +156,10 @@ export interface DrainTickResult {
   transportErrors: number;
   /** Permanent transport failures (message immediately marked 'failed'). */
   permanentFailures: number;
+  /** Messages suppressed because the contact is unsubscribed from their topic (also counted in suppressed). */
+  topicUnsubscribed: number;
+  /** Messages failed by the transport policy (non-transactional mail routed to a cloudflare transport). */
+  transportPolicyFailures: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +247,8 @@ export async function processDrainTick(
     deferredWindow: 0,
     transportErrors: 0,
     permanentFailures: 0,
+    topicUnsubscribed: 0,
+    transportPolicyFailures: 0,
   };
 
   // Step 1: Find tenants that have approved messages ready to drain.
@@ -232,7 +260,7 @@ export async function processDrainTick(
   // Step 2: Resolve transport for each tenant. Only proceed with tenants
   // that have a configured adapter. This is the gate that ensures zero
   // writes when no transport exists (the normal state before Phase 4).
-  const tenantsWithTransport = new Map<string, TransportAdapter>();
+  const tenantsWithTransport = new Map<string, TenantTransportAdapter>();
   for (const dueTenantId of dueTenantIds) {
     const adapter = await resolveTransport(dueTenantId);
     if (adapter !== null) {
@@ -252,36 +280,53 @@ export async function processDrainTick(
 
   if (candidates.length === 0) return stats;
 
-  // Step 3b: Resolve daily_limit for each tenant
-  const tenantDailyLimits = new Map<string, number | null>();
-  for (const tenantId of tenantIds) {
-    tenantDailyLimits.set(tenantId, await storeFor(db).workerDrain.getTransportDailyLimit(tenantId));
-  }
-
-  // Count sent messages today per tenant (for daily limit enforcement)
+  // Step 3b: daily_limit is per transport. Limits and today's counts are
+  // read once per transport per tick and the count is kept in memory, so the
+  // limit holds across the whole batch. An adapter without transportInfo
+  // (tests) is keyed by tenant and reads the tenant's active transport.
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tenantSentToday = new Map<string, number>();
-  for (const tenantId of tenantIds) {
-    tenantSentToday.set(tenantId, await storeFor(db).workerDrain.countSentSince(tenantId, startOfDay));
-  }
+  const dailyLimits = new Map<string, number | null>();
+  const sentToday = new Map<string, number>();
+  const routeCache = new Map<string, TenantTransportAdapter | null>();
 
   const baseUrl = resolveBaseUrl(baseUrlOverride);
 
   // Step 4: Process each claimed message.
   for (const candidate of candidates) {
-    const adapter = tenantsWithTransport.get(candidate.tenantId)!;
+    const defaultAdapter = tenantsWithTransport.get(candidate.tenantId)!;
+    const routed = await routeMessage(db, candidate, defaultAdapter, resolveTransport, routeCache);
+    const adapter = routed.adapter;
+    if (adapter === null) {
+      // The route has no usable transport (e.g. its credentials cannot be
+      // decrypted): nothing is sent, the message waits for the next tick.
+      await revertToApproved(db, candidate.id, now);
+      stats.skippedNoTransport++;
+      continue;
+    }
+
+    const info = adapter.transportInfo;
+    const limitKey = info ? `t:${info.id}` : `tenant:${candidate.tenantId}`;
+    if (!dailyLimits.has(limitKey)) {
+      dailyLimits.set(
+        limitKey,
+        info ? info.dailyLimit : await storeFor(db).workerDrain.getTransportDailyLimit(candidate.tenantId),
+      );
+      sentToday.set(limitKey, await storeFor(db).workerDrain.countSentSince(candidate.tenantId, startOfDay, info?.id));
+    }
 
     // Check daily limit before processing
-    const dailyLimit = tenantDailyLimits.get(candidate.tenantId) ?? null;
-    const sentToday = tenantSentToday.get(candidate.tenantId) ?? 0;
-    if (dailyLimit !== null && sentToday >= dailyLimit) {
+    const dailyLimit = dailyLimits.get(limitKey) ?? null;
+    const sentSoFar = sentToday.get(limitKey) ?? 0;
+    if (dailyLimit !== null && sentSoFar >= dailyLimit) {
       // Revert to approved, will retry tomorrow
       const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
       await storeFor(db).workerDrain.deferClaim(candidate.id, tomorrow, now);
       continue;
     }
 
-    const result = await processOneMessage(db, candidate, now, adapter, baseUrl, signingKeyOverride, isProductionOverride);
+    const result = await processOneMessage(
+      db, candidate, now, adapter, baseUrl, signingKeyOverride, isProductionOverride, routed.topic,
+    );
     switch (result) {
       case "no_email":
         stats.skippedNoEmail++;
@@ -300,13 +345,17 @@ export async function processDrainTick(
         // Update the in-memory daily send counter so the next message in
         // this same tick sees the updated count and the limit is honoured
         // across the full batch, not just at the start of the tick.
-        tenantSentToday.set(
-          candidate.tenantId,
-          (tenantSentToday.get(candidate.tenantId) ?? 0) + 1,
-        );
+        sentToday.set(limitKey, (sentToday.get(limitKey) ?? 0) + 1);
         break;
       case "suppressed":
         stats.suppressed++;
+        break;
+      case "topic_unsubscribed":
+        stats.suppressed++;
+        stats.topicUnsubscribed++;
+        break;
+      case "transport_policy":
+        stats.transportPolicyFailures++;
         break;
       case "deferred_frequency":
         stats.deferredFrequency++;
@@ -340,16 +389,63 @@ export type MessageOutcome =
   | "deferred_frequency"
   | "deferred_window"
   | "transport_error"
-  | "permanent_failure";
+  | "permanent_failure"
+  | "topic_unsubscribed"
+  | "transport_policy";
 
+/** The message's topic as the drain needs it, or null when the message has none. */
+export interface DrainTopic {
+  id: string;
+  kind: string;
+  defaultSubscribed: boolean;
+  /** The contact's explicit status, or null (topic default applies). */
+  status: string | null;
+}
+
+/**
+ * Read the message's topic (with the contact's status) and pick the adapter
+ * for its route. A topic that no longer exists in the tenant counts as no
+ * topic. Adapters are cached per tenant and route for the caller's tick.
+ */
+export async function routeMessage(
+  db: Db,
+  candidate: DrainCandidate,
+  defaultAdapter: TenantTransportAdapter,
+  resolveTransport: TransportResolver,
+  cache?: Map<string, TenantTransportAdapter | null>,
+): Promise<{ topic: DrainTopic | null; adapter: TenantTransportAdapter | null }> {
+  let topic: DrainTopic | null = null;
+  if (candidate.topicId) {
+    const gate = await storeFor(db).workerDrain.getTopicGate({
+      tenantId: candidate.tenantId,
+      contactId: candidate.contactId,
+      topicId: candidate.topicId,
+    });
+    if (gate) topic = { id: candidate.topicId, ...gate };
+  }
+  const route = routeForTopicKind(topic?.kind);
+  if (route === "default") return { topic, adapter: defaultAdapter };
+  const key = `${candidate.tenantId}:${route}`;
+  if (cache?.has(key)) return { topic, adapter: cache.get(key)! };
+  const adapter = await resolveTransport(candidate.tenantId, route);
+  cache?.set(key, adapter);
+  return { topic, adapter };
+}
+
+/**
+ * Process one claimed message. `topic` is the message's topic when the
+ * caller already read it (routeMessage): undefined means "read it here",
+ * null means "the message has no topic".
+ */
 export async function processOneMessage(
   db: Db,
   candidate: DrainCandidate,
   now: Date,
-  adapter: TransportAdapter,
+  adapter: TenantTransportAdapter,
   baseUrl: string,
   signingKeyOverride?: string,
   isProductionOverride?: boolean,
+  topic?: DrainTopic | null,
 ): Promise<MessageOutcome> {
   // Messages arrive here already at status = 'sending' (claimed by fetchBatch).
   // Transport is already resolved (per-tenant, before claiming).
@@ -433,6 +529,22 @@ export async function processOneMessage(
     now,
   );
 
+  // Step 4b: Topic gate, after the suppression check (a suppressed address is
+  // suppressed by the throttle gate below whatever its topic status).
+  let messageTopic: DrainTopic | null = topic ?? null;
+  if (topic === undefined && candidate.topicId) {
+    const gate = await storeFor(db).workerDrain.getTopicGate({
+      tenantId: candidate.tenantId,
+      contactId: candidate.contactId,
+      topicId: candidate.topicId,
+    });
+    messageTopic = gate ? { id: candidate.topicId, ...gate } : null;
+  }
+  if (!gateInput.isSuppressed && messageTopic !== null && topicBlocks(messageTopic)) {
+    await storeFor(db).workerDrain.markSuppressed(candidate.id, now, "topic_unsubscribed");
+    return "topic_unsubscribed";
+  }
+
   const verdict = evaluateThrottleGate(gateInput);
 
   // Step 5: Act on verdict.
@@ -458,8 +570,25 @@ export async function processOneMessage(
       break; // Fall through to transport
   }
 
-  // Step 6: Resolve sender info.
-  const senderInfo = await resolveSenderInfo(db, candidate.tenantId);
+  // Step 5b: Transport policy (D16, hard guard, default deny). Cloudflare
+  // Email Service may only send transactional-topic mail. Permanent: no retry.
+  const transportInfo = adapter.transportInfo;
+  if (!transportPolicyAllows(transportInfo?.kind, messageTopic?.kind)) {
+    console.error(
+      `[drain] message ${candidate.id} (tenant ${candidate.tenantId}) is not transactional and was routed ` +
+        `to a cloudflare transport (${transportInfo?.id}). Cloudflare Email Service is for transactional mail only. ` +
+        `Marked failed (transport_policy). Route this mail to another transport.`,
+    );
+    await storeFor(db).workerDrain.markFailed(candidate.id, now, "transport_policy");
+    return "transport_policy";
+  }
+
+  // Step 6: Resolve sender info (the routed transport's, else the tenant's active transport).
+  const senderInfo: SenderInfo = transportInfo
+    ? { fromEmail: transportInfo.fromEmail, fromName: transportInfo.fromName }
+    : await resolveSenderInfo(db, candidate.tenantId);
+  const replyTo = transportInfo?.replyTo ?? brandReplyTo(tenantSettings?.brand) ?? undefined;
+  const listUnsubscribe = carriesListUnsubscribe(messageTopic?.kind);
 
   // Step 7: Build compliance headers and footer.
   // signingKey is already confirmed non-null (checked in Step 3).
@@ -469,6 +598,8 @@ export async function processOneMessage(
     postalAddress,
     baseUrl: linkBaseUrl,
     signingKey,
+    // Topic unsubscribes through the token only for non-transactional topics.
+    topicId: messageTopic !== null && listUnsubscribe ? messageTopic.id : null,
   });
 
   // Step 8: Wrap body in branded email shell with compliance footer.
@@ -518,13 +649,22 @@ export async function processOneMessage(
       to: contactEmail,
       from: senderInfo.fromEmail,
       fromName: senderInfo.fromName ?? undefined,
+      ...(replyTo ? { replyTo } : {}),
       subject: candidate.subject ?? "(no subject)",
       bodyHtml: deliveredHtml,
       bodyText: deliveredText,
       messageId: candidate.id,
-      headers: {
-        "List-Unsubscribe": compliance.listUnsubscribeHeader,
-        "List-Unsubscribe-Post": compliance.listUnsubscribePostHeader,
+      // D18: transactional-topic messages carry no List-Unsubscribe headers.
+      headers: listUnsubscribe
+        ? {
+            "List-Unsubscribe": compliance.listUnsubscribeHeader,
+            "List-Unsubscribe-Post": compliance.listUnsubscribePostHeader,
+          }
+        : {},
+      tags: {
+        claros_tenant: candidate.tenantId,
+        claros_message_id: candidate.id,
+        claros_flow: candidate.flowId,
       },
     });
 
@@ -535,7 +675,12 @@ export async function processOneMessage(
       //
       // recipient_address was already written before the send (Step 9). This write
       // only updates status, sentAt, and providerMessageId.
-      await storeFor(db).workerDrain.markSent(candidate.id, sendResult.providerMessageId ?? null, now);
+      await storeFor(db).workerDrain.markSent(
+        candidate.id,
+        sendResult.providerMessageId ?? null,
+        now,
+        transportInfo?.id ?? null,
+      );
       return "sent";
     } else if (sendResult.permanent === true) {
       // Permanent failure: mark failed immediately without waiting for reap.
@@ -662,6 +807,12 @@ async function resolveSenderInfo(db: Db, tenantId: string): Promise<SenderInfo> 
   // would have returned null). Tests may reach here if they provide an
   // adapter but no transport_configs row.
   return { fromEmail: "noreply@localhost", fromName: null };
+}
+
+/** brand.reply_to when it is a non-empty string. */
+function brandReplyTo(brand: BrandSettings | undefined): string | null {
+  const v = brand?.reply_to;
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 }
 
 // ---------------------------------------------------------------------------

@@ -104,6 +104,12 @@ const createFlowSchema = z.object({
     .optional(),
   reentry_cooldown_days: z.number().int().min(1).optional(),
   prompt_source: z.string().optional(),
+  /** Topic of the flow's messages (G8a); null clears it. */
+  topic_id: z
+    .string()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "topic_id must be a UUID")
+    .nullable()
+    .optional(),
 });
 
 // Update: all create fields optional, plus status
@@ -178,6 +184,11 @@ export default function flowsRoutes() {
       }
     }
 
+    if (body.topic_id) {
+      const topic = await storeFor(db).apiTopics.findTopic({ tenantId, id: body.topic_id.toLowerCase() });
+      if (!topic) return c.json({ error: "topic_id does not name a topic of this product." }, 400);
+    }
+
     const inserted = await storeFor(db).apiFlows.createFlow({
         tenantId,
         name: body.name,
@@ -196,6 +207,7 @@ export default function flowsRoutes() {
         promptSource: body.prompt_source ?? null,
         compiledPlan: null,
         compiledAt: null,
+        topicId: body.topic_id ? body.topic_id.toLowerCase() : null,
       });
 
     return c.json(serializeFlow(inserted!), 201);
@@ -317,6 +329,11 @@ export default function flowsRoutes() {
         }
       }
 
+      if (body.topic_id) {
+        const topic = await storeFor(db).apiTopics.findTopic({ tenantId, id: body.topic_id.toLowerCase() });
+        if (!topic) return c.json({ error: "topic_id does not name a topic of this product." }, 400);
+      }
+
       // Build the SET clause; never include compiled_plan or compiled_at
       const setClauses: FlowPatch = {
         updatedAt: new Date(),
@@ -337,6 +354,7 @@ export default function flowsRoutes() {
         setClauses.reentryCooldownDays = body.reentry_cooldown_days;
       }
       if (body.status !== undefined)            setClauses.status = body.status;
+      if (body.topic_id !== undefined)          setClauses.topicId = body.topic_id ? body.topic_id.toLowerCase() : null;
 
       // prompt_source: update and clear stale compiled_plan/compiled_at
       if (
@@ -777,6 +795,7 @@ function serializeFlow(row: FlowRow) {
     compiled_at: row.compiledAt,
     compile_status: row.compileStatus,
     compile_error: row.compileError,
+    topic_id: row.topicId ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };

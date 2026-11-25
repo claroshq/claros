@@ -45,6 +45,9 @@ import {
   planIngestTransition,
   type IngestTransitionPlan,
 } from "../shared/api-ingest.js";
+import { topics as topicsTable } from "@claros/db/schema-sqlite";
+import { upsertContactTopicSql } from "./contact-topics.js";
+import { rawBatch as rawBatchShared } from "./raw-batch.js";
 
 interface IngestEventInput {
   tenantId: string;
@@ -330,6 +333,39 @@ export function d1ApiIngest(db: D1Db): ApiIngestQueries {
         traitPlan: input.traitPlan,
       });
       return { deduplicated: result.deduplicated };
+    },
+
+    async applyContactTopics({ tenantId, externalId, topics: wanted, source, now }) {
+      const slugs = Object.keys(wanted);
+      if (slugs.length === 0) return { applied: [], unknown: [] };
+      const knownSet = new Set<string>();
+      // D1 allows at most 100 bound parameters per statement.
+      for (let i = 0; i < slugs.length; i += 90) {
+        const chunk = slugs.slice(i, i + 90);
+        const rows = await db
+          .select({ slug: topicsTable.slug })
+          .from(topicsTable)
+          .where(and(eq(topicsTable.tenantId, tenantId), inArray(topicsTable.slug, chunk)));
+        for (const r of rows) knownSet.add(r.slug);
+      }
+      const applied = slugs.filter((s) => knownSet.has(s));
+      const unknown = slugs.filter((s) => !knownSet.has(s));
+      if (applied.length > 0) {
+        await rawBatchShared(
+          db,
+          applied.map((slug) =>
+            upsertContactTopicSql({
+              tenantId,
+              topicCondition: sql`t.slug = ${slug}`,
+              contactCondition: sql`c.external_id = ${externalId}`,
+              status: wanted[slug] ? "subscribed" : "unsubscribed",
+              source,
+              now,
+            }),
+          ),
+        );
+      }
+      return { applied, unknown };
     },
   };
 }

@@ -1,7 +1,7 @@
 /**
  * Postgres implementation of the queries used by packages/api/src/routes/settings.ts.
  */
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { transportConfigs, llmConfigs, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { ApiSettingsQueries } from "../areas/api-settings.js";
@@ -15,6 +15,13 @@ const TRANSPORT_DISPLAY_COLUMNS = {
   dkimVerified: transportConfigs.dkimVerified,
   isActive: transportConfigs.isActive,
   createdAt: transportConfigs.createdAt,
+} as const;
+
+const TRANSPORT_DETAIL_COLUMNS = {
+  ...TRANSPORT_DISPLAY_COLUMNS,
+  kind: sql<string>`COALESCE(${transportConfigs.kind}, ${transportConfigs.provider})`,
+  name: transportConfigs.name,
+  replyTo: transportConfigs.replyTo,
 } as const;
 
 export function pgApiSettings(db: PgDb): ApiSettingsQueries {
@@ -34,6 +41,7 @@ export function pgApiSettings(db: PgDb): ApiSettingsQueries {
         .values({
           tenantId: input.tenantId,
           provider: input.provider,
+          kind: input.provider,
           config: sql`${input.encryptedConfig}::jsonb`,
           isActive: true,
           fromEmail: input.fromEmail,
@@ -51,6 +59,7 @@ export function pgApiSettings(db: PgDb): ApiSettingsQueries {
         .where(
           and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)),
         )
+        .orderBy(asc(transportConfigs.createdAt), asc(transportConfigs.id))
         .limit(1);
       return rows[0] ?? null;
     },
@@ -148,9 +157,93 @@ export function pgApiSettings(db: PgDb): ApiSettingsQueries {
         FROM transport_configs
         WHERE tenant_id = ${tenantId}::uuid
           AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       return configRows.rows[0] ?? null;
+    },
+
+    async listActiveTransports(tenantId) {
+      return db
+        .select(TRANSPORT_DETAIL_COLUMNS)
+        .from(transportConfigs)
+        .where(and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)))
+        .orderBy(asc(transportConfigs.createdAt), asc(transportConfigs.id));
+    },
+
+    async findActiveTransport({ tenantId, id }) {
+      const rows = await db
+        .select({ ...TRANSPORT_DETAIL_COLUMNS, config: sql<string>`${transportConfigs.config}::text` })
+        .from(transportConfigs)
+        .where(
+          and(
+            eq(transportConfigs.tenantId, tenantId),
+            eq(transportConfigs.id, id),
+            eq(transportConfigs.isActive, true),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    async insertTransport(input) {
+      const [inserted] = await db
+        .insert(transportConfigs)
+        .values({
+          tenantId: input.tenantId,
+          // provider mirrors kind so code that reads provider keeps working.
+          provider: input.kind,
+          kind: input.kind,
+          name: input.name,
+          config: sql`${input.encryptedConfig}::jsonb`,
+          isActive: true,
+          fromEmail: input.fromEmail,
+          fromName: input.fromName,
+          replyTo: input.replyTo,
+          dailyLimit: input.dailyLimit,
+        })
+        .returning(TRANSPORT_DETAIL_COLUMNS);
+      return inserted;
+    },
+
+    async updateTransport({ tenantId, id, patch }) {
+      const set: Record<string, unknown> = {};
+      if (patch.name !== undefined) set.name = patch.name;
+      if (patch.fromEmail !== undefined) set.fromEmail = patch.fromEmail;
+      if (patch.fromName !== undefined) set.fromName = patch.fromName;
+      if (patch.replyTo !== undefined) set.replyTo = patch.replyTo;
+      if (patch.dailyLimit !== undefined) set.dailyLimit = patch.dailyLimit;
+      if (patch.encryptedConfig !== undefined) set.config = sql`${patch.encryptedConfig}::jsonb`;
+      const where = and(
+        eq(transportConfigs.tenantId, tenantId),
+        eq(transportConfigs.id, id),
+        eq(transportConfigs.isActive, true),
+      );
+      if (Object.keys(set).length === 0) {
+        const rows = await db.select(TRANSPORT_DETAIL_COLUMNS).from(transportConfigs).where(where).limit(1);
+        return rows[0] ?? null;
+      }
+      const rows = await db
+        .update(transportConfigs)
+        .set(set as never)
+        .where(where)
+        .returning(TRANSPORT_DETAIL_COLUMNS);
+      return rows[0] ?? null;
+    },
+
+    async deactivateTransport({ tenantId, id }) {
+      const rows = await db
+        .update(transportConfigs)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(transportConfigs.tenantId, tenantId),
+            eq(transportConfigs.id, id),
+            eq(transportConfigs.isActive, true),
+          ),
+        )
+        .returning({ id: transportConfigs.id });
+      return rows.length > 0;
     },
   };
 }
