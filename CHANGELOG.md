@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-11-25
+
 ### Added
 
 - Flow editor redesign. A flow reads as a timeline (trigger, each email with its wait, early exits); selecting an email opens it beside the timeline with its real content: fixed copy with subject, preview text, body, variable and named-link insert buttons and a preview with a sample contact, or the AI instruction with examples and the links, knowledge base entry and context sources it may use. Delivery settings (review, topic, class, priority, re-entry) are explained choices on their own tab. One draft and one save bar replace the separate Save plan, Save steps and Save changes buttons. New flows start from an example (welcome, onboarding, trial ending, payment failed, win back, at-risk), a description, or blank. Flows applied from a config document say that the next `claros apply` replaces dashboard edits. `/flows/:id/edit?template=<slug>` opens the email that uses the template. See [Editing flows in the dashboard](docs/guide/FLOWS.md#editing-flows-in-the-dashboard).
@@ -266,7 +268,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.7...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.8...HEAD
+[0.8.8]: https://github.com/claroshq/claros/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/claroshq/claros/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/claroshq/claros/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/claroshq/claros/compare/v0.8.4...v0.8.5
