@@ -74,6 +74,13 @@ export interface ApiIngestQueries {
    * true -> 'subscribed', false -> 'unsubscribed' (source as given). Slugs that are not topics of
    * the tenant are returned in `unknown` and ignored. All writes are one atomic unit.
    */
+  /**
+   * G3: when an identify changed (set or unset) any of the product's declared
+   * date traits (settings.date_traits), rewrite the contact_dates rows of the
+   * contact with this external id from its current properties. Returns the
+   * number of date rows written (0 when no declared trait was touched).
+   */
+  syncContactDates(input: { tenantId: string; externalId: string; changedKeys: readonly string[]; now: Date }): Promise<number>;
   applyContactTopics(input: {
     tenantId: string;
     externalId: string;

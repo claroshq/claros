@@ -18,6 +18,7 @@ const LIST_COLUMNS = sql`
   m.scheduled_send_at, m.status_reason,
   m.approved_by, m.rejected_by, m.edited_by, m.edited_at,
   m.original_subject, m.original_body_html, m.original_body_text, m.forced_action_type,
+  m.context_snapshot, m.choose_decision, m.opening_line, m.kb_entry_id, m.imported,
   f.name AS flow_name, f.flow_class,
   c.email AS contact_email, c.name AS contact_name,
   c.external_id AS contact_external_id

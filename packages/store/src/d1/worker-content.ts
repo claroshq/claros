@@ -10,9 +10,11 @@
  * Every CAS is a guarded UPDATE ... WHERE id = ? AND status = ? RETURNING id.
  */
 import { and, eq, sql } from "drizzle-orm";
-import { contacts, flows, lifecycleMessages, templates, tenants } from "@claros/db/schema-sqlite";
+import { contacts, flows, lifecycleMessages, templates, tenants, kbEntries } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { d1ContactConditions } from "./contact-conditions.js";
+import type { WorkerContentKbEntry } from "../areas/worker-content.js";
 import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 import type {
   WorkerContentQueries,
@@ -49,6 +51,8 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
   }
 
   return {
+    ...d1ContactConditions(db),
+
     async claimContentBatch({ now, limit, tenantIds }) {
       if (tenantIds.length === 0) return [];
       const rows = await db.all<{
@@ -183,6 +187,103 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
     async getTenantName(tenantId) {
       const rows = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
       return rows[0]?.name ?? null;
+    },
+
+    async listKbCandidates({ tenantId, category, excludeUsedBy }) {
+      const rows = await db
+        .select({ id: kbEntries.id, title: kbEntries.title, content: kbEntries.content, tags: kbEntries.tags, createdAt: kbEntries.createdAt })
+        .from(kbEntries)
+        .where(
+          and(
+            eq(kbEntries.tenantId, tenantId),
+            eq(kbEntries.category, category),
+            eq(kbEntries.isActive, true),
+            excludeUsedBy
+              ? sql`NOT EXISTS (
+                  SELECT 1 FROM lifecycle_messages um
+                  WHERE um.tenant_id = ${tenantId} AND um.contact_id = ${excludeUsedBy.contactId}
+                    AND um.kb_entry_id = ${kbEntries.id} AND um.id <> ${excludeUsedBy.exceptMessageId}
+                    AND um.status NOT IN ('failed', 'rejected', 'cancelled', 'skipped', 'value_gated', 'suppressed')
+                )`
+              : undefined,
+          ),
+        )
+        .orderBy(kbEntries.createdAt, kbEntries.id);
+      return rows as WorkerContentKbEntry[];
+    },
+
+    async listPinnedKb(tenantId) {
+      const rows = await db
+        .select({ id: kbEntries.id, title: kbEntries.title, content: kbEntries.content, tags: kbEntries.tags, createdAt: kbEntries.createdAt })
+        .from(kbEntries)
+        .where(and(eq(kbEntries.tenantId, tenantId), eq(kbEntries.pinned, true), eq(kbEntries.isActive, true)))
+        .orderBy(kbEntries.createdAt, kbEntries.id);
+      return rows as WorkerContentKbEntry[];
+    },
+
+    async markBlocked({ messageId, fromStatus, statusReason, reasoning, body, now }) {
+      const rows = await db
+        .update(lifecycleMessages)
+        .set({
+          status: "failed",
+          statusReason,
+          brainReasoning: reasoning,
+          subject: body.subject,
+          bodyHtml: body.bodyHtml,
+          bodyText: body.bodyText,
+          updatedAt: now,
+        })
+        .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, fromStatus)))
+        .returning({ id: lifecycleMessages.id });
+      return rows.length > 0;
+    },
+
+    async getFlowTopicGate({ tenantId, contactId, flowId }) {
+      const rows = await db.all<{ kind: string; default_subscribed: number | boolean; status: string | null }>(sql`
+        SELECT t.kind, t.default_subscribed, ct.status
+        FROM flows f
+        JOIN topics t ON t.id = f.topic_id AND t.tenant_id = f.tenant_id
+        LEFT JOIN contact_topics ct ON ct.topic_id = t.id AND ct.contact_id = ${contactId}
+        WHERE f.id = ${flowId} AND f.tenant_id = ${tenantId}
+      `);
+      const r = rows[0];
+      return r ? { kind: r.kind, defaultSubscribed: r.default_subscribed === 1 || r.default_subscribed === true, status: r.status ?? null } : null;
+    },
+
+    async getRenderInfo({ tenantId, flowId }) {
+      const t = await db
+        .select({ slug: tenants.slug, name: tenants.name, settings: tenants.settings, locale: tenants.locale })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const f = await db
+        .select({ slug: flows.slug, name: flows.name, flowClass: flows.flowClass })
+        .from(flows)
+        .where(and(eq(flows.id, flowId), eq(flows.tenantId, tenantId)))
+        .limit(1);
+      if (!t[0] || !f[0]) return null;
+      const settings = t[0].settings && typeof t[0].settings === "object" ? (t[0].settings as Record<string, unknown>) : {};
+      return { tenantSlug: t[0].slug, tenantName: t[0].name, settings, locale: t[0].locale ?? null, flowSlug: f[0].slug ?? null, flowName: f[0].name, flowClass: f[0].flowClass ?? "nurture" };
+    },
+
+    async saveMessageMeta({ tenantId, messageId, meta, events }) {
+      const set: Record<string, unknown> = {};
+      if (meta.contextSnapshot !== undefined) set.contextSnapshot = meta.contextSnapshot;
+      if (meta.chooseDecision !== undefined) set.chooseDecision = meta.chooseDecision;
+      if (meta.openingLine !== undefined) set.openingLine = meta.openingLine;
+      if (meta.kbEntryId !== undefined) set.kbEntryId = meta.kbEntryId;
+      if (meta.actionType !== undefined) set.brainActionType = meta.actionType;
+      if (Object.keys(set).length === 0 && !events) return;
+      const update = db
+        .update(lifecycleMessages)
+        .set(Object.keys(set).length > 0 ? set : { updatedAt: new Date() })
+        .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.tenantId, tenantId)));
+      if (!events || events.outbox.length === 0) {
+        await update;
+        return;
+      }
+      const endpoints = await d1OutboxEndpoints(db, events.tenantId, events.outbox);
+      await db.batch([update, ...d1OutboxInserts(db, events.tenantId, endpoints, events.outbox, new Date(), { afterChange: true })] as never);
     },
 
     async getFlowName(flowId) {

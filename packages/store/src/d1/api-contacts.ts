@@ -247,13 +247,14 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
         sql`DELETE FROM lifecycle_messages WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM flow_memberships WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM contact_topics WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM contact_dates WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM contact_conflicts WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM lifecycle_transitions WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM events WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM webhook_outbox WHERE tenant_id = ${tenantId} AND status = 'pending' AND json_extract(payload, '$.contact_id') = ${contactId}`,
         sql`DELETE FROM contacts WHERE tenant_id = ${tenantId} AND id = ${contactId} RETURNING id`,
       ]);
-      return (results[8] ?? []).length > 0;
+      return (results[9] ?? []).length > 0;
     },
 
     async excludeContact({ tenantId, contactId, email, now }) {

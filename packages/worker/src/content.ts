@@ -56,7 +56,16 @@ import {
 import { resolveTenantProvider } from "./provider-resolver.js";
 import { assembleContext } from "./context-assembler.js";
 import { applyBudgetForBothPaths, draftContextToDecideContext, checkAssessBudget } from "./context-budget.js";
-import { renderTemplate, type TemplateContext } from "./template-renderer.js";
+import { renderTemplate, renderLenient, type TemplateContext } from "./template-renderer.js";
+import { fetchStepContext, contextSection } from "./context-fetch.js";
+import { selectKbEntry, pinnedKbSection } from "./kb-select.js";
+import { draftOpening } from "@claros/brain-oss";
+import type { CompiledStep } from "@claros/core";
+import { runChoose } from "./choose.js";
+
+/** A template with this slot gets an AI opening line (G29). */
+const OPENING_SLOT = /\{\{\s*brain\.opening/;
+import { applyTextRules, findDisallowedLinks, textRuleObjects, textRuleStrings, trackedDomains } from "./draft-checks.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -302,8 +311,158 @@ export async function processOneContentMessage(
     //   - draft: the template IS the content; there is nothing to generate.
     //   - assess: pre-authored content is the operator's responsibility and
     //     does not need an automated quality gate.
-    if (assembled.templateRef) {
-      return processTemplateMessage(db, candidate, assembled.templateRef, now);
+    // 1a. Render facts of the product (links, guidelines, locale, data sources).
+    const info = await storeFor(db).workerContent.getRenderInfo({ tenantId: candidate.tenantId, flowId: candidate.flowId });
+    const extras: RenderExtras = { links: productLinks(info?.settings), context: undefined };
+    const step = assembled.step;
+    /** What this message is drafted from: the step, or the candidate a choose step picked. */
+    const eff: {
+      context?: CompiledStep["context"];
+      on_empty?: CompiledStep["on_empty"];
+      on_error?: CompiledStep["on_error"];
+      kb_select?: CompiledStep["kb_select"];
+      template_ref?: string;
+      brain_instruction?: string;
+      action_type: string;
+    } = {
+      context: step?.context,
+      on_empty: step?.on_empty,
+      on_error: step?.on_error,
+      kb_select: step?.kb_select,
+      template_ref: assembled.templateRef,
+      brain_instruction: assembled.draftCtx.brain_instruction,
+      action_type: candidate.brainActionType ?? "nurture_value",
+    };
+    let chosen = false;
+
+    // 1a'. choose step (G27): deterministic filters, then the LLM picks one
+    // eligible candidate or none.
+    if (step?.type === "choose" && info) {
+      const contact = await storeFor(db).workerContent.getTemplateContact(candidate.tenantId, candidate.contactId);
+      if (contact === null) return "error";
+      const r = await runChoose(db, {
+        tenantId: candidate.tenantId,
+        contactId: candidate.contactId,
+        flowId: candidate.flowId,
+        messageId: candidate.id,
+        stepOrder: candidate.flowStepOrder ?? 1,
+        step,
+        settings: info.settings,
+        product: info.tenantSlug,
+        flowSlug: info.flowSlug,
+        flowClass: info.flowClass,
+        contact: { external_id: contact.external_id, email: contact.email, traits: contact.properties ?? {} },
+        forcedActionType: candidate.forcedActionType,
+        now,
+        provider: async () => {
+          const pr = await resolveTenantProvider(db, candidate.tenantId);
+          return pr.ok ? pr.provider : { error: pr.reason };
+        },
+        draftCtx: {
+          ...assembled.draftCtx,
+          ...(productGuidelines(info.settings) ? { guidelines: productGuidelines(info.settings) } : {}),
+          ...(info.locale ? { locale: info.locale } : {}),
+        },
+        countCall,
+      });
+      const decided = {
+        tenantId: candidate.tenantId,
+        outbox: [{ event: "choose.decided", payload: { message_id: candidate.id, choice: r.decision.choice, reason: r.decision.reason } }],
+      };
+      if (r.kind === "llm_error") {
+        if (isPermanentLlmFailure(r.statusCode)) return failPermanently(db, candidate, "generating", `choose: ${r.error}`, now);
+        return "error";
+      }
+      if (r.kind === "none") {
+        await storeFor(db).workerContent.saveMessageMeta({ tenantId: candidate.tenantId, messageId: candidate.id, meta: { chooseDecision: r.decision }, events: decided });
+        const won = await storeFor(db).workerContent.markSkipped(candidate.id, `choose: none (${r.decision.reason})`, now);
+        return won ? "skipped" : "error";
+      }
+      const c = r.pick.candidate;
+      await storeFor(db).workerContent.saveMessageMeta({
+        tenantId: candidate.tenantId,
+        messageId: candidate.id,
+        meta: {
+          chooseDecision: r.decision,
+          actionType: c.action_type,
+          ...(r.pick.snapshot ? { contextSnapshot: r.pick.snapshot } : {}),
+          ...(r.pick.kbEntry ? { kbEntryId: r.pick.kbEntry.id } : {}),
+        },
+        events: decided,
+      });
+      eff.context = undefined;
+      eff.kb_select = undefined;
+      eff.template_ref = c.template_ref;
+      eff.brain_instruction = c.brain_instruction ?? step.brain_instruction;
+      eff.action_type = c.action_type;
+      if (r.pick.snapshot) extras.context = r.pick.snapshot;
+      if (r.pick.kbEntry) extras.kb = { title: r.pick.kbEntry.title, content: r.pick.kbEntry.content };
+      chosen = true;
+    }
+
+    // 1b. Context-fetch hook (G11): call the step's data sources first.
+    if (eff.context && eff.context.length > 0 && info) {
+      const contact = await storeFor(db).workerContent.getTemplateContact(candidate.tenantId, candidate.contactId);
+      if (contact === null) return "error";
+      const r = await fetchStepContext({
+        settings: info.settings,
+        product: info.tenantSlug,
+        contact: { external_id: contact.external_id, email: contact.email, traits: contact.properties ?? {} },
+        flowSlug: info.flowSlug,
+        stepOrder: candidate.flowStepOrder ?? 1,
+        messageId: candidate.id,
+        entries: eff.context,
+        now,
+      });
+      if (!r.ok) {
+        const mode = eff.on_error ?? "defer";
+        if (mode === "fail") return failPermanently(db, candidate, "generating", `context_error: ${r.error}`, now);
+        if (mode === "skip") {
+          const won = await storeFor(db).workerContent.markSkipped(candidate.id, `context_error: ${r.error}`, now);
+          return won ? "skipped" : "error";
+        }
+        // defer: leave the message at 'generating'; reap retries it later.
+        console.warn(`[content] message ${candidate.id}: context deferred: ${r.error}`);
+        return "error";
+      }
+      await storeFor(db).workerContent.saveMessageMeta({ tenantId: candidate.tenantId, messageId: candidate.id, meta: { contextSnapshot: r.snapshot } });
+      if (r.empty && (eff.on_empty ?? "send") === "skip") {
+        const won = await storeFor(db).workerContent.markSkipped(candidate.id, `context_empty: ${r.emptySources.join(", ")}`, now);
+        return won ? "skipped" : "error";
+      }
+      extras.context = r.snapshot;
+    }
+
+    // 1c. Knowledge base selection (G18): the entry this message is about.
+    if (eff.kb_select) {
+      const contact = await storeFor(db).workerContent.getTemplateContact(candidate.tenantId, candidate.contactId);
+      if (contact === null) return "error";
+      const entry = await selectKbEntry(db, {
+        tenantId: candidate.tenantId,
+        contactId: candidate.contactId,
+        messageId: candidate.id,
+        select: eff.kb_select,
+        traits: contact.properties ?? {},
+        query: `${eff.brain_instruction ?? ""} ${eff.action_type}`,
+      });
+      if (!entry) {
+        const won = await storeFor(db).workerContent.markSkipped(candidate.id, `kb_exhausted: no unused entry in category '${eff.kb_select.category}'`, now);
+        return won ? "skipped" : "error";
+      }
+      await storeFor(db).workerContent.saveMessageMeta({ tenantId: candidate.tenantId, messageId: candidate.id, meta: { kbEntryId: entry.id } });
+      extras.kb = { title: entry.title, content: entry.content };
+    }
+
+    if (eff.template_ref) {
+      return processTemplateMessage(db, candidate, eff.template_ref, now, extras, {
+        draftCtx: {
+          ...assembled.draftCtx,
+          ...(productGuidelines(info?.settings) ? { guidelines: productGuidelines(info?.settings) } : {}),
+          ...(info?.locale ? { locale: info.locale } : {}),
+        },
+        settings: info?.settings ?? {},
+        countCall,
+      });
     }
 
     // 2. Resolve tenant's LLM provider. A resolution failure is always a
@@ -322,11 +481,13 @@ export async function processOneContentMessage(
     // not available (e.g., buildDraftMessages not loaded), the un-truncated
     // context is used - the LLM handles slight overruns gracefully.
     let decideCtx: DecidePromptContext = assembled.decideCtx;
-    let draftCtx: DraftPromptContext = assembled.draftCtx;
+    let draftCtx: DraftPromptContext = chosen
+      ? { ...assembled.draftCtx, action_type: eff.action_type, brain_instruction: eff.brain_instruction }
+      : assembled.draftCtx;
     try {
-      const actionType = candidate.brainActionType ?? "nurture_value";
+      const actionType = eff.action_type;
       const truncResult = applyBudgetForBothPaths(
-        assembled.draftCtx,
+        draftCtx,
         actionType,
         assembled.lastSeen,
       );
@@ -345,11 +506,53 @@ export async function processOneContentMessage(
       // only in test environments where @claros/brain-oss is mocked.
     }
 
+    // 3a. Knowledge base (G18): pinned entries always, the selected entry when kb_select picked one.
+    const pinned = await pinnedKbSection(db, candidate.tenantId);
+    if (pinned) draftCtx = { ...draftCtx, pinned_kb: pinned };
+    if (extras.kb) draftCtx = { ...draftCtx, selected_kb: `## ${extras.kb.title}\n${extras.kb.content}` };
+
+    // 3a'. Product voice and limits (G19, G22): named links, writing rules,
+    // guidelines (within a budget) and the drafting language.
+    {
+      const guidelines = productGuidelines(info?.settings);
+      draftCtx = {
+        ...draftCtx,
+        ...(Object.keys(extras.links ?? {}).length > 0 ? { allowed_links: extras.links } : {}),
+        ...(textRuleStrings(info?.settings).length > 0 ? { text_rules: textRuleStrings(info?.settings) } : {}),
+        ...(guidelines ? { guidelines } : {}),
+        ...(info?.locale ? { locale: info.locale } : {}),
+      };
+    }
+
+    // 3b. Context data (G11) and brain instruction variables.
+    if (extras.context) {
+      draftCtx = { ...draftCtx, external_context: contextSection(extras.context) };
+      decideCtx = { ...decideCtx, kbContext: [decideCtx.kbContext, `CONTEXT DATA:\n${contextSection(extras.context, 2000)}`].filter(Boolean).join("\n\n") };
+    }
+    if (draftCtx.brain_instruction && /\{\{/.test(draftCtx.brain_instruction)) {
+      const contact = await storeFor(db).workerContent.getTemplateContact(candidate.tenantId, candidate.contactId);
+      if (contact) {
+        draftCtx = {
+          ...draftCtx,
+          brain_instruction: renderLenient(draftCtx.brain_instruction, {
+            contact: { first_name: contact.first_name, last_name: contact.last_name, email: contact.email, external_id: contact.external_id, properties: contact.properties },
+            tenant: { name: info?.tenantName ?? "" },
+            flow: { name: info?.flowName ?? "" },
+            context: extras.context,
+            links: extras.links,
+          }),
+        };
+      }
+    }
+
     // 4. Call decide(), unless a reviewer forced the action type (G20
     // regenerate): the decision to contact was then taken by a person.
     let decision: { action: string; reasoning?: string | null };
     if (candidate.forcedActionType) {
       decision = { action: "contact", reasoning: `forced action: ${candidate.forcedActionType}` };
+    } else if (chosen) {
+      // The choose step already decided to contact with this action.
+      decision = { action: "contact", reasoning: `choose: ${eff.action_type}` };
     } else {
       const decideResult = await decide(provider, decideCtx);
       countCall(decideResult.ok);
@@ -405,7 +608,38 @@ export async function processOneContentMessage(
       return "error";
     }
 
-    const { subject, body_markdown } = draftResult.draft;
+    let { subject, body_markdown } = draftResult.draft;
+
+    // 6b. Post-draft checks (G19): text rules, then the link allowlist.
+    {
+      const ruled = applyTextRules(textRuleObjects(info?.settings), { subject, body: body_markdown });
+      subject = ruled.subject;
+      body_markdown = ruled.body;
+      const blocked = async (statusReason: string, reasoning: string): Promise<ContentOutcome> => {
+        const won = await storeFor(db).workerContent.markBlocked({
+          messageId: candidate.id,
+          fromStatus: "awaiting_content",
+          statusReason,
+          reasoning,
+          body: { subject, bodyHtml: renderMarkdownToHtml(body_markdown), bodyText: markdownToText(body_markdown) },
+          now,
+        });
+        return won ? "failed" : "error";
+      };
+      if (ruled.forbidden.length > 0) {
+        return blocked("text_rule_forbidden", `text_rule_forbidden: the draft contains ${ruled.forbidden.map((f) => JSON.stringify(f)).join(", ")}`);
+      }
+      // The allowlist is on once the product declares links or tracked
+      // domains; without either, drafts keep the v0.6 behaviour.
+      const domains = trackedDomains(info?.settings);
+      const allowlistOn = Object.keys(extras.links ?? {}).length > 0 || domains.length > 0;
+      const bad = allowlistOn
+        ? findDisallowedLinks(`${subject}\n${body_markdown}`, { links: extras.links ?? {}, trackedDomains: domains, context: extras.context })
+        : [];
+      if (bad.length > 0) {
+        return blocked("link_not_allowed", `link_not_allowed: ${bad.join(", ")}`);
+      }
+    }
 
     // 7. Assess budget: check the assess call fits after the actual draft body
     // is known. No re-truncation (would create incoherence); just a warning.
@@ -513,6 +747,8 @@ async function processTemplateMessage(
   candidate: ContentCandidate,
   templateSlug: string,
   now: Date,
+  extras: RenderExtras = {},
+  ai?: { draftCtx: DraftPromptContext; settings: Record<string, unknown>; countCall: (ok: boolean) => void },
 ): Promise<ContentOutcome> {
   // 1. Look up the template by slug + tenant
   const template = await storeFor(db).workerContent.getActiveTemplate(candidate.tenantId, templateSlug);
@@ -538,6 +774,34 @@ async function processTemplateMessage(
 
   const flowName = (await storeFor(db).workerContent.getFlowName(candidate.flowId)) ?? "Unknown";
 
+  // G29: a {{brain.opening}} slot gets one AI-drafted opening line; fixed
+  // templates without the slot make no LLM call.
+  if (ai && OPENING_SLOT.test(`${template.subject}\n${template.body_html}\n${template.body_text ?? ""}`)) {
+    const providerResult = await resolveTenantProvider(db, candidate.tenantId);
+    if (!providerResult.ok) return failPermanently(db, candidate, "generating", providerResult.reason, now);
+    const r = await draftOpening(providerResult.provider, { ctx: ai.draftCtx, templateSubject: template.subject, templateBody: template.body_html });
+    ai.countCall(r.ok);
+    if (!r.ok) {
+      if (isPermanentLlmFailure(r.statusCode)) return failPermanently(db, candidate, "generating", `opening: ${r.error}`, now);
+      return "error";
+    }
+    const ruled = applyTextRules(textRuleObjects(ai.settings), { subject: "", body: r.value.opening });
+    const opening = ruled.body.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+    if (ruled.forbidden.length > 0) {
+      const won = await storeFor(db).workerContent.markBlocked({
+        messageId: candidate.id,
+        fromStatus: "generating",
+        statusReason: "text_rule_forbidden",
+        reasoning: `text_rule_forbidden: the opening line contains ${ruled.forbidden.map((f) => JSON.stringify(f)).join(", ")}`,
+        body: { subject: template.subject, bodyHtml: opening, bodyText: opening },
+        now,
+      });
+      return won ? "failed" : "error";
+    }
+    await storeFor(db).workerContent.saveMessageMeta({ tenantId: candidate.tenantId, messageId: candidate.id, meta: { openingLine: opening } });
+    extras = { ...extras, brain: { ...(extras.brain ?? {}), opening } };
+  }
+
   const ctx: TemplateContext = {
     contact: {
       first_name: contact.first_name,
@@ -548,6 +812,10 @@ async function processTemplateMessage(
     },
     tenant: { name: tenantName },
     flow: { name: flowName },
+    context: extras.context,
+    links: extras.links,
+    brain: extras.brain,
+    kb: extras.kb,
   };
 
   // 3. Render the template
@@ -596,6 +864,31 @@ async function processTemplateMessage(
 }
 
 export { renderMarkdownToHtml, markdownToText };
+
+/** Values a message is rendered with besides the contact (G11, G19, G29). */
+export interface RenderExtras {
+  context?: Record<string, unknown>;
+  links?: Record<string, string>;
+  brain?: { opening?: string };
+  kb?: { title: string; content: string };
+}
+
+/** Most characters of settings.brain.guidelines given to the model (about 3,000 tokens). */
+export const GUIDELINES_MAX_CHARS = 12_000;
+
+/** settings.brain.guidelines within the budget, or undefined. */
+export function productGuidelines(settings: Record<string, unknown> | null | undefined): string | undefined {
+  const g = (settings?.brain as { guidelines?: unknown } | undefined)?.guidelines;
+  if (typeof g !== "string" || g.trim() === "") return undefined;
+  return g.length > GUIDELINES_MAX_CHARS ? `${g.slice(0, GUIDELINES_MAX_CHARS)}\n(guidelines truncated)` : g;
+}
+
+/** The product's named links (settings.links), or {}. */
+export function productLinks(settings: Record<string, unknown> | null | undefined): Record<string, string> {
+  const raw = settings?.links;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
+}
 
 /**
  * Outbox entry for a message entering the approval queue (G14): the

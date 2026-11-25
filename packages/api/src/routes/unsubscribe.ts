@@ -81,6 +81,7 @@
  *   lifecycle_messages). That migration must be applied before this code runs.
  */
 import { storeFor } from "@claros/store";
+import { publicLanguage, publicStrings, type PublicStrings } from "@claros/core";
 import { verifyUnsubscribeToken } from "@claros/adapters";
 import type { Db } from "../plugins/db.js";
 import { createRouter, parseBody } from "../http/router.js";
@@ -287,6 +288,15 @@ async function hostAllowsTenant(db: Db, url: string, tenantId: string): Promise<
   return hostTenant === null || hostTenant === tenantId;
 }
 
+/** The product locale for the public pages; null on any lookup failure. */
+async function tenantLocale(db: Db, tenantId: string): Promise<string | null> {
+  try {
+    return await storeFor(db).apiUnsubscribe.getTenantLocale(tenantId);
+  } catch {
+    return null;
+  }
+}
+
 /** Tenant id of a token whose signature verifies, or null (no throw). */
 function tokenTenant(token: string): string | null {
   try {
@@ -307,16 +317,16 @@ function tokenTenant(token: string): string | null {
  * Deliberately plain - no brand assets needed, must render in any email client's
  * browser view.
  */
-function unsubscribePageHtml(token: string): string {
+function unsubscribePageHtml(token: string, t: PublicStrings = publicStrings(null), lang = "en"): string {
   // Escape token for HTML attribute (base64url chars are safe, but be explicit)
   const safeToken = token.replace(/[^A-Za-z0-9._~-]/g, "");
   return [
     "<!DOCTYPE html>",
-    "<html lang=\"en\">",
+    `<html lang="${lang}">`,
     "<head>",
     "  <meta charset=\"UTF-8\">",
     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-    "  <title>Unsubscribe</title>",
+    `  <title>${escapeHtml(t.pageUnsubscribeTitle)}</title>`,
     "  <style>",
     "    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 24px; color: #111; }",
     "    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }",
@@ -326,11 +336,11 @@ function unsubscribePageHtml(token: string): string {
     "  </style>",
     "</head>",
     "<body>",
-    "  <h1>Unsubscribe</h1>",
-    "  <p>Click the button below to unsubscribe and stop receiving emails from this sender.</p>",
+    `  <h1>${escapeHtml(t.pageUnsubscribeTitle)}</h1>`,
+    `  <p>${escapeHtml(t.pageUnsubscribeBody)}</p>`,
     "  <form method=\"POST\" action=\"/unsubscribe\">",
     `    <input type=\"hidden\" name=\"token\" value=\"${safeToken}\">`,
-    "    <button type=\"submit\">Unsubscribe me</button>",
+    `    <button type="submit">${escapeHtml(t.pageUnsubscribeButton)}</button>`,
     "  </form>",
     "</body>",
     "</html>",
@@ -351,6 +361,8 @@ function escapeHtml(s: string): string {
 function topicPreferencesPageHtml(
   token: string,
   topics: Array<{ id: string; name: string; subscribed: boolean }>,
+  t: PublicStrings = publicStrings(null),
+  lang = "en",
 ): string {
   const safeToken = token.replace(/[^A-Za-z0-9._~-]/g, "");
   const rows = topics.map((t) => {
@@ -364,11 +376,11 @@ function topicPreferencesPageHtml(
   });
   return [
     "<!DOCTYPE html>",
-    "<html lang=\"en\">",
+    `<html lang="${lang}">`,
     "<head>",
     "  <meta charset=\"UTF-8\">",
     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-    "  <title>Email preferences</title>",
+    `  <title>${escapeHtml(t.pagePreferencesTitle)}</title>`,
     "  <style>",
     "    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 24px; color: #111; }",
     "    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }",
@@ -381,14 +393,14 @@ function topicPreferencesPageHtml(
     "  </style>",
     "</head>",
     "<body>",
-    "  <h1>Email preferences</h1>",
-    "  <p>Choose which emails you want to receive, or unsubscribe from all emails from this sender.</p>",
+    `  <h1>${escapeHtml(t.pagePreferencesTitle)}</h1>`,
+    `  <p>${escapeHtml(t.pagePreferencesBody)}</p>`,
     "  <form method=\"POST\" action=\"/unsubscribe\">",
     `    <input type=\"hidden\" name=\"token\" value=\"${safeToken}\">`,
     ...rows,
     "    <div class=\"actions\">",
-    "      <button class=\"save\" type=\"submit\" name=\"action\" value=\"topics\">Save preferences</button>",
-    "      <button class=\"all\" type=\"submit\" name=\"action\" value=\"all\">Unsubscribe from all</button>",
+    `      <button class="save" type="submit" name="action" value="topics">${escapeHtml(t.pageSave)}</button>`,
+    `      <button class="all" type="submit" name="action" value="all">${escapeHtml(t.pageUnsubscribeAll)}</button>`,
     "    </div>",
     "  </form>",
     "</body>",
@@ -397,14 +409,14 @@ function topicPreferencesPageHtml(
 }
 
 /** HTML shown after topic preferences were saved. */
-function preferencesSavedHtml(): string {
+function preferencesSavedHtml(t: PublicStrings = publicStrings(null), lang = "en"): string {
   return [
     "<!DOCTYPE html>",
-    "<html lang=\"en\">",
+    `<html lang="${lang}">`,
     "<head>",
     "  <meta charset=\"UTF-8\">",
     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-    "  <title>Preferences saved</title>",
+    `  <title>${escapeHtml(t.pageSavedTitle)}</title>`,
     "  <style>",
     "    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 24px; color: #111; }",
     "    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }",
@@ -412,25 +424,23 @@ function preferencesSavedHtml(): string {
     "  </style>",
     "</head>",
     "<body>",
-    "  <h1>Preferences saved</h1>",
-    "  <p>Your email preferences were updated.</p>",
+    `  <h1>${escapeHtml(t.pageSavedTitle)}</h1>`,
+    `  <p>${escapeHtml(t.pageSavedBody)}</p>`,
     "</body>",
     "</html>",
   ].join("\n");
 }
 
 /** HTML shown after a successful unsubscribe. */
-function unsubscribeSuccessHtml(topicOnly = false): string {
-  const message = topicOnly
-    ? "You have been unsubscribed from this type of email. Other emails from this sender are not affected."
-    : "You have been unsubscribed. You will no longer receive emails from this sender.";
+function unsubscribeSuccessHtml(topicOnly = false, t: PublicStrings = publicStrings(null), lang = "en"): string {
+  const message = escapeHtml(topicOnly ? t.pageDoneTopic : t.pageDoneAll);
   return [
     "<!DOCTYPE html>",
-    "<html lang=\"en\">",
+    `<html lang="${lang}">`,
     "<head>",
     "  <meta charset=\"UTF-8\">",
     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-    "  <title>Unsubscribed</title>",
+    `  <title>${escapeHtml(t.pageDoneTitle)}</title>`,
     "  <style>",
     "    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 24px; color: #111; }",
     "    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }",
@@ -438,7 +448,7 @@ function unsubscribeSuccessHtml(topicOnly = false): string {
     "  </style>",
     "</head>",
     "<body>",
-    "  <h1>Unsubscribed</h1>",
+    `  <h1>${escapeHtml(t.pageDoneTitle)}</h1>`,
     `  <p>${message}</p>`,
     "</body>",
     "</html>",
@@ -446,10 +456,10 @@ function unsubscribeSuccessHtml(topicOnly = false): string {
 }
 
 /** HTML shown when the token is invalid or resolution fails. */
-function unsubscribeErrorHtml(): string {
+function unsubscribeErrorHtml(lang = "en"): string {
   return [
     "<!DOCTYPE html>",
-    "<html lang=\"en\">",
+    `<html lang="${lang}">`,
     "<head>",
     "  <meta charset=\"UTF-8\">",
     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
@@ -562,15 +572,20 @@ export default function unsubscribeRoutes() {
       return notFound(c);
     }
 
+    // G22: the page speaks the product's locale (en, es; else English).
+    const locale = c.var.db ? await tenantLocale(c.var.db, verifyResult.payload.tenantId) : null;
+    const t = publicStrings(locale);
+    const lang = publicLanguage(locale);
+
     // Products with topics get the preferences page (read only here).
     if (c.var.db) {
       const topics = await pageTopics(c.var.db, verifyResult.payload.tenantId, verifyResult.payload.messageId);
       if (topics.length > 0) {
-        return c.html(topicPreferencesPageHtml(token, topics), 200, HTML_HEADERS);
+        return c.html(topicPreferencesPageHtml(token, topics, t, lang), 200, HTML_HEADERS);
       }
     }
 
-    return c.html(unsubscribePageHtml(token), 200, HTML_HEADERS);
+    return c.html(unsubscribePageHtml(token, t, lang), 200, HTML_HEADERS);
   });
 
   // ---------------------------------------------------------------------------
@@ -631,10 +646,13 @@ export default function unsubscribeRoutes() {
       return c.json({ unsubscribed: true }, 200);
     }
 
+    const locale = tenantOfToken ? await tenantLocale(db, tenantOfToken) : null;
+    const t = publicStrings(locale);
+    const lang = publicLanguage(locale);
     if (outcome.scope === "topics") {
-      return c.html(preferencesSavedHtml(), 200, HTML_HEADERS);
+      return c.html(preferencesSavedHtml(t, lang), 200, HTML_HEADERS);
     }
-    return c.html(unsubscribeSuccessHtml(outcome.scope === "topic"), 200, HTML_HEADERS);
+    return c.html(unsubscribeSuccessHtml(outcome.scope === "topic", t, lang), 200, HTML_HEADERS);
   });
 
   return app;

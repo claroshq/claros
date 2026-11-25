@@ -2,6 +2,7 @@
  * Postgres implementation of the queries used by packages/api/src/routes/unsubscribe.ts.
  */
 import { eq, and, sql } from "drizzle-orm";
+import { tenants as tenantsTbl } from "@claros/db/schema";
 import { lifecycleMessages, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import { pgWriteOutbox } from "./outbox.js";
@@ -45,6 +46,11 @@ export function pgApiUnsubscribe(db: PgDb): ApiUnsubscribeQueries {
         const res = await insert(tx as unknown as PgDb);
         if ((res.rowCount ?? 0) > 0) await pgWriteOutbox(tx as unknown as PgDb, tenantId, outbox, now ?? new Date());
       });
+    },
+
+    async getTenantLocale(tenantId) {
+      const rows = await db.select({ locale: tenantsTbl.locale }).from(tenantsTbl).where(eq(tenantsTbl.id, tenantId)).limit(1);
+      return rows[0]?.locale ?? null;
     },
 
     async findTenantIdByPublicHost(host) {

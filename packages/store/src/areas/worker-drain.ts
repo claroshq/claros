@@ -64,6 +64,8 @@ export interface WorkerDrainTenant {
   settings: unknown;
   /** The product's public host (links in its mail use https://<publicHost>), or null. */
   publicHost: string | null;
+  /** G22: the product locale (footer strings), or null. */
+  locale?: string | null;
 }
 
 export interface WorkerDrainQueries {

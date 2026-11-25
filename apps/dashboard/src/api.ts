@@ -113,7 +113,7 @@ export interface Flow {
   name: string;
   description: string | null;
   priority: number;
-  trigger_type: "lifecycle_transition" | "event" | "segment" | "manual";
+  trigger_type: "lifecycle_transition" | "event" | "segment" | "manual" | "date_property" | "date_schedule";
   trigger_config: Record<string, unknown>;
   steps: unknown;
   source: "manual" | "library" | "brain_suggested";
@@ -378,6 +378,22 @@ export interface Message {
   edited_at?: string | null;
   original?: { subject: string | null; body_html: string | null; body_text: string | null } | null;
   forced_action_type?: string | null;
+  /** P5 additions: data from the step's context sources (G11). */
+  context_snapshot?: Record<string, unknown> | null;
+  /** G27: the choose step's decision. */
+  choose?: {
+    choice: string;
+    eligible: string[];
+    filtered_out: Array<{ action_type: string; reason: string }>;
+    reason: string;
+    forced?: boolean;
+    warning?: string;
+    rejected_answers?: string[];
+  } | null;
+  /** G29: the AI opening line of a fixed template. */
+  opening_line?: string | null;
+  kb_entry_id?: string | null;
+  imported?: boolean;
 }
 
 export interface MessagesPage {

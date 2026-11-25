@@ -30,6 +30,7 @@ import { handleKbEmbedJob } from "./embed-kb.js";
 import { phaseTimeTransitions } from "./scan-time-transitions.js";
 import { phaseEnrollment } from "./scan-enrollment.js";
 import { phaseSegmentEnrollment } from "./scan-segment-enrollment.js";
+import { phaseDateEnrollment } from "./date-flows.js";
 import { phaseStepAdvancement } from "./scan-step-advancement.js";
 import { phaseEngagementDepth } from "./scan-engagement-depth.js";
 import { handleTriggerCheck } from "./trigger-check.js";
@@ -106,6 +107,8 @@ export type { ContentTickResult, ContentCandidate, ContentOutcome, LlmCallStats 
 export { handleTriggerCheck } from "./trigger-check.js";
 export type { TriggerCheckResult } from "./trigger-check.js";
 export { phaseStepAdvancement } from "./scan-step-advancement.js";
+export { phaseDateEnrollment, cancelExpiredMessages, DATE_ENROLLMENT_CAP } from "./date-flows.js";
+export type { PhaseDateEnrollmentResult } from "./date-flows.js";
 export type { PhaseStepAdvancementResult } from "./scan-step-advancement.js";
 export { handleAdvanceMembership } from "./advance-membership.js";
 export type { AdvanceMembershipResult } from "./advance-membership.js";
@@ -479,6 +482,16 @@ async function runScan(db: Db): Promise<void> {
       `[scan] segment-enrollment: ${phase2b.flowsEvaluated} segment flows, ` +
         `${phase2b.enrollmentsSucceeded}/${phase2b.enrollmentsAttempted} enrollments` +
         (phase2b.flowsCapped > 0 ? `, ${phase2b.flowsCapped} capped` : ""),
+    );
+  }
+
+  // Phase 2c: date-property triggers and schedules (G3), and step expiry.
+  const phase2c = await phaseDateEnrollment(db, now);
+  if (phase2c.flowsEvaluated > 0 || phase2c.expiredCancelled > 0) {
+    console.log(
+      `[scan] date-enrollment: ${phase2c.flowsEvaluated} date flows, ` +
+        `${phase2c.enrollmentsSucceeded}/${phase2c.enrollmentsAttempted} enrollments, ` +
+        `${phase2c.staleExited} stale exits, ${phase2c.expiredCancelled} expired messages cancelled`,
     );
   }
 

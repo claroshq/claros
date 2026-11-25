@@ -74,6 +74,8 @@ export interface ConfigState {
   flows: StateFlow[];
   transports: StateTransport[];
   endpoints: StateEndpoint[];
+  /** Whether the product has an active LLM configuration (choose steps need one). Absent: not checked. */
+  hasLlm?: boolean;
 }
 
 export type ConfigChangeKind = "setting" | "routing" | "topic" | "template" | "flow" | "webhook" | "analytics";
@@ -187,7 +189,35 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       }
       continue;
     }
-    const normalized = key === "brain" ? clean(want as Record<string, unknown>) : want;
+    let normalized = key === "brain" ? clean(want as Record<string, unknown>) : want;
+    if (key === "data_sources") {
+      // Secrets are write-only: the stored form keeps `secret_enc`. A source
+      // without `secret` keeps its stored one; a changed secret is passed on
+      // as `secret` for the caller to encrypt.
+      const haveSources = (have && typeof have === "object" ? have : {}) as Record<string, Record<string, unknown>>;
+      const next: Record<string, Record<string, unknown>> = {};
+      let secretChanged = false;
+      for (const [name, src] of Object.entries(want as Record<string, Record<string, unknown>>)) {
+        const { secret, ...rest } = src;
+        const stored = haveSources[name]?.secret_enc;
+        if (typeof secret === "string") {
+          const same = typeof stored === "string" && deps.readSecret(stored) === secret;
+          if (same) next[name] = { ...rest, secret_enc: stored };
+          else {
+            next[name] = { ...rest, secret };
+            secretChanged = true;
+          }
+        } else {
+          next[name] = typeof stored === "string" ? { ...rest, secret_enc: stored } : rest;
+        }
+      }
+      normalized = next;
+      if (secretChanged || !sameJson(have, next)) {
+        patch[key] = next;
+        changes.push({ kind: "setting", key, action: have === undefined ? "create" : "update" });
+      }
+      continue;
+    }
     if (!sameJson(have, normalized)) {
       patch[key] = normalized;
       changes.push({ kind: "setting", key, action: have === undefined ? "create" : "update" });
@@ -302,7 +332,25 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
     } else if (f.topic === undefined && cur) {
       topicId = cur.topicId;
     }
+    const sources = (s.data_sources ?? (state.settings.data_sources as Record<string, { modes?: string[] }> | undefined) ?? {}) as Record<string, { modes?: string[] }>;
     for (const step of f.steps ?? []) {
+      if (step.type === "choose" && state.hasLlm === false) {
+        errors.push(`flows.${f.slug}: step ${step.order} is a choose step, which needs an LLM; configure one for this product first`);
+      }
+      const contexts = [...(step.context ?? []), ...(step.candidates ?? []).flatMap((c) => c.context ?? [])];
+      for (const ctxEntry of contexts) {
+        const src = sources[ctxEntry.source];
+        if (!src) errors.push(`flows.${f.slug}: step ${step.order} uses unknown data source '${ctxEntry.source}'`);
+        else if (ctxEntry.mode && Array.isArray(src.modes) && !src.modes.includes(ctxEntry.mode)) {
+          errors.push(`flows.${f.slug}: step ${step.order} uses mode '${ctxEntry.mode}', which data source '${ctxEntry.source}' does not list`);
+        }
+      }
+      for (const c of step.candidates ?? []) {
+        if (c.template_ref) {
+          remainingTemplateRefs.add(c.template_ref);
+          if (!templateSlugs.has(c.template_ref)) errors.push(`flows.${f.slug}: step ${step.order} candidate '${c.action_type}' references unknown template '${c.template_ref}'`);
+        }
+      }
       if (step.template_ref) {
         remainingTemplateRefs.add(step.template_ref);
         if (!templateSlugs.has(step.template_ref)) {

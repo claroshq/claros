@@ -77,6 +77,13 @@ vi.mock("../src/scan-segment-enrollment.js", () => ({
   })),
 }));
 
+// Mock the date-trigger scan phase (G3) to avoid DB calls in unit tests
+vi.mock("../src/date-flows.js", () => ({
+  phaseDateEnrollment: vi.fn().mockResolvedValue({ flowsEvaluated: 0, staleExited: 0, enrollmentsAttempted: 0, enrollmentsSucceeded: 0, expiredCancelled: 0 }),
+  cancelExpiredMessages: vi.fn().mockResolvedValue(0),
+  DATE_ENROLLMENT_CAP: 200,
+}));
+
 // Mock scan-step-advancement module to avoid DB calls in unit tests
 vi.mock("../src/scan-step-advancement.js", () => ({
   phaseStepAdvancement: vi.fn(async () => ({

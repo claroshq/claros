@@ -37,6 +37,8 @@ export const stepConditionSchema = z.union([
   traitConditionSchema,
   historyConditionSchema,
   firstContactConditionSchema,
+  // G3: the membership's anchor date still equals the contact's date trait.
+  z.object({ date_unchanged: z.literal(true) }).strict(),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -59,6 +61,48 @@ export const stepConditionSchema = z.union([
  *   - condition: proceed-if gate (step executes only when true; skipped otherwise)
  *   - exit_condition: per-step exit trigger (if true, contact exits the flow)
  */
+/** G11: one context source a step fetches at render time. */
+export const stepContextSchema = z
+  .object({
+    /** Name of a product data source (settings.data_sources). */
+    source: z.string().regex(/^[a-z0-9_]{1,64}$/, { message: "source must be a data source name ([a-z0-9_])" }),
+    /** Passed to the source as `mode` (e.g. "normal", "inferred"). */
+    mode: z.string().min(1).max(64).optional(),
+    /** Passed to the source as `limit`. */
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+/** G18: pick a knowledge base entry for the message. */
+export const kbSelectSchema = z
+  .object({
+    category: z.string().min(1).max(120),
+    /** Never send an entry the contact already received (default true). */
+    exclude_used: z.boolean().optional(),
+    /** oldest_unused (default): the oldest eligible entry; best_match: the closest to the step's instruction. */
+    pick: z.enum(["oldest_unused", "best_match"]).optional(),
+    /** Prefer entries with a tag listed in this contact trait (a string or a list of strings). */
+    tags_any_from_trait: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
+const durationString = z.string().regex(/^\d{1,6}(m|h|d)$/, { message: "must look like 14d, 12h or 30m" });
+
+/** G27: one candidate of a choose step. */
+export const chooseCandidateSchema = z
+  .object({
+    action_type: z.string().min(1).max(120),
+    /** Contact conditions (trait, history, first_contact) that must all hold. */
+    when: z.array(z.union([traitConditionSchema, historyConditionSchema, firstContactConditionSchema])).optional(),
+    kb_select: kbSelectSchema.optional(),
+    context: z.array(stepContextSchema).max(5).optional(),
+    /** Not eligible when this action type was sent to the contact within this window. */
+    cooldown: durationString.optional(),
+    template_ref: z.string().optional(),
+    brain_instruction: z.string().optional(),
+  })
+  .strict();
+
 export const compiledStepSchema = z.object({
   order: z.number().int().min(1),
   action_type: z.string().min(1),
@@ -71,6 +115,22 @@ export const compiledStepSchema = z.object({
   brain_instruction: z.string().optional(),
   condition: stepConditionSchema.optional(),
   exit_condition: stepConditionSchema.optional(),
+  /** G3: an unsent message of this step is cancelled (reason 'expired') this long after it was created. */
+  expires_after: z.string().regex(/^\d{1,6}(m|h|d)$/, { message: "expires_after must look like 2d, 12h or 30m" }).optional(),
+  /** G11: data fetched from product data sources at render time. */
+  context: z.array(stepContextSchema).max(5).optional(),
+  /** G11: when a context source returns no data: skip the message or send anyway (default send). */
+  on_empty: z.enum(["skip", "send"]).optional(),
+  /** G11: when a context source fails: retry later (default), skip the message, or fail it. */
+  on_error: z.enum(["defer", "skip", "fail"]).optional(),
+  /** G18: pick a knowledge base entry for this message. */
+  kb_select: kbSelectSchema.optional(),
+  /** G27: "choose" lets the LLM pick one eligible candidate; default "send". */
+  type: z.enum(["send", "choose"]).optional(),
+  /** G27: the candidates of a choose step. */
+  candidates: z.array(chooseCandidateSchema).min(1).max(20).optional(),
+  /** G27: whether the LLM may answer "none" (default true). */
+  allow_none: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -105,7 +165,7 @@ export const planExitConditionSchema = z.union([
 // ---------------------------------------------------------------------------
 
 export const compiledTriggerSchema = z.object({
-  type: z.enum(["lifecycle_transition", "event", "segment", "manual"]),
+  type: z.enum(["lifecycle_transition", "event", "segment", "manual", "date_property", "date_schedule"]),
   condition: z.record(z.unknown()),
 });
 
@@ -136,3 +196,6 @@ export type CompiledStep = z.infer<typeof compiledStepSchema>;
 export type CompiledTrigger = z.infer<typeof compiledTriggerSchema>;
 export type PlanExitCondition = z.infer<typeof planExitConditionSchema>;
 export type StepCondition = z.infer<typeof stepConditionSchema>;
+export type StepContext = z.infer<typeof stepContextSchema>;
+export type KbSelect = z.infer<typeof kbSelectSchema>;
+export type ChooseCandidate = z.infer<typeof chooseCandidateSchema>;

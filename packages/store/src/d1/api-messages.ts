@@ -23,6 +23,15 @@ const toDate = (v: unknown): Date | null => (v == null ? null : new Date(Number(
 
 type MessageSet = Partial<Record<keyof typeof lifecycleMessages.$inferInsert, unknown>>;
 
+function parseJson(v: unknown): unknown {
+  if (typeof v !== "string") return v ?? null;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
 export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
   async function transition(
     tenantId: string,
@@ -85,6 +94,7 @@ export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
                m.scheduled_send_at, m.status_reason,
                m.approved_by, m.rejected_by, m.edited_by, m.edited_at,
                m.original_subject, m.original_body_html, m.original_body_text, m.forced_action_type,
+               m.context_snapshot, m.choose_decision, m.opening_line, m.kb_entry_id, m.imported,
                f.name AS flow_name, f.flow_class,
                c.email AS contact_email, c.name AS contact_name,
                c.external_id AS contact_external_id
@@ -105,6 +115,9 @@ export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
         updated_at: toDate(r.updated_at),
         scheduled_send_at: toDate(r.scheduled_send_at),
         edited_at: toDate(r.edited_at),
+        context_snapshot: parseJson(r.context_snapshot),
+        choose_decision: parseJson(r.choose_decision),
+        imported: r.imported === 1 || r.imported === true,
       })) as MessageListRow[];
     },
 

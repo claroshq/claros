@@ -22,6 +22,7 @@ import type { PgDb } from "./db.js";
 import type { ApiIngestQueries, IngestTraitPlan } from "../areas/api-ingest.js";
 import { topics as topicsTable } from "@claros/db/schema";
 import { upsertContactTopicSql } from "./contact-topics.js";
+import { pgSyncContactDates } from "./contact-dates.js";
 
 /**
  * Advisory-lock dedup check within a transaction.
@@ -696,6 +697,20 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
       );
 
       return { deduplicated: false };
+    },
+
+    async syncContactDates({ tenantId, externalId, changedKeys, now }) {
+      const t = await db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+      const declared = (t[0]?.settings as { date_traits?: unknown } | null | undefined)?.date_traits;
+      const properties = Array.isArray(declared) ? declared.filter((k): k is string => typeof k === "string") : [];
+      if (properties.length === 0 || !changedKeys.some((k) => properties.includes(k))) return 0;
+      const rows = await db
+        .select({ id: contacts.id, properties: contacts.properties })
+        .from(contacts)
+        .where(and(eq(contacts.tenantId, tenantId), eq(contacts.externalId, externalId)))
+        .limit(1);
+      if (rows.length === 0) return 0;
+      return pgSyncContactDates(db, tenantId, rows, properties, now);
     },
 
     async applyContactTopics({ tenantId, externalId, topics: wanted, source, now }) {

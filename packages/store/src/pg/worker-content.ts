@@ -1,9 +1,12 @@
 /**
  * Postgres implementation of the queries used by packages/worker/src/content.ts.
  */
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { flows as flowsT, lifecycleMessages as messagesT, tenants as tenantsT, kbEntries as kbT } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pgContactConditions } from "./contact-conditions.js";
+import type { WorkerContentKbEntry } from "../areas/worker-content.js";
 import { pgWriteOutbox } from "./outbox.js";
 import type {
   WorkerContentQueries,
@@ -27,6 +30,8 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
   }
 
   return {
+    ...pgContactConditions(db),
+
     /**
      * Uses a CTE with FOR UPDATE SKIP LOCKED to:
      *   1. Select eligible messages without blocking on rows another worker holds
@@ -221,6 +226,103 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         SELECT name FROM tenants WHERE id = ${tenantId} LIMIT 1
       `);
       return tenantRow.rows[0]?.name ?? null;
+    },
+
+    async listKbCandidates({ tenantId, category, excludeUsedBy }) {
+      const rows = await db
+        .select({ id: kbT.id, title: kbT.title, content: kbT.content, tags: kbT.tags, createdAt: kbT.createdAt })
+        .from(kbT)
+        .where(
+          and(
+            eq(kbT.tenantId, tenantId),
+            eq(kbT.category, category),
+            eq(kbT.isActive, true),
+            excludeUsedBy
+              ? sql`NOT EXISTS (
+                  SELECT 1 FROM lifecycle_messages um
+                  WHERE um.tenant_id = ${tenantId} AND um.contact_id = ${excludeUsedBy.contactId}
+                    AND um.kb_entry_id = ${kbT.id} AND um.id <> ${excludeUsedBy.exceptMessageId}
+                    AND um.status NOT IN ('failed', 'rejected', 'cancelled', 'skipped', 'value_gated', 'suppressed')
+                )`
+              : undefined,
+          ),
+        )
+        .orderBy(kbT.createdAt, kbT.id);
+      return rows as WorkerContentKbEntry[];
+    },
+
+    async listPinnedKb(tenantId) {
+      const rows = await db
+        .select({ id: kbT.id, title: kbT.title, content: kbT.content, tags: kbT.tags, createdAt: kbT.createdAt })
+        .from(kbT)
+        .where(and(eq(kbT.tenantId, tenantId), eq(kbT.pinned, true), eq(kbT.isActive, true)))
+        .orderBy(kbT.createdAt, kbT.id);
+      return rows as WorkerContentKbEntry[];
+    },
+
+    async markBlocked({ messageId, fromStatus, statusReason, reasoning, body, now }) {
+      const rows = await db
+        .update(messagesT)
+        .set({
+          status: "failed",
+          statusReason,
+          brainReasoning: reasoning,
+          subject: body.subject,
+          bodyHtml: body.bodyHtml,
+          bodyText: body.bodyText,
+          updatedAt: now,
+        })
+        .where(and(eq(messagesT.id, messageId), eq(messagesT.status, fromStatus)))
+        .returning({ id: messagesT.id });
+      return rows.length > 0;
+    },
+
+    async getFlowTopicGate({ tenantId, contactId, flowId }) {
+      const res = await db.execute<{ kind: string; default_subscribed: boolean; status: string | null }>(sql`
+        SELECT t.kind, t.default_subscribed, ct.status
+        FROM flows f
+        JOIN topics t ON t.id = f.topic_id AND t.tenant_id = f.tenant_id
+        LEFT JOIN contact_topics ct ON ct.topic_id = t.id AND ct.contact_id = ${contactId}::uuid
+        WHERE f.id = ${flowId}::uuid AND f.tenant_id = ${tenantId}::uuid
+      `);
+      const r = res.rows[0];
+      return r ? { kind: r.kind, defaultSubscribed: Boolean(r.default_subscribed), status: r.status ?? null } : null;
+    },
+
+    async getRenderInfo({ tenantId, flowId }) {
+      const t = await db
+        .select({ slug: tenantsT.slug, name: tenantsT.name, settings: tenantsT.settings, locale: tenantsT.locale })
+        .from(tenantsT)
+        .where(eq(tenantsT.id, tenantId))
+        .limit(1);
+      const f = await db
+        .select({ slug: flowsT.slug, name: flowsT.name, flowClass: flowsT.flowClass })
+        .from(flowsT)
+        .where(and(eq(flowsT.id, flowId), eq(flowsT.tenantId, tenantId)))
+        .limit(1);
+      if (!t[0] || !f[0]) return null;
+      const settings = t[0].settings && typeof t[0].settings === "object" ? (t[0].settings as Record<string, unknown>) : {};
+      return { tenantSlug: t[0].slug, tenantName: t[0].name, settings, locale: t[0].locale ?? null, flowSlug: f[0].slug ?? null, flowName: f[0].name, flowClass: f[0].flowClass ?? "nurture" };
+    },
+
+    async saveMessageMeta({ tenantId, messageId, meta, events }) {
+      const set: Record<string, unknown> = {};
+      if (meta.contextSnapshot !== undefined) set.contextSnapshot = meta.contextSnapshot;
+      if (meta.chooseDecision !== undefined) set.chooseDecision = meta.chooseDecision;
+      if (meta.openingLine !== undefined) set.openingLine = meta.openingLine;
+      if (meta.kbEntryId !== undefined) set.kbEntryId = meta.kbEntryId;
+      if (meta.actionType !== undefined) set.brainActionType = meta.actionType;
+      if (Object.keys(set).length === 0 && !events) return;
+      if (!events || events.outbox.length === 0) {
+        await db.update(messagesT).set(set).where(and(eq(messagesT.id, messageId), eq(messagesT.tenantId, tenantId)));
+        return;
+      }
+      await db.transaction(async (tx) => {
+        if (Object.keys(set).length > 0) {
+          await (tx as unknown as PgDb).update(messagesT).set(set).where(and(eq(messagesT.id, messageId), eq(messagesT.tenantId, tenantId)));
+        }
+        await pgWriteOutbox(tx as unknown as PgDb, events.tenantId, events.outbox, new Date());
+      });
     },
 
     async getFlowName(flowId) {

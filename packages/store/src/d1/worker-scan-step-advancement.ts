@@ -111,6 +111,7 @@ export function d1WorkerScanStepAdvancement(db: D1Db): WorkerScanStepAdvancement
           currentStep: flowMemberships.currentStep,
           enteredAt: flowMemberships.enteredAt,
           conditionError: flowMemberships.conditionError,
+          anchorAt: flowMemberships.anchorAt,
         })
         .from(flowMemberships)
         .where(and(...whereConditions))
@@ -256,7 +257,7 @@ export function d1WorkerScanStepAdvancement(db: D1Db): WorkerScanStepAdvancement
       return prevMessage[0]?.createdAt ?? null;
     },
 
-    async createStepMessage({ tenantId, contactId, flowId, membershipId, stepOrder, actionType }) {
+    async createStepMessage({ tenantId, contactId, flowId, membershipId, stepOrder, actionType, scheduledSendAt = null, expiresAt = null }) {
       // Use INSERT ... ON CONFLICT DO NOTHING for crash-safe idempotency.
       const inserted = await db
         .insert(lifecycleMessages)
@@ -268,6 +269,8 @@ export function d1WorkerScanStepAdvancement(db: D1Db): WorkerScanStepAdvancement
           flowStepOrder: stepOrder,
           status: "pending_generation",
           brainActionType: actionType,
+          scheduledSendAt,
+          expiresAt,
           // The flow's topic at creation time (G8a).
           topicId: sql`(SELECT topic_id FROM flows WHERE id = ${flowId} AND tenant_id = ${tenantId})`,
         })

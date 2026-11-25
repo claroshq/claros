@@ -40,6 +40,14 @@ export interface TemplateContext {
   flow: {
     name: string;
   };
+  /** G11: data returned by the step's context sources, keyed by source name. */
+  context?: Record<string, unknown>;
+  /** G19: the product's named links. */
+  links?: Record<string, string>;
+  /** G29: brain output for fixed templates ({{brain.opening}}). */
+  brain?: { opening?: string };
+  /** G18: the knowledge base entry picked by kb_select ({{kb.title}}, {{kb.content}}, {{kb.data.*}}). */
+  kb?: { title: string; content: string; data?: unknown };
 }
 
 export interface RenderResult {
@@ -71,6 +79,15 @@ export type TemplateRenderOutcome = RenderResult | RenderError;
  *   contact.properties.*  - Any key from the contact's properties JSONB
  *   tenant.name           - Tenant/company name
  *   flow.name             - Name of the flow that triggered this message
+ *   context.<source>.*    - Data returned by a step context source (G11)
+ *   links.<name>          - A named product link (G19)
+ *   brain.opening         - The AI-drafted opening line (G29)
+ *
+ * Mustache sections: {{#path}}...{{/path}} renders its body once per item of
+ * an array (inside, {{key}} reads the item's fields and {{.}} the item
+ * itself), once for any other truthy value, and not at all for a missing,
+ * false or empty value. {{^path}}...{{/path}} renders when the value is
+ * missing, false or empty.
  *
  * Unknown variable paths (e.g. {{foo.bar}}) are treated as missing variables
  * and cause the render to fail.
@@ -83,6 +100,10 @@ export const SUPPORTED_VARIABLE_PREFIXES = [
   "contact.properties.",
   "tenant.name",
   "flow.name",
+  "context.",
+  "links.",
+  "brain.opening",
+  "kb.",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -160,8 +181,49 @@ function resolveVariable(path: string, ctx: TemplateContext): string | null {
     return null;
   }
 
+  if (parts[0] === "context" || parts[0] === "links" || parts[0] === "brain" || parts[0] === "kb") {
+    return scalar(lookupPath({ context: ctx.context ?? {}, links: ctx.links ?? {}, brain: ctx.brain ?? {}, kb: ctx.kb ?? {} }, parts));
+  }
+
   return null;
 }
+
+/** Value at a dotted path of an object, or undefined. */
+function lookupPath(root: unknown, parts: string[]): unknown {
+  let cur: unknown = root;
+  for (const part of parts) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+function scalar(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return null;
+}
+
+/** A section's value: scope lookups first (innermost), then the template context. */
+function sectionValue(path: string, ctx: TemplateContext, scopes: unknown[]): unknown {
+  const parts = path.split(".");
+  for (let i = scopes.length - 1; i >= 0; i--) {
+    const v = lookupPath(scopes[i], parts);
+    if (v !== undefined) return v;
+  }
+  if (parts[0] === "contact" && parts[1] === "properties") return ctx.contact.properties?.[parts.slice(2).join(".")];
+  if (parts[0] === "context" || parts[0] === "links" || parts[0] === "brain" || parts[0] === "kb") {
+    return lookupPath({ context: ctx.context ?? {}, links: ctx.links ?? {}, brain: ctx.brain ?? {}, kb: ctx.kb ?? {} }, parts);
+  }
+  return resolveVariable(path, ctx) ?? undefined;
+}
+
+function isEmptyValue(v: unknown): boolean {
+  return v === undefined || v === null || v === false || v === "" || (Array.isArray(v) && v.length === 0);
+}
+
+const SECTION_PATTERN = /\{\{\s*([#^])\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}([\s\S]*?)\{\{\s*\/\s*\2\s*\}\}/g;
 
 // ---------------------------------------------------------------------------
 // Core rendering
@@ -179,11 +241,36 @@ function renderString(
   template: string,
   ctx: TemplateContext,
   escapeValues: boolean,
+  scopes: unknown[] = [],
 ): { rendered: string; missing: string[] } {
   const missing: string[] = [];
 
-  const rendered = template.replace(VARIABLE_PATTERN, (_match, varPath: string, fallback: string | undefined) => {
-    const value = resolveVariable(varPath, ctx);
+  const withSections = template.replace(SECTION_PATTERN, (_m, kind: string, path: string, body: string) => {
+    const v = sectionValue(path, ctx, scopes);
+    if (kind === "^") {
+      if (!isEmptyValue(v)) return "";
+      const r = renderString(body, ctx, escapeValues, scopes);
+      missing.push(...r.missing);
+      return r.rendered;
+    }
+    if (isEmptyValue(v)) return "";
+    const items = Array.isArray(v) ? v : [v];
+    return items
+      .map((item) => {
+        const r = renderString(body, ctx, escapeValues, [...scopes, item]);
+        missing.push(...r.missing);
+        return r.rendered;
+      })
+      .join("");
+  });
+
+  const rendered = withSections.replace(/\{\{\s*\.\s*\}\}/g, () => {
+    const v = scalar(scopes[scopes.length - 1]);
+    return v === null ? "" : escapeValues ? escapeHtml(v) : v;
+  }).replace(VARIABLE_PATTERN, (_match, varPath: string, fallback: string | undefined) => {
+    let value: string | null = null;
+    for (let i = scopes.length - 1; i >= 0 && value === null; i--) value = scalar(lookupPath(scopes[i], varPath.split(".")));
+    if (value === null) value = resolveVariable(varPath, ctx);
     if (value === null) {
       // If a pipe-fallback was declared, use it instead of failing
       if (fallback !== undefined) {
@@ -273,4 +360,13 @@ function stripHtmlTags(html: string): string {
     .replace(/&#x27;/g, "'")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * Render a text (a brain instruction) with the template variables and
+ * sections. Lenient: a missing variable renders as an empty string.
+ */
+export function renderLenient(text: string, ctx: TemplateContext): string {
+  const r = renderString(text, ctx, false);
+  return r.rendered.replace(VARIABLE_PATTERN, "");
 }

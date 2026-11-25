@@ -79,6 +79,30 @@ export interface DraftPromptContext {
   sender_name?: string;
   /** The product/company name. */
   product_name?: string;
+  /** G11: data from the step's context sources (JSON). */
+  external_context?: string;
+  /** G18: pinned knowledge base entries, always included (within a budget). */
+  pinned_kb?: string;
+  /** G18: the knowledge base entry this message is about (kb_select). */
+  selected_kb?: string;
+  /** G19: the product's named links; the draft may use only these URLs. */
+  allowed_links?: Record<string, string>;
+  /** G19: writing rules (settings.brain.text_rules strings). */
+  text_rules?: string[];
+  /** G22: product guidelines (settings.brain.guidelines), appended to the system prompt. */
+  guidelines?: string;
+  /** G22: drafting language (product locale, e.g. "es"). */
+  locale?: string;
+}
+
+/** G22: product guidelines and language appended to a system prompt (draft and assess). */
+export function productSystemSuffix(ctx: Pick<DraftPromptContext, "guidelines" | "locale">): string {
+  const parts: string[] = [];
+  if (ctx.guidelines) parts.push(`\n\nPRODUCT GUIDELINES (from the product team; follow them):\n${ctx.guidelines}`);
+  if (ctx.locale && !/^en(-|$)/i.test(ctx.locale)) {
+    parts.push(`\n\nLANGUAGE: write the subject and body in the language of locale "${ctx.locale}".`);
+  }
+  return parts.join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -228,8 +252,31 @@ export function buildDraftMessages(ctx: DraftPromptContext): ChatMessage[] {
     userParts.push(`\nKNOWLEDGE BASE CONTEXT:\n${ctx.kb_context}`);
   }
 
+  if (ctx.pinned_kb) {
+    userParts.push(`\nPINNED KNOWLEDGE (always true for this product):\n${ctx.pinned_kb}`);
+  }
+
+  if (ctx.selected_kb) {
+    userParts.push(`\nTOPIC OF THIS EMAIL (knowledge base entry):\n${ctx.selected_kb}`);
+  }
+
+  if (ctx.external_context) {
+    userParts.push(`\nCONTEXT DATA (from the product; use only what is here, never invent more):\n${ctx.external_context}`);
+  }
+
+  if (ctx.allowed_links && Object.keys(ctx.allowed_links).length > 0) {
+    const lines = Object.entries(ctx.allowed_links).map(([k, v]) => `${k}: ${v}`);
+    userParts.push(
+      `\nLINKS (the only URLs you may use, besides real URLs inside CONTEXT DATA; never invent or change a URL):\n${lines.join("\n")}`,
+    );
+  }
+
+  if (ctx.text_rules && ctx.text_rules.length > 0) {
+    userParts.push(`\nWRITING RULES:\n${ctx.text_rules.map((r) => `- ${r}`).join("\n")}`);
+  }
+
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: SYSTEM_PROMPT + productSystemSuffix(ctx) },
     { role: "user", content: userParts.join("\n") },
   ];
 }

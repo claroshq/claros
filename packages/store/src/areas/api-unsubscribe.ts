@@ -30,6 +30,8 @@ export interface ApiUnsubscribeQueries {
   }): Promise<void>;
   /** Id of the product whose public_host is this host (lowercase), or null. */
   findTenantIdByPublicHost(host: string): Promise<string | null>;
+  /** G22: the product's locale (page language), or null. */
+  getTenantLocale(tenantId: string): Promise<string | null>;
   /** Every topic of the tenant with the contact's explicit status for it. */
   listContactTopics(input: { tenantId: string; contactId: string }): Promise<ContactTopicStatusRow[]>;
   /**

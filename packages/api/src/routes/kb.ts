@@ -55,7 +55,7 @@
 import { RoleRouter, allowAdminKey } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
-import { storeFor, type ApiKbQueries } from "@claros/store";
+import { storeFor, type ApiKbQueries, type KbImportEntry } from "@claros/store";
 import { QUEUE } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 
@@ -163,7 +163,57 @@ const createKbEntrySchema = z.object({
   source_url: z.string().optional(),
   tags: z.array(z.string()).optional(),
   is_active: z.boolean().optional(),
+  /** G18: grouping used by kb_select. */
+  category: z.string().min(1).max(120).nullable().optional(),
+  /** G15: stable key from a source system, unique per product. */
+  external_key: z.string().min(1).max(200).nullable().optional(),
+  /** G18: structured source data, kept as a read-only reference. */
+  data: z.unknown().optional(),
+  /** G18: pinned entries always enter the brain context. */
+  pinned: z.boolean().optional(),
 });
+
+/** One entry of POST /v1/kb/import (G15). */
+const importEntrySchema = z
+  .object({
+    external_key: z.string().min(1).max(200),
+    title: z.string().min(1).max(KB_TITLE_MAX_CHARS),
+    content: z.string().min(1).max(KB_CONTENT_MAX_CHARS),
+    content_type: z.enum(CONTENT_TYPES).optional(),
+    category: z.string().min(1).max(120).nullable().optional(),
+    tags: z.array(z.string().max(120)).max(50).nullable().optional(),
+    data: z.unknown().optional(),
+    pinned: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+    /** Alias of is_active. */
+    active: z.boolean().optional(),
+    source_url: z.string().max(2000).nullable().optional(),
+  })
+  .strict();
+
+/** Most entries one import request may carry. */
+export const KB_IMPORT_MAX_ENTRIES = 1000;
+
+/** Entries of an import body: a JSON array, {entries: [...]}, or JSONL text. */
+function importItems(body: unknown): { items: unknown[] } | { error: string } {
+  if (Array.isArray(body)) return { items: body };
+  if (body && typeof body === "object" && Array.isArray((body as { entries?: unknown }).entries)) return { items: (body as { entries: unknown[] }).entries };
+  if (typeof body === "string") {
+    const items: unknown[] = [];
+    const lines = body.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!.trim();
+      if (line === "") continue;
+      try {
+        items.push(JSON.parse(line));
+      } catch {
+        return { error: `line ${i + 1}: not valid JSON` };
+      }
+    }
+    return { items };
+  }
+  return { error: "Send a JSON array of entries, {\"entries\": [...]}, or JSONL as text/plain." };
+}
 
 // Update: all fields optional; cannot set embedding via API
 const updateKbEntrySchema = createKbEntrySchema.partial();
@@ -243,7 +293,8 @@ function makePreview(content: string): string {
 // ---------------------------------------------------------------------------
 
 export default function kbRoutes() {
-  const r = new RoleRouter();
+  // KB imports (POST /v1/kb/import) carry many entries.
+  const r = new RoleRouter({ limit: 4 * 1024 * 1024 });
   /**
    * POST /v1/kb
    * Create a new knowledge base entry.
@@ -290,6 +341,10 @@ export default function kbRoutes() {
       // When enqueue is absent (tests), status stays null = "never enqueued".
       ...(enqueue ? { embeddingStatus: "pending" as const } : {}),
       isActive: body.is_active ?? true,
+      category: body.category ?? null,
+      externalKey: body.external_key ?? null,
+      ...(body.data !== undefined ? { data: body.data } : {}),
+      pinned: body.pinned ?? false,
     });
 
     if (enqueue && inserted) {
@@ -441,6 +496,10 @@ export default function kbRoutes() {
       if (body.source_url !== undefined)   setClauses.sourceUrl = body.source_url;
       if (body.tags !== undefined)         setClauses.tags = body.tags;
       if (body.is_active !== undefined)    setClauses.isActive = body.is_active;
+      if (body.category !== undefined)     setClauses.category = body.category;
+      if (body.external_key !== undefined) setClauses.externalKey = body.external_key;
+      if (body.data !== undefined)         setClauses.data = body.data;
+      if (body.pinned !== undefined)       setClauses.pinned = body.pinned;
 
       const contentChanged = body.content !== undefined;
 
@@ -529,6 +588,75 @@ export default function kbRoutes() {
    * Returns 202 with { enqueued, remaining, total_qualifying }.
    * Returns 503 if the job queue is not available.
    */
+  /**
+   * POST /v1/kb/import (G15)
+   * Upsert entries by external_key. ?dry_run=1 writes nothing; ?force=1 also
+   * overwrites entries edited since their last import. Never deletes.
+   * Response: {dry_run, created, updated, unchanged, skipped_edited,
+   * skipped_keys, errors: [{index, external_key?, error}]}. Entries with
+   * errors are not imported; the rest are.
+   */
+  r.post("/import", "member", allowAdminKey("kb"), async (c) => {
+    const parsedItems = importItems(c.var.body);
+    if ("error" in parsedItems) return c.json({ error: parsedItems.error }, 400);
+    if (parsedItems.items.length > KB_IMPORT_MAX_ENTRIES) {
+      return c.json({ error: `At most ${KB_IMPORT_MAX_ENTRIES} entries per request; split the file.` }, 400);
+    }
+    const dryRun = ["1", "true"].includes(c.req.query("dry_run") ?? "");
+    const force = ["1", "true"].includes(c.req.query("force") ?? "");
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const enqueue = c.var.enqueue;
+
+    const errors: Array<{ index: number; external_key?: string; error: string }> = [];
+    const entries: KbImportEntry[] = [];
+    const seen = new Set<string>();
+    parsedItems.items.forEach((item, index) => {
+      const r = importEntrySchema.safeParse(item);
+      if (!r.success) {
+        const key = item && typeof item === "object" ? (item as { external_key?: unknown }).external_key : undefined;
+        errors.push({ index, ...(typeof key === "string" ? { external_key: key } : {}), error: r.error.issues.map((i) => `${i.path.join(".") || "entry"}: ${i.message}`).join("; ") });
+        return;
+      }
+      const e = r.data;
+      if (seen.has(e.external_key)) {
+        errors.push({ index, external_key: e.external_key, error: "duplicate external_key in this import" });
+        return;
+      }
+      seen.add(e.external_key);
+      entries.push({
+        externalKey: e.external_key,
+        title: e.title,
+        content: e.content,
+        contentType: e.content_type ?? "markdown",
+        category: e.category ?? null,
+        tags: e.tags ?? null,
+        data: e.data ?? null,
+        pinned: e.pinned ?? false,
+        isActive: e.is_active ?? e.active ?? true,
+        sourceUrl: e.source_url ?? null,
+      });
+    });
+
+    const result = await storeFor(db).apiKb.importEntries({ tenantId, entries, force, dryRun, markPending: Boolean(enqueue), now: new Date() });
+    if (!dryRun && enqueue) {
+      for (const id of result.contentChangedIds) {
+        await enqueue(QUEUE.KB_EMBED, { kb_entry_id: id, tenant_id: tenantId }, { singletonKey: id, expireInMinutes: 10, retryLimit: 3, retryDelay: 60 }).catch(
+          (err: unknown) => console.warn(`[kb] failed to enqueue embedding job for entry ${id}:`, err),
+        );
+      }
+    }
+    return c.json({
+      dry_run: dryRun,
+      created: result.created,
+      updated: result.updated,
+      unchanged: result.unchanged,
+      skipped_edited: result.skipped_edited,
+      skipped_keys: result.skipped_keys,
+      errors,
+    });
+  });
+
   r.post("/re-embed", "member", allowAdminKey("kb"), async (c) => {
     const enqueue = c.var.enqueue;
     if (!enqueue) {
@@ -634,6 +762,11 @@ function serializeEntry(row: KbEntryRow) {
     embedding_status: (row as any).embeddingStatus ?? null,
     embedding_error: (row as any).embeddingError ?? null,
     is_active: row.isActive,
+    category: row.category ?? null,
+    external_key: row.externalKey ?? null,
+    pinned: Boolean(row.pinned),
+    imported_at: row.importedAt ?? null,
+    data: row.data ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -656,6 +789,10 @@ function serializeEntryPreview(row: KbEntryRow) {
     tags: row.tags,
     embedding_status: (row as any).embeddingStatus ?? null,
     is_active: row.isActive,
+    category: row.category ?? null,
+    external_key: row.externalKey ?? null,
+    pinned: Boolean(row.pinned),
+    imported_at: row.importedAt ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };

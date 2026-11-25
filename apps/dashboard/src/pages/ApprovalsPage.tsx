@@ -740,6 +740,51 @@ export default function ApprovalsPage() {
                 </details>
               )}
 
+              {selected.choose && (
+                <details open className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
+                  <summary className="cursor-pointer select-none text-[14px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                    Why this action (choose step)
+                  </summary>
+                  <p className="mt-2 text-[14px] text-foreground">
+                    Picked <code className="font-mono text-[13px]">{selected.choose.choice}</code>
+                    {selected.choose.forced ? " (forced by a reviewer)" : ""}: {selected.choose.reason}
+                  </p>
+                  {selected.choose.warning && <p className="mt-1 text-[14px] text-foreground">Warning: {selected.choose.warning}</p>}
+                  <p className="mt-2 text-[13px] text-muted-foreground">
+                    Eligible: {selected.choose.eligible.length > 0 ? selected.choose.eligible.join(", ") : "none"}
+                  </p>
+                  {selected.choose.filtered_out.length > 0 && (
+                    <ul className="mt-1 text-[13px] text-muted-foreground">
+                      {selected.choose.filtered_out.map((f) => (
+                        <li key={f.action_type}>
+                          {f.action_type}: {f.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              )}
+
+              {selected.opening_line && (
+                <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
+                  <summary className="cursor-pointer select-none text-[14px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                    AI opening line
+                  </summary>
+                  <p className="mt-2 text-[14px] leading-relaxed text-foreground">{selected.opening_line}</p>
+                </details>
+              )}
+
+              {selected.context_snapshot && (
+                <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
+                  <summary className="cursor-pointer select-none text-[14px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                    Context data used
+                  </summary>
+                  <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[13px] text-muted-foreground">
+                    {JSON.stringify(selected.context_snapshot, null, 2)}
+                  </pre>
+                </details>
+              )}
+
               {notice && (
                 <p
                   className="mt-4 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground"

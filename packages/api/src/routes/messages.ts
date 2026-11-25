@@ -79,6 +79,12 @@ type MessageListRow = Record<string, unknown> & {
   original_body_html?: string | null;
   original_body_text?: string | null;
   forced_action_type?: string | null;
+  /** P5 additions. */
+  context_snapshot?: unknown;
+  choose_decision?: unknown;
+  opening_line?: string | null;
+  kb_entry_id?: string | null;
+  imported?: boolean | null;
 };
 
 function serializeMessageRow(r: MessageListRow) {
@@ -125,6 +131,11 @@ function serializeMessageRow(r: MessageListRow) {
       ? { subject: r.original_subject ?? null, body_html: r.original_body_html ?? null, body_text: r.original_body_text ?? null }
       : null,
     forced_action_type: r.forced_action_type ?? null,
+    context_snapshot: r.context_snapshot ?? null,
+    choose: r.choose_decision ?? null,
+    opening_line: r.opening_line ?? null,
+    kb_entry_id: r.kb_entry_id ?? null,
+    imported: r.imported === true,
     contact: {
       email: r.contact_email,
       name: r.contact_name,

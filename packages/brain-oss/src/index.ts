@@ -193,3 +193,12 @@ export {
 } from "./assess.js";
 
 export { renderMarkdownToHtml, markdownToText } from "./markdown.js";
+
+export {
+  draftOpening,
+  chooseCandidate,
+  capText,
+  OPENING_MAX_CHARS,
+  type ChooseOption,
+  type JsonCallResult,
+} from "./opening-choose.js";

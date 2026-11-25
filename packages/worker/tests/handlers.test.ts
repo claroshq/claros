@@ -42,6 +42,11 @@ vi.mock("../src/scan-enrollment.js", () => ({ phaseEnrollment: record("enrollmen
 vi.mock("../src/scan-segment-enrollment.js", () => ({
   phaseSegmentEnrollment: record("segmentEnrollment", { flowsEvaluated: 0, enrollmentsAttempted: 0, enrollmentsSucceeded: 0, flowsCapped: 0 }),
 }));
+vi.mock("../src/date-flows.js", () => ({
+  phaseDateEnrollment: record("dateEnrollment", { flowsEvaluated: 0, staleExited: 0, enrollmentsAttempted: 0, enrollmentsSucceeded: 0, expiredCancelled: 0 }),
+  cancelExpiredMessages: async () => 0,
+  DATE_ENROLLMENT_CAP: 200,
+}));
 vi.mock("../src/scan-step-advancement.js", () => ({
   phaseStepAdvancement: record("stepAdvancement", {
     tenantsProcessed: 0,
@@ -173,7 +178,7 @@ describe("runJob routing", () => {
 
   it("scan runs its phases in order (enrollment only after transitions)", async () => {
     await runJob(QUEUE.SCAN, {}, deps);
-    expect(fns()).toEqual(["timeTransitions", "segmentEnrollment", "stepAdvancement", "engagementDepth"]);
+    expect(fns()).toEqual(["timeTransitions", "segmentEnrollment", "dateEnrollment", "stepAdvancement", "engagementDepth"]);
   });
 
   it("job handlers receive the payload and the database handle", async () => {

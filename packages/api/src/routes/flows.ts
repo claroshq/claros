@@ -38,6 +38,10 @@ import {
   isValidDelay,
   validateStatusTransition,
   FLOW_TRIGGER_TYPES,
+  isDateTriggerType,
+  parseDateTrigger,
+  datePropertyTriggerSchema,
+  dateScheduleTriggerSchema,
   FLOW_STATUSES,
   FLOW_CLASSES,
   REENTRY_POLICIES,
@@ -141,6 +145,16 @@ function validationError(c: AppContext, issues: z.ZodIssue[]) {
   }, 400);
 }
 
+/** G3: a date trigger's config must be valid (property, offset or offsets, max_sends). */
+function dateTriggerError(type: string, config: unknown): string | null {
+  if (!isDateTriggerType(type)) return null;
+  if (parseDateTrigger(type, config) !== null) return null;
+  const schema = type === "date_property" ? datePropertyTriggerSchema : dateScheduleTriggerSchema;
+  const r = schema.safeParse({ ...(config as Record<string, unknown>), type });
+  const msg = r.success ? "invalid trigger_config" : r.error.issues.map((i) => `${i.path.join(".") || "trigger_config"}: ${i.message}`).join("; ");
+  return `Invalid ${type} trigger_config: ${msg}`;
+}
+
 /**
  * Validate that step.order values are unique within the array.
  * Returns an error string if duplicate orders exist, null otherwise.
@@ -175,6 +189,9 @@ export default function flowsRoutes() {
     const body = parsed.data;
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
+
+    const dateError = dateTriggerError(body.trigger_type, body.trigger_config);
+    if (dateError) return c.json({ error: dateError }, 400);
 
     // Validate step order uniqueness
     if (body.steps.length > 0) {
@@ -319,6 +336,11 @@ export default function flowsRoutes() {
             error: `prompt_source cannot be edited while the flow is '${currentStatus}'. Pause the flow first.`,
           }, 422);
         }
+      }
+
+      if (body.trigger_type !== undefined || body.trigger_config !== undefined) {
+        const dateError = dateTriggerError(body.trigger_type ?? current.triggerType, body.trigger_config ?? current.triggerConfig);
+        if (dateError) return c.json({ error: dateError }, 400);
       }
 
       // Validate step order uniqueness if steps are being updated

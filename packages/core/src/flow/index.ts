@@ -103,13 +103,17 @@ export type FlowTriggerType =
   | "lifecycle_transition"
   | "event"
   | "segment"
-  | "manual";
+  | "manual"
+  | "date_property"
+  | "date_schedule";
 
 export const FLOW_TRIGGER_TYPES: readonly FlowTriggerType[] = [
   "lifecycle_transition",
   "event",
   "segment",
   "manual",
+  "date_property",
+  "date_schedule",
 ];
 
 // ---------------------------------------------------------------------------
@@ -260,11 +264,17 @@ export const TEMPLATE_APPROVAL_MODES: readonly TemplateApprovalMode[] = [
 export {
   compiledPlanSchema,
   compiledStepSchema,
+  stepContextSchema,
+  kbSelectSchema,
+  chooseCandidateSchema,
   compiledTriggerSchema,
   planExitConditionSchema,
   stepConditionSchema,
   type CompiledPlan,
   type CompiledStep,
+  type StepContext,
+  type KbSelect,
+  type ChooseCandidate,
   type CompiledTrigger,
   type PlanExitCondition,
   type StepCondition,

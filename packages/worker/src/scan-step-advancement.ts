@@ -36,6 +36,7 @@ import {
   type ContactState,
   type EventChecker,
 } from "./condition-evaluator.js";
+import { stepDateMembership, stepExpiresAt, dateUnchangedCheck } from "./date-flows.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -213,6 +214,7 @@ async function processTenantStepAdvancement(
     status: string;
     plan: CompiledStep[] | null;
     exitConditions: unknown[] | null;
+    compiledPlan: unknown;
   }>();
 
   // eslint-disable-next-line no-constant-condition
@@ -236,12 +238,12 @@ async function processTenantStepAdvancement(
 
         if (flowRow === null) {
           // Flow deleted - should not happen with FK, but defensive. Skip.
-          flowInfo = { status: "archived", plan: null, exitConditions: null };
+          flowInfo = { status: "archived", plan: null, exitConditions: null, compiledPlan: null };
         } else {
           const raw = flowRow;
           const plan = extractSteps(raw.compiledPlan);
           const exitConditions = extractExitConditions(raw.compiledPlan);
-          flowInfo = { status: raw.status ?? "draft", plan, exitConditions };
+          flowInfo = { status: raw.status ?? "draft", plan, exitConditions, compiledPlan: raw.compiledPlan };
         }
         flowPlanCache.set(membership.flowId, flowInfo);
       }
@@ -295,6 +297,7 @@ async function processTenantStepAdvancement(
           countSends: (f) =>
             storeFor(db).workerScanStepAdvancement.countSends({ tenantId, contactId: membership.contactId, ...f }),
         }),
+        dateUnchanged: dateUnchangedCheck(db, tenantId, membership, flowInfo.compiledPlan),
       };
 
       // -----------------------------------------------------------------------
@@ -350,6 +353,37 @@ async function processTenantStepAdvancement(
             events: exitEvent(tenantId, membership, "condition_met"),
           });
           stats.membershipsExitedCondition++;
+          continue;
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Date triggers (G3): stale anchors exit; schedules advance by slot.
+      // -----------------------------------------------------------------------
+
+      if (membership.anchorAt) {
+        const dated = await stepDateMembership(db, {
+          tenantId,
+          membership,
+          compiledPlan: flowInfo.compiledPlan,
+          steps: flowInfo.plan,
+          now,
+          contactState,
+          eventChecker,
+          ops: storeFor(db).workerScanStepAdvancement,
+        });
+        if (dated.kind !== "not_date") {
+          if (dated.kind === "stale_exited" || dated.kind === "exited") stats.membershipsExitedCondition++;
+          else if (dated.kind === "completed") stats.membershipsCompleted++;
+          else if (dated.kind === "condition_error") stats.membershipsStuckConditionError++;
+          else if (dated.kind === "skipped") {
+            if (dated.completed) stats.membershipsCompleted++;
+            else stats.stepsSkippedCondition++;
+          } else if (dated.kind === "message") {
+            if (dated.messageId !== null) stats.messagesCreated++;
+            if (dated.completed) stats.membershipsCompleted++;
+            if (dated.advanced) stats.stepsAdvanced++;
+          }
           continue;
         }
       }
@@ -524,6 +558,7 @@ async function processTenantStepAdvancement(
         membershipId: membership.id,
         stepOrder: membership.currentStep,
         actionType: currentStepDef.action_type,
+        expiresAt: stepExpiresAt(currentStepDef, now),
       });
 
       if (insertedId !== null) {
