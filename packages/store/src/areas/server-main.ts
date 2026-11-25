@@ -21,7 +21,8 @@ export interface ServerMainQueries {
   /**
    * In one transaction: when no tenant exists, insert the "default" tenant
    * (ON CONFLICT DO NOTHING on slug, so exactly one of N concurrent callers
-   * inserts) and, when ownerEmail is given, its owner user (ON CONFLICT DO NOTHING).
+   * inserts) and, when ownerEmail is given, its owner user (ON CONFLICT DO NOTHING),
+   * who is an instance admin with an owner membership of the default tenant.
    */
   bootstrapSeed(ownerEmail: string | null): Promise<BootstrapSeedResult>;
   /** True when at least one user exists. */

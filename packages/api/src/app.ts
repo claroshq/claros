@@ -51,6 +51,8 @@ import eventsRoutes from "./routes/events.js";
 import sentLogRoutes from "./routes/sent-log.js";
 import teamRoutes from "./routes/team.js";
 import profileRoutes from "./routes/profile.js";
+import productsRoutes from "./routes/products.js";
+import instanceRoutes from "./routes/instance.js";
 
 /**
  * Top-level path prefixes owned by API routes. The SPA fallback never serves
@@ -186,6 +188,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/sent-log", sentLogRoutes());
     app.route("/v1/team", teamRoutes());
     app.route("/v1/profile", profileRoutes());
+    app.route("/v1/products", productsRoutes());
+    app.route("/v1/instance", instanceRoutes());
   }
   app.route("/v1/diagnostics", diagnosticsRoutes());
 

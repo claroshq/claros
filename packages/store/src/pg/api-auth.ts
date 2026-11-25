@@ -41,6 +41,9 @@ export function pgApiAuth(db: PgDb): ApiAuthQueries {
         })
         .from(users)
         .where(eq(users.email, email))
+        // One user row per person since multi-product; older installs may
+        // hold several. Prefer an active one, then the oldest.
+        .orderBy(sql`${users.deactivatedAt} IS NOT NULL`, users.createdAt)
         .limit(1);
       return userRows[0] ?? null;
     },

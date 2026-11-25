@@ -45,7 +45,7 @@ New dependencies: only the ones approved in DECISIONS.md (D6). Anything else nee
 ## Commands
 
 ```bash
-npm install
+npm install                        # lockfile: npm 10 (package.json packageManager); update it with `npx npm@10 install`
 docker compose up -d postgres      # local Postgres on localhost:5433
 npm run db:migrate -- --yes        # apply migrations to DATABASE_URL (local)
 npm run dev                        # role=all, watch mode

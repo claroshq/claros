@@ -2,7 +2,7 @@
  * Postgres implementation of the queries used by apps/server/src/main.ts.
  */
 import { eq } from "drizzle-orm";
-import { tenants, users } from "@claros/db/schema";
+import { memberships, tenants, users } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { BootstrapSeedResult, ServerMainQueries } from "../areas/server-main.js";
 
@@ -43,10 +43,17 @@ export function pgServerMain(db: PgDb): ServerMainQueries {
 
         // If SEED_ADMIN_EMAIL is set, create the owner user (automated path).
         if (normalizedEmail) {
-          await tx
+          const [owner] = await tx
             .insert(users)
-            .values({ tenantId, email: normalizedEmail, role: "owner" })
-            .onConflictDoNothing();
+            .values({ tenantId, email: normalizedEmail, role: "owner", instanceRole: "admin" })
+            .onConflictDoNothing()
+            .returning({ id: users.id });
+          if (owner) {
+            await tx
+              .insert(memberships)
+              .values({ userId: owner.id, tenantId, role: "owner" })
+              .onConflictDoNothing();
+          }
         }
 
         result.insertedTenant = inserted.length > 0;

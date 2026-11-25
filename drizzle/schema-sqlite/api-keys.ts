@@ -15,6 +15,9 @@
  * - "secret": server-side. No origin check, higher rate limit. Must never
  *   be embedded in a browser; the CORS layer deliberately does not echo an
  *   Origin for secret keys, so browsers cannot use them cross-origin.
+ * - "admin" / "instance": management keys for one product / the whole
+ *   instance (tenant_id null for instance keys). Stored and listed only for
+ *   now; they do not authenticate ingestion.
  *
  * The `prefix` column (first 8 chars of the raw key) enables masked display
  * in the dashboard without exposing the full key.
@@ -37,13 +40,13 @@ export const apiKeys = sqliteTable(
   "api_keys",
   {
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-    tenantId: text("tenant_id")
-      .notNull()
-      .references(() => tenants.id),
+    // Null for instance keys (kind "instance"), which are not bound to a product.
+    tenantId: text("tenant_id").references(() => tenants.id),
     keyHash: text("key_hash").notNull(), // SHA-256 hex of the raw key
     prefix: text("prefix").notNull(), // first 8 chars for masked display
     label: text("label"), // human-friendly name ("Production backend")
-    // publishable|secret. Default 'secret' preserves the behavior of keys
+    // publishable|secret|admin|instance. admin and instance keys are stored
+    // and listed only; they do not authenticate ingestion. Default 'secret' preserves the behavior of keys
     // created before this column existed (they were server-side write keys).
     kind: text("kind").notNull().default("secret"),
     // Publishable keys only: allowed browser Origins (scheme + host + port,

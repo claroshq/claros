@@ -15,7 +15,9 @@ export const users = sqliteTable(
       .references(() => tenants.id),
     email: text("email").notNull(),
     name: text("name"),
-    role: text("role").default("member").notNull(), // owner|member
+    role: text("role").default("member").notNull(), // owner|member (role in the home product)
+    /** Instance-wide role: "admin" or null. Admins act on every product as owner. */
+    instanceRole: text("instance_role"),
     lastLoginAt: integer("last_login_at", { mode: "timestamp_ms" }),
     /** Soft-delete: set when a member is removed. Sessions are hard-deleted
      *  for immediate access revocation, but the user row persists for

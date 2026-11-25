@@ -49,3 +49,5 @@ workerProcessMessage	packages/worker/src/process-message.ts
 apiSession	packages/api/src/http/session.ts
 workerCounterRollover	packages/worker/src/counter-rollover.ts
 apiEvents	packages/api/src/routes/events.ts
+apiProducts	packages/api/src/routes/products.ts
+apiInstance	packages/api/src/routes/instance.ts

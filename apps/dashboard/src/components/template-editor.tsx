@@ -12,6 +12,7 @@ import { Input } from "./ui/input.js";
 import { Textarea } from "./ui/textarea.js";
 import { Badge } from "./ui/badge.js";
 import { Skeleton } from "./ui/skeleton.js";
+import { withProduct } from "../product.js";
 
 // ---------------------------------------------------------------------------
 // Types and API
@@ -38,7 +39,7 @@ interface EmailTemplatesResponse {
 export const TEMPLATES_QUERY_KEY = ["email-templates"] as const;
 
 export async function fetchEmailTemplates(): Promise<EmailTemplatesResponse> {
-  const res = await fetch("/v1/email-templates", { credentials: "include" });
+  const res = await fetch("/v1/email-templates", withProduct());
   if (!res.ok) throw new Error(`Failed to load templates (${res.status})`);
   return res.json();
 }
@@ -47,12 +48,11 @@ async function patchEmailTemplate(
   id: string,
   data: { subject?: string; body_html?: string; body_text?: string | null },
 ): Promise<{ template: EmailTemplate }> {
-  const res = await fetch(`/v1/email-templates/${id}`, {
+  const res = await fetch(`/v1/email-templates/${id}`, withProduct({
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(data),
-  });
+  }));
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     const msg = body && typeof body === "object" && "error" in body

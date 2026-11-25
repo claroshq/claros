@@ -1,10 +1,29 @@
 /**
  * Postgres implementation of the queries used by packages/api/src/routes/team.ts.
  */
-import { eq, and, sql, isNull } from "drizzle-orm";
-import { users, sessions, invites, tenants } from "@claros/db/schema";
+import { eq, and, sql, isNull, or, isNotNull } from "drizzle-orm";
+import { users, sessions, invites, tenants, memberships } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { ApiTeamQueries } from "../areas/api-team.js";
+
+/** Join condition: the user's membership row of the tenant (if any). */
+function membershipOf(tenantId: string) {
+  return and(eq(memberships.userId, users.id), eq(memberships.tenantId, tenantId));
+}
+
+/** Active members of the tenant: a membership row, or the tenant is the user's home. */
+/** Role in the tenant: users.role in the home product (as in v0.6), else the membership role. */
+function roleIn(tenantId: string) {
+  return sql<string>`CASE WHEN ${users.tenantId} = ${tenantId} THEN ${users.role} ELSE ${memberships.role} END`;
+}
+
+function isActiveMemberOf(tenantId: string) {
+  return and(
+    isNull(users.deactivatedAt),
+    or(isNotNull(memberships.userId), eq(users.tenantId, tenantId)),
+  );
+}
+
 
 export function pgApiTeam(db: PgDb): ApiTeamQueries {
   return {
@@ -14,12 +33,13 @@ export function pgApiTeam(db: PgDb): ApiTeamQueries {
           id: users.id,
           email: users.email,
           name: users.name,
-          role: users.role,
+          role: roleIn(tenantId),
           lastLoginAt: users.lastLoginAt,
           createdAt: users.createdAt,
         })
         .from(users)
-        .where(and(eq(users.tenantId, tenantId), isNull(users.deactivatedAt)))
+        .leftJoin(memberships, membershipOf(tenantId))
+        .where(isActiveMemberOf(tenantId))
         .orderBy(users.createdAt);
     },
 
@@ -27,11 +47,8 @@ export function pgApiTeam(db: PgDb): ApiTeamQueries {
       const existing = await db
         .select({ id: users.id })
         .from(users)
-        .where(and(
-          eq(users.tenantId, tenantId),
-          eq(users.email, email),
-          isNull(users.deactivatedAt),
-        ))
+        .leftJoin(memberships, membershipOf(tenantId))
+        .where(and(eq(users.email, email), isActiveMemberOf(tenantId)))
         .limit(1);
       return existing.length > 0;
     },
@@ -112,9 +129,10 @@ export function pgApiTeam(db: PgDb): ApiTeamQueries {
 
     async getActiveMember({ tenantId, userId }) {
       const targetRows = await db
-        .select({ id: users.id, role: users.role })
+        .select({ id: users.id, role: roleIn(tenantId) })
         .from(users)
-        .where(and(eq(users.id, userId), eq(users.tenantId, tenantId), isNull(users.deactivatedAt)))
+        .leftJoin(memberships, membershipOf(tenantId))
+        .where(and(eq(users.id, userId), isActiveMemberOf(tenantId)))
         .limit(1);
       return targetRows[0] ?? null;
     },
@@ -123,31 +141,48 @@ export function pgApiTeam(db: PgDb): ApiTeamQueries {
       const ownerCount = await db
         .select({ cnt: sql<number>`count(*)::int` })
         .from(users)
-        .where(and(
-          eq(users.tenantId, tenantId),
-          eq(users.role, "owner"),
-          isNull(users.deactivatedAt),
-        ));
+        .leftJoin(memberships, membershipOf(tenantId))
+        .where(and(isActiveMemberOf(tenantId), sql`${roleIn(tenantId)} = 'owner'`));
       return ownerCount[0]?.cnt ?? 0;
     },
 
-    async setRole({ userId, role }) {
-      await db
-        .update(users)
-        .set({ role })
-        .where(eq(users.id, userId));
+    async setRole({ tenantId, userId, role }) {
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(memberships)
+          .values({ userId, tenantId, role })
+          .onConflictDoUpdate({ target: [memberships.userId, memberships.tenantId], set: { role } });
+        // users.role stays the role in the home product (backward compatibility).
+        await tx
+          .update(users)
+          .set({ role })
+          .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)));
+      });
     },
 
-    async deactivateMember({ userId, now }) {
-      await db
-        .update(users)
-        .set({ deactivatedAt: now })
-        .where(eq(users.id, userId));
+    async deactivateMember({ tenantId, userId, now }) {
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(memberships)
+          .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, tenantId)));
 
-      // Delete all sessions for immediate access revocation
-      await db
-        .delete(sessions)
-        .where(eq(sessions.userId, userId));
+        // Removed from the home product: soft-delete the user, as before.
+        const home = await tx
+          .update(users)
+          .set({ deactivatedAt: now })
+          .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+          .returning({ id: users.id });
+
+        // Delete sessions for immediate access revocation: all of them when
+        // the user was deactivated, else the ones opened on this tenant.
+        await tx
+          .delete(sessions)
+          .where(
+            home.length > 0
+              ? eq(sessions.userId, userId)
+              : and(eq(sessions.userId, userId), eq(sessions.tenantId, tenantId)),
+          );
+      });
     },
   };
 }

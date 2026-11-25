@@ -95,6 +95,7 @@ const {
   llmConfigs,
   users,
   magicLinkTokens,
+  memberships,
 } = await import(resolve(repoRoot, "drizzle/dist/schema/index.js"));
 
 // ---------------------------------------------------------------------------
@@ -976,25 +977,40 @@ async function userCreate(db, tenantSlug, dbInfo) {
 
   if (existing.length > 0 && existing[0].deactivatedAt) {
     // Reactivate
-    await db
-      .update(users)
-      .set({ role, deactivatedAt: null })
-      .where(eq(users.id, existing[0].id));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ role, deactivatedAt: null })
+        .where(eq(users.id, existing[0].id));
+      await upsertMembership(tx, existing[0].id, tenant.id, role);
+    });
     console.log(`\nUser "${normalized}" reactivated with role "${role}".`);
     console.log(`  Generate a login link: claros login-link ${normalized}\n`);
     return;
   }
 
-  const [inserted] = await db
-    .insert(users)
-    .values({ tenantId: tenant.id, email: normalized, role })
-    .returning({ id: users.id, email: users.email, role: users.role });
+  const inserted = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(users)
+      .values({ tenantId: tenant.id, email: normalized, role })
+      .returning({ id: users.id, email: users.email, role: users.role });
+    await upsertMembership(tx, row.id, tenant.id, role);
+    return row;
+  });
 
   console.log(`\nUser created.`);
   console.log(`  id:    ${inserted.id}`);
   console.log(`  email: ${inserted.email}`);
   console.log(`  role:  ${inserted.role}`);
   console.log(`\n  Generate a login link: claros login-link ${normalized}\n`);
+}
+
+/** Keep the user's membership of the tenant in step with users.role (multi-product). */
+async function upsertMembership(tx, userId, tenantId, role) {
+  await tx
+    .insert(memberships)
+    .values({ userId, tenantId, role })
+    .onConflictDoUpdate({ target: [memberships.userId, memberships.tenantId], set: { role } });
 }
 
 async function userPromote(db, tenantSlug, email, dbInfo) {
@@ -1027,10 +1043,13 @@ async function userPromote(db, tenantSlug, email, dbInfo) {
     if (!confirmed) { console.log("\nAborted.\n"); process.exit(0); }
   }
 
-  await db
-    .update(users)
-    .set({ role: "owner" })
-    .where(eq(users.id, user.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ role: "owner" })
+      .where(eq(users.id, user.id));
+    await upsertMembership(tx, user.id, tenant.id, "owner");
+  });
 
   console.log(`\nUser "${normalized}" promoted to owner.`);
   console.log(`  Tenant: ${tenant.name} (${tenantSlug})`);

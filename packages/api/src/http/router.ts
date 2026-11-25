@@ -8,7 +8,8 @@
  *
  * Request-time order per route, as in v0.6: body parsing (400/413/415 on bad
  * bodies), then a resolved session tenant (else 401), then the declared role
- * (else 403). Response bodies match v0.6.
+ * (else 403), then, for non-GET routes, a product that is not archived
+ * (else 409). Response bodies match v0.6.
  *
  * Public routers (createRouter) add `parseBody()` themselves on every route
  * that reads a body.
@@ -65,6 +66,30 @@ export function requireRole(minRole: UserRole): MiddlewareHandler<AppEnv> {
   };
 }
 
+/**
+ * Instance admin check for instance-level routes (products, instance
+ * settings): 401 without a resolved session tenant, 403 unless the user's
+ * instance role is "admin".
+ */
+export const requireInstanceAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const tenant = c.var.tenant;
+  if (!tenant) {
+    return c.json({ error: "Authentication required." }, 401);
+  }
+  if (tenant.instanceRole !== "admin") {
+    return c.json({ error: "Forbidden: instance admin only." }, 403);
+  }
+  return next();
+};
+
+/** Archived products are read-only: non-GET dashboard routes answer 409. */
+const rejectArchivedWrites: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (c.var.tenant?.archived) {
+    return c.json({ error: "Product is archived." }, 409);
+  }
+  return next();
+};
+
 type Method = "get" | "post" | "put" | "patch" | "delete";
 
 /**
@@ -89,6 +114,7 @@ export class RoleRouter {
       this.body,
       ...preAuth,
       guard,
+      ...(method === "get" ? [] : [rejectArchivedWrites]),
       ...rest,
     );
     return this;

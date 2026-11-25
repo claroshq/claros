@@ -13,10 +13,12 @@ import { d1ApiFlows } from "./api-flows.js";
 import { d1ApiIngestAuth } from "./api-ingest-auth.js";
 import { d1ApiIngest } from "./api-ingest.js";
 import { d1ApiIngestion } from "./api-ingestion.js";
+import { d1ApiInstance } from "./api-instance.js";
 import { d1ApiInvite } from "./api-invite.js";
 import { d1ApiKb } from "./api-kb.js";
 import { d1ApiLibrary } from "./api-library.js";
 import { d1ApiMessages } from "./api-messages.js";
+import { d1ApiProducts } from "./api-products.js";
 import { d1ApiProfile } from "./api-profile.js";
 import { d1ApiResendWebhook } from "./api-resend-webhook.js";
 import { d1ApiSentLog } from "./api-sent-log.js";
@@ -68,10 +70,12 @@ export function createD1Store(db: D1Db): Store {
     apiIngestAuth: d1ApiIngestAuth(db),
     apiIngest: d1ApiIngest(db),
     apiIngestion: d1ApiIngestion(db),
+    apiInstance: d1ApiInstance(db),
     apiInvite: d1ApiInvite(db),
     apiKb: d1ApiKb(db),
     apiLibrary: d1ApiLibrary(db),
     apiMessages: d1ApiMessages(db),
+    apiProducts: d1ApiProducts(db),
     apiProfile: d1ApiProfile(db),
     apiResendWebhook: d1ApiResendWebhook(db),
     apiSentLog: d1ApiSentLog(db),

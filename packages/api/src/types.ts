@@ -8,6 +8,9 @@
 /** The two roles in MVP. Order matters: owner > member. */
 export type UserRole = "owner" | "member";
 
+/** Instance-wide role. Instance admins act on every product as owner. */
+export type InstanceRole = "admin";
+
 /** Numeric weight for comparison. Higher = more privilege. */
 const ROLE_WEIGHT: Record<UserRole, number> = { owner: 2, member: 1 };
 
@@ -31,6 +34,10 @@ export interface TenantContext {
   slug: string;
   /** The authenticated user's ID. */
   userId: string;
-  /** The authenticated user's role. */
+  /** The authenticated user's role in this product ("owner" for instance admins). */
   userRole: UserRole;
+  /** The user's instance-wide role, or null. */
+  instanceRole: InstanceRole | null;
+  /** True when the product is archived (reads allowed, writes answer 409). */
+  archived: boolean;
 }

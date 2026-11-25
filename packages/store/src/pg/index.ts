@@ -54,6 +54,8 @@ import { pgWorkerProcessMessage } from "./worker-process-message.js";
 import { pgApiSession } from "./api-session.js";
 import { pgWorkerCounterRollover } from "./worker-counter-rollover.js";
 import { pgApiEvents } from "./api-events.js";
+import { pgApiProducts } from "./api-products.js";
+import { pgApiInstance } from "./api-instance.js";
 
 export function createPgStore(db: PgDb): Store {
   return {
@@ -109,5 +111,7 @@ export function createPgStore(db: PgDb): Store {
     apiSession: pgApiSession(db),
     workerCounterRollover: pgWorkerCounterRollover(db),
     apiEvents: pgApiEvents(db),
+    apiProducts: pgApiProducts(db),
+    apiInstance: pgApiInstance(db),
   };
 }

@@ -16,10 +16,12 @@ import {
   Gauge,
   Palette,
   MapPin,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "../../components/page-header.js";
 import { useSetupState } from "../../settings.js";
+import { useProducts } from "../../products.js";
 import { cn } from "../../lib/utils.js";
 
 interface NavItem {
@@ -37,6 +39,7 @@ interface NavGroup {
 
 export default function SettingsLayout() {
   const { llm, transport, tenant } = useSetupState();
+  const products = useProducts();
 
   const groups: NavGroup[] = [
     {
@@ -67,6 +70,13 @@ export default function SettingsLayout() {
       ],
     },
   ];
+
+  if (products.data?.instance_admin) {
+    groups.push({
+      label: "Instance",
+      items: [{ to: "/settings/products", label: "Products", icon: Boxes }],
+    });
+  }
 
   return (
     <div className="mx-auto max-w-6xl">

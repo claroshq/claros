@@ -12,8 +12,9 @@ export interface ApiClaimQueries {
   /** Id of the tenant with slug "default", or null when bootstrap has not run. */
   findDefaultTenantId(): Promise<string | null>;
   /**
-   * Insert the owner user; returns its id, or null when the insert hit a
-   * conflict (a concurrent claim won the race).
+   * In one transaction: insert the owner user (instance admin) and its owner
+   * membership of the tenant. Returns the user id, or null when the insert
+   * hit a conflict (a concurrent claim won the race).
    */
   createOwnerUser(args: { tenantId: string; email: string }): Promise<string | null>;
   /** Create a session for the user and return its id. */
