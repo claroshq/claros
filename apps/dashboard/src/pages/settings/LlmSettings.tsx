@@ -1,9 +1,14 @@
 /**
- * Settings / LLM provider.
+ * Settings / AI providers: the LLM provider and, below it, the optional
+ * embeddings provider (EmbeddingsSettings).
  *
  * The GET endpoint never returns the key, so this screen shows whether a
  * provider is configured and lets it be replaced, never what it is.
  * Without an LLM provider every flow compile returns 422.
+ *
+ * The embedding model used to live in this form's Advanced section; it now
+ * has its own provider. PUT /v1/settings/llm still accepts embedding_model
+ * for API clients (v0.6 compatibility).
  */
 import React, { useState } from "react";
 import { useSetupState, usePutLlm } from "../../settings.js";
@@ -13,6 +18,7 @@ import { Select } from "../../components/ui/select.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { llmDefaultsFor } from "../../llm-defaults.js";
 import { Section, FormError, Notice, SummaryList, SummaryItem, errorMessage, formatDate } from "./shared.js";
+import EmbeddingsSettings from "./EmbeddingsSettings.js";
 
 const LLM_PROVIDERS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "openai", label: "OpenAI" },
@@ -22,6 +28,15 @@ const LLM_PROVIDERS: ReadonlyArray<{ value: string; label: string }> = [
 ];
 
 export default function LlmSettings() {
+  return (
+    <div className="space-y-6">
+      <LlmSection />
+      <EmbeddingsSettings />
+    </div>
+  );
+}
+
+function LlmSection() {
   const { llm, isLoading } = useSetupState();
   const put = usePutLlm();
   const [open, setOpen] = useState(false);
@@ -29,7 +44,6 @@ export default function LlmSettings() {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
-  const [embeddingModel, setEmbeddingModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -49,7 +63,6 @@ export default function LlmSettings() {
         api_key: apiKey,
         base_url: baseUrl.trim() === "" ? undefined : baseUrl.trim(),
         model: model.trim() === "" ? undefined : model.trim(),
-        embedding_model: embeddingModel.trim() === "" ? undefined : embeddingModel.trim(),
       });
       setOpen(false);
       setSaved(true);
@@ -87,12 +100,10 @@ export default function LlmSettings() {
             {llm.base_url && (
               <SummaryItem label="Endpoint" mono span>{llm.base_url}</SummaryItem>
             )}
-            {llm.embedding_model && (
-              <SummaryItem label="Embedding model" mono>{llm.embedding_model}</SummaryItem>
-            )}
           </SummaryList>
           <p className="mt-4 text-[13px] text-muted-foreground">
             Drafts and compiles run on this provider. The key is stored encrypted and never displayed.
+            {llm.provider === "anthropic" && " Anthropic has no embeddings API; for semantic knowledge base search, set up Embeddings below."}
           </p>
         </>
       )}
@@ -117,7 +128,7 @@ export default function LlmSettings() {
               <Select
                 id="llm-provider"
                 value={provider}
-                onChange={(e) => { setProvider(e.target.value); setBaseUrl(""); setModel(""); setEmbeddingModel(""); }}
+                onChange={(e) => { setProvider(e.target.value); setBaseUrl(""); setModel(""); }}
                 disabled={put.isPending}
               >
                 {LLM_PROVIDERS.map((p) => (
@@ -160,60 +171,43 @@ export default function LlmSettings() {
               <span className="font-mono text-[13px]">{effectiveBaseUrl}</span>.
             </p>
           )}
-          <details className="rounded-md border border-border px-3.5 py-2.5">
-            <summary className="cursor-pointer text-[14px] font-medium text-foreground">
-              Advanced
-            </summary>
-            <p className="mt-2 text-[14px] text-muted-foreground">
-              The defaults work for almost everyone. Only change these if you
-              know why.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-4">
-              {!isCustom && (
-                <>
-                  <div>
-                    <label htmlFor="llm-model-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">
-                      Model
-                    </label>
-                    <Input
-                      id="llm-model-adv"
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      placeholder={defaults.model ?? ""}
-                      disabled={put.isPending}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="llm-base-url-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">
-                      Base URL
-                    </label>
-                    <Input
-                      id="llm-base-url-adv"
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      placeholder={defaults.baseUrl ?? ""}
-                      disabled={put.isPending}
-                    />
-                  </div>
-                </>
-              )}
-              <div>
-                <label htmlFor="llm-embedding-model" className="mb-1.5 block text-[14px] font-medium text-foreground">
-                  Embedding model
-                </label>
-                <Input
-                  id="llm-embedding-model"
-                  value={embeddingModel}
-                  onChange={(e) => setEmbeddingModel(e.target.value)}
-                  placeholder={defaults.embeddingModel ?? "text-embedding-3-small"}
-                  disabled={put.isPending}
-                />
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  Used for knowledge base search. Must produce 1536-dimension vectors.
-                </p>
+          {!isCustom && (
+            <details className="rounded-md border border-border px-3.5 py-2.5">
+              <summary className="cursor-pointer text-[14px] font-medium text-foreground">
+                Advanced
+              </summary>
+              <p className="mt-2 text-[14px] text-muted-foreground">
+                The defaults work for almost everyone. Only change these if you
+                know why.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="llm-model-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                    Model
+                  </label>
+                  <Input
+                    id="llm-model-adv"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={defaults.model ?? ""}
+                    disabled={put.isPending}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="llm-base-url-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                    Base URL
+                  </label>
+                  <Input
+                    id="llm-base-url-adv"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder={defaults.baseUrl ?? ""}
+                    disabled={put.isPending}
+                  />
+                </div>
               </div>
-            </div>
-          </details>
+            </details>
+          )}
           <FormError message={error} />
           <div className="flex items-center gap-3 pt-1">
             <Button type="submit" disabled={put.isPending || !canSubmit}>

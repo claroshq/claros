@@ -56,7 +56,7 @@ export default function SettingsLayout() {
     {
       label: "Engine",
       items: [
-        { to: "/settings/llm", label: "LLM provider", icon: Sparkles, warn: llm === null },
+        { to: "/settings/llm", label: "AI providers", icon: Sparkles, warn: llm === null },
         { to: "/settings/transport", label: "Transports", icon: Mail, warn: transport === null },
         { to: "/settings/pace", label: "Sending pace", icon: Gauge },
       ],

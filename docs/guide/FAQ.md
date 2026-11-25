@@ -69,11 +69,11 @@ Verify ingestion itself is healthy on the Integrate page (it shows recent event 
 
 Three independent requirements:
 
-1. **An LLM provider is configured:** Settings → LLM, or `claros llm show default`. The credentials are verified against the provider at save time, so a saved config is a working config
+1. **An LLM provider is configured:** Settings → AI providers, or `claros llm show default`. The credentials are verified against the provider at save time, so a saved config is a working config
 2. **`ENCRYPTION_KEY` is set:** without it the saved credentials cannot be decrypted and every AI operation fails at runtime
 3. **For a specific flow: it has been compiled.** Prompt-defined flows do nothing until you press Compile. A failed compilation is shown on the flow with the reason
 
-What works with no LLM key at all: ingestion, contacts, lifecycle, the library flow, fixed-content flows you write yourself, approvals, suppression, analytics. What needs a key: compiling prompts, AI-drafted content, AI step-draft assistance, knowledge base embeddings.
+What works with no LLM key at all: ingestion, contacts, lifecycle, the library flow, fixed-content flows you write yourself, approvals, suppression, analytics. What needs a key: compiling prompts, AI-drafted content, AI step-draft assistance. Knowledge base embeddings are optional and have their own provider (OpenAI or an OpenAI-compatible endpoint); without one, the knowledge base is searched by word matching.
 
 ### How do I send faster (or slower)?
 

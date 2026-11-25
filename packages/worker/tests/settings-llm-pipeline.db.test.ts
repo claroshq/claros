@@ -32,6 +32,7 @@ import { eq, and, sql } from "drizzle-orm";
 import {
   tenants,
   llmConfigs,
+  embeddingConfigs,
 } from "@claros/db/schema";
 import { encrypt, parseEncryptionKey } from "@claros/adapters";
 import { resolveTenantProvider } from "../src/provider-resolver.js";
@@ -108,10 +109,12 @@ afterAll(async () => {
 beforeEach(async () => {
   if (!dbAvailable) return;
   await db.execute(sql`DELETE FROM llm_configs WHERE tenant_id = ${testTenantId}::uuid`);
+  await db.execute(sql`DELETE FROM embedding_configs WHERE tenant_id = ${testTenantId}::uuid`);
 });
 
 async function cleanup() {
   await db.execute(sql`DELETE FROM llm_configs WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${SLUG})`);
+  await db.execute(sql`DELETE FROM embedding_configs WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${SLUG})`);
   await db.execute(sql`DELETE FROM tenants WHERE slug = ${SLUG}`);
 }
 
@@ -310,5 +313,96 @@ describe("LLM settings pipeline: resolveEmbeddingProvider", () => {
     } finally {
       if (saved !== undefined) process.env.ENCRYPTION_KEY = saved;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: embedding_configs and the legacy llm_configs fallback
+// ---------------------------------------------------------------------------
+
+async function writeEmbeddingConfig(opts: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  sendDimensions: boolean;
+  provider?: string;
+}): Promise<void> {
+  const key = parseEncryptionKey(TEST_ENCRYPTION_KEY_BASE64);
+  const { provider, ...envelope } = opts;
+  await db.insert(embeddingConfigs).values({
+    tenantId: testTenantId,
+    provider: provider ?? "openai",
+    config: encrypt(JSON.stringify(envelope), key),
+    isActive: true,
+  });
+}
+
+describe("resolveEmbeddingProvider: embedding_configs first, legacy LLM fallback", () => {
+  it("an embedding config wins over the LLM config and carries dimensions", async () => {
+    if (!dbAvailable) return;
+    await writeLlmConfig({ apiKey: "sk-ant", baseUrl: "https://api.anthropic.com/v1", model: "claude", provider: "anthropic" });
+    await writeEmbeddingConfig({ apiKey: "sk-oai", baseUrl: "https://api.openai.com/v1/", model: "text-embedding-3-large", sendDimensions: true });
+
+    const result = await resolveEmbeddingProvider(db, testTenantId);
+    expect(result).toMatchObject({
+      ok: true,
+      apiKey: "sk-oai",
+      baseUrl: "https://api.openai.com/v1",
+      embeddingModel: "text-embedding-3-large",
+      dimensions: 1536,
+      source: "embedding_config",
+    });
+  });
+
+  it("sendDimensions false leaves dimensions out", async () => {
+    if (!dbAvailable) return;
+    await writeEmbeddingConfig({ apiKey: "", baseUrl: "http://local:8080/v1", model: "m", sendDimensions: false, provider: "custom" });
+    const result = await resolveEmbeddingProvider(db, testTenantId);
+    expect(result).toMatchObject({ ok: true, dimensions: undefined, source: "embedding_config" });
+  });
+
+  it("an Anthropic LLM config without embedding_model is not used: notConfigured, not an error", async () => {
+    if (!dbAvailable) return;
+    await writeLlmConfig({ apiKey: "sk-ant", baseUrl: "https://api.anthropic.com/v1", model: "claude", provider: "anthropic" });
+    const result = await resolveEmbeddingProvider(db, testTenantId);
+    expect(result).toMatchObject({ ok: false, notConfigured: true });
+  });
+
+  it("an Ollama LLM config without embedding_model is not used either", async () => {
+    if (!dbAvailable) return;
+    await writeLlmConfig({ apiKey: "", baseUrl: "http://localhost:11434/v1", model: "llama3", provider: "ollama" });
+    expect(await resolveEmbeddingProvider(db, testTenantId)).toMatchObject({ ok: false, notConfigured: true });
+  });
+
+  it("an explicit embedding_model keeps any LLM config usable (v0.6 behavior)", async () => {
+    if (!dbAvailable) return;
+    await writeLlmConfig({
+      apiKey: "sk-x",
+      baseUrl: "https://proxy.example/v1",
+      model: "claude",
+      provider: "anthropic",
+      embeddingModel: "text-embedding-3-small",
+    });
+    expect(await resolveEmbeddingProvider(db, testTenantId)).toMatchObject({
+      ok: true,
+      baseUrl: "https://proxy.example/v1",
+      embeddingModel: "text-embedding-3-small",
+      source: "llm_config",
+    });
+  });
+
+  it("a custom LLM config keeps the v0.6 default model", async () => {
+    if (!dbAvailable) return;
+    await writeLlmConfig({ apiKey: "k", baseUrl: "https://gateway.example/v1", model: "m", provider: "custom" });
+    expect(await resolveEmbeddingProvider(db, testTenantId)).toMatchObject({
+      ok: true,
+      embeddingModel: "text-embedding-3-small",
+      source: "llm_config",
+    });
+  });
+
+  it("no config at all: notConfigured", async () => {
+    if (!dbAvailable) return;
+    expect(await resolveEmbeddingProvider(db, testTenantId)).toMatchObject({ ok: false, notConfigured: true });
   });
 });

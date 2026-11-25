@@ -584,7 +584,7 @@ export interface KbEntryPreview {
   source: "manual" | "crawl" | "upload";
   source_url: string | null;
   tags: string[];
-  embedding_status: "pending" | "failed" | null;
+  embedding_status: "pending" | "failed" | "skipped" | null;
   is_active: boolean;
   /** Category used by kb_select (G18); absent on servers before KB v2. */
   category?: string | null;
@@ -972,6 +972,64 @@ export async function putLlm(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body;
+}
+
+/** The effective embedding provider (GET /v1/settings/embeddings). */
+export interface EmbeddingsConfig {
+  /** embedding_config = saved in Embeddings; llm_config = served by the chat LLM config. */
+  source: "embedding_config" | "llm_config";
+  provider: string;
+  base_url: string | null;
+  model: string | null;
+  dimensions: number;
+  sends_dimensions: boolean;
+  created_at: string;
+}
+
+export interface EmbeddingsInput {
+  provider: string;
+  api_key?: string;
+  base_url?: string;
+  model?: string;
+}
+
+export interface EmbeddingsChange {
+  embeddings: EmbeddingsConfig | null;
+  vectors_cleared: boolean;
+  reembed: { enqueued: number; remaining: number; total_qualifying: number } | null;
+}
+
+/** GET /v1/settings/embeddings - effective provider, never credentials. */
+export async function fetchEmbeddings(): Promise<{ embeddings: EmbeddingsConfig | null }> {
+  const res = await apiFetch("/v1/settings/embeddings");
+  if (!res.ok) {
+    throw new Error(`/v1/settings/embeddings returned ${res.status}`);
+  }
+  return res.json();
+}
+
+/** PUT /v1/settings/embeddings - verify the endpoint, then write/replace. */
+export async function putEmbeddings(input: EmbeddingsInput): Promise<EmbeddingsChange> {
+  const res = await apiFetch("/v1/settings/embeddings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body;
+}
+
+/** DELETE /v1/settings/embeddings - remove the saved provider. */
+export async function deleteEmbeddings(): Promise<EmbeddingsChange> {
+  const res = await apiFetch("/v1/settings/embeddings", { method: "DELETE" });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw parseFlowError(res.status, body);

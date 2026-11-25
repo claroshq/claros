@@ -29,6 +29,7 @@ export { transportConfigs } from "./transport-configs.js";
 export { suppressions } from "./suppressions.js";
 export { contactConflicts } from "./contact-conflicts.js";
 export { llmConfigs } from "./llm-configs.js";
+export { embeddingConfigs } from "./embedding-configs.js";
 export { scanCheckpoints } from "./scan-checkpoints.js";
 export { messageEvents } from "./message-events.js";
 export { retentionGridSnapshots } from "./retention-grid-snapshots.js";

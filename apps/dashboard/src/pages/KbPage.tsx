@@ -4,7 +4,8 @@
  * The corpus the AI writes from. Each row shows the entry's preview inline
  * (the list endpoint truncates content to 300 characters), so nobody has to
  * open an entry to know what it says. Embedding state is a first-class
- * signal: pending, failed, or embedded.
+ * signal: pending, failed, skipped (no embedding provider: word matching),
+ * or embedded.
  *
  * Re-embed is asynchronous and returns counts, not a job: { enqueued,
  * remaining, total_qualifying }. remaining > 0 means another batch is
@@ -15,29 +16,15 @@ import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, BookOpen } from "lucide-react";
 import { useKbEntries, useReembedKb } from "../kb.js";
+import { useEmbeddings } from "../settings.js";
 import type { KbEntryPreview, FlowApiError } from "../api.js";
-import { Badge, type BadgeVariant } from "../components/ui/badge.js";
+import { Badge } from "../components/ui/badge.js";
+import { embeddingVariant, embeddingLabel } from "../kb-embedding.js";
 import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
 import { PageHeader } from "../components/page-header.js";
 import { EmptyState } from "../components/empty-state.js";
 import { cn } from "../lib/utils.js";
-
-function embeddingVariant(status: KbEntryPreview["embedding_status"]): BadgeVariant {
-  switch (status) {
-    case "pending": return "warning";
-    case "failed": return "danger";
-    case null: return "success";
-  }
-}
-
-function embeddingLabel(status: KbEntryPreview["embedding_status"]): string {
-  switch (status) {
-    case "pending": return "embedding";
-    case "failed": return "embed failed";
-    case null: return "embedded";
-  }
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -90,6 +77,8 @@ export default function KbPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const list = useKbEntries(includeInactive);
   const reembed = useReembedKb();
+  const embeddings = useEmbeddings();
+  const noEmbeddingProvider = embeddings.data !== undefined && embeddings.data.embeddings === null;
   const navigate = useNavigate();
   const [reembedNote, setReembedNote] = useState<string | null>(null);
   const [reembedError, setReembedError] = useState<string | null>(null);
@@ -205,14 +194,31 @@ export default function KbPage() {
 
       {entries.length > 0 && (
         <>
+          {noEmbeddingProvider && (
+            <p className="mb-4 text-[14px] text-muted-foreground">
+              No embedding provider, so drafts find entries by shared words
+              instead of meaning. Pinned entries and kb_select are not
+              affected. To add one, open{" "}
+              <Link to="/settings/llm" className="font-medium text-foreground underline underline-offset-2">
+                Settings, AI providers
+              </Link>
+              .
+            </p>
+          )}
           {failedCount > 0 && (
             <p className="mb-4 text-[14px] text-muted-foreground">
               {failedCount} {failedCount === 1 ? "entry" : "entries"} failed
-              to embed and will not inform drafts. Use{" "}
+              to embed. Semantic search skips them; pinned entries and
+              kb_select still use them. Open an entry to see the provider's
+              error, fix it in{" "}
+              <Link to="/settings/llm" className="font-medium text-foreground underline underline-offset-2">
+                Settings, AI providers
+              </Link>
+              , then use{" "}
               <span className="font-medium text-foreground">
                 Retry failed embeddings
               </span>{" "}
-              above to reprocess them.
+              above.
             </p>
           )}
           <div className="divide-y divide-border border-t border-b border-border">

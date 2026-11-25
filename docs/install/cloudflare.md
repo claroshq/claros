@@ -157,4 +157,4 @@ curl "http://localhost:8787/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*"
 - `claros deploy` is tested against a simulated Cloudflare account in CI and was verified against a real account before the v0.8.0 release. The `wrangler.jsonc` in `apps/worker` is a development template with a placeholder database id; deployed configuration comes from `claros deploy`.
 - Moving an existing Postgres install to D1 is not supported; Postgres installs stay on Postgres and upgrade in place.
 - Transports: the Workers end-to-end test sends through the Resend adapter (against a fake Resend API). SMTP has not been tested on Workers.
-- Knowledge base similarity search uses SQLite full-text search on D1 instead of pgvector.
+- Knowledge base similarity search on D1 has no vector index: it compares the query with every embedded entry of the product, which suits small and medium knowledge bases.

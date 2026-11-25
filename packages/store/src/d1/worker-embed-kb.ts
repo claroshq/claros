@@ -26,6 +26,13 @@ export function d1WorkerEmbedKb(db: D1Db): WorkerEmbedKbQueries {
         .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
     },
 
+    async markEmbeddingSkipped(tenantId, kbEntryId) {
+      await db
+        .update(kbEntries)
+        .set({ embedding: null, embeddingStatus: "skipped", embeddingError: null })
+        .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
+    },
+
     async markEmbeddingFailed(tenantId, kbEntryId, reason) {
       await db
         .update(kbEntries)

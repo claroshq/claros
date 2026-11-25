@@ -63,7 +63,7 @@ The Cloudflare Workers + D1 install option, multi-product instances, topics and 
 - **Topics and consent** - marketing, lifecycle and transactional topics with per-topic unsubscribe. See [Topics](docs/guide/TOPICS.md)
 - **Compliance built in** - RFC 8058 one-click unsubscribe built in for lifecycle and marketing mail, a CAN-SPAM postal footer on every outgoing email, suppression list enforced before everything
 - **Throttle and send windows** - per-contact frequency caps, quiet hours, per-flow critical bypass
-- **Knowledge base** - entries with categories, pinning and per-contact deduplication, injected into compile and draft prompts; pgvector similarity on Postgres, full-text search on D1; import from a file. See [Knowledge base](docs/guide/KB.md)
+- **Knowledge base** - entries with categories, pinning and per-contact deduplication, injected into compile and draft prompts; semantic search with an optional embedding provider (pgvector on Postgres), word matching without one; import from a file. See [Knowledge base](docs/guide/KB.md)
 - **Config as code and admin keys** - one JSON file of flows, templates, topics, routing, settings and webhooks, applied with `claros apply`; scoped admin keys for the management API. See [Config as code](docs/guide/CONFIG.md) and [API keys](docs/guide/API_KEYS.md)
 - **Webhooks and analytics sink** - signed outbound webhooks (Standard Webhooks) and flow and email events to StatsRaven or your own endpoint. See [Webhooks](docs/guide/WEBHOOKS.md)
 - **Alerts and health** - dead jobs, send and webhook errors and missing configuration mailed to an instance admin, plus a Health page. See [Alerts](docs/guide/ALERTS.md)

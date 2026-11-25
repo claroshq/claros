@@ -135,7 +135,7 @@ There is no general-purpose segment builder. "Segment" means exactly one cell of
 
 ### Write your first prompt-defined flow
 
-1. Configure an LLM provider (Settings → LLM, or `claros llm set`). Without one, use fixed content instead: steps 2-4 still work, you just skip compilation and write each step's copy yourself.
+1. Configure an LLM provider (Settings → AI providers, or `claros llm set`). Without one, use fixed content instead: steps 2-4 still work, you just skip compilation and write each step's copy yourself.
 2. Flows → New flow. Choose the trigger (an event name your app sends, a lifecycle transition, or a retention-grid cell) and write the prompt. [FLOW-PROMPTS.md](./FLOW-PROMPTS.md) has working starting points.
 3. Compile. Read the generated plan in the editor; check the delays, conditions, and exit conditions match your intent. Fix the prompt, recompile.
 4. Activate the flow. New matching contacts enroll from that moment.

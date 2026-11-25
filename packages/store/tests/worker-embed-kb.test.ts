@@ -61,5 +61,15 @@ for (const factory of testBackends()) {
       await b.store.workerEmbedKb.markEmbeddingFailed(t, id, "dimension mismatch");
       expect(await entry(id)).toMatchObject({ embeddingStatus: "failed", embeddingError: "dimension mismatch", embedding: null });
     });
+
+    it("markEmbeddingSkipped sets skipped and clears vector and error for the tenant's entry only", async () => {
+      const t = await b.newTenant();
+      const other = await b.newTenant();
+      const id = await seedEntry(t, { embeddingStatus: "failed", embeddingError: "HTTP 404", embedding: VECTOR });
+      await b.store.workerEmbedKb.markEmbeddingSkipped(other, id);
+      expect((await entry(id)).embeddingStatus).toBe("failed");
+      await b.store.workerEmbedKb.markEmbeddingSkipped(t, id);
+      expect(await entry(id)).toMatchObject({ embeddingStatus: "skipped", embeddingError: null, embedding: null });
+    });
   });
 }

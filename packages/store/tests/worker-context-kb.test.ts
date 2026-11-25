@@ -26,21 +26,45 @@ for (const factory of testBackends()) {
       return id;
     }
 
-    it("findEmbeddedEntryByTitle matches exact title on active, embedded entries", async () => {
+    it("findActiveEntryByTitle matches exact title on active entries, embedded or not", async () => {
       const t = await b.newTenant();
       const id = await entry(t, "Pricing", vec(1));
-      await entry(t, "Draft", null);
+      const draft = await entry(t, "Draft", null);
       await entry(t, "Gone", vec(1), false);
       const q = b.store.workerContextKb;
-      expect(await q.findEmbeddedEntryByTitle({ tenantId: t, title: "Pricing" })).toEqual({
+      expect(await q.findActiveEntryByTitle({ tenantId: t, title: "Pricing" })).toEqual({
         id,
         title: "Pricing",
         content: "Pricing body",
       });
-      expect(await q.findEmbeddedEntryByTitle({ tenantId: t, title: "pricing" })).toBeNull();
-      expect(await q.findEmbeddedEntryByTitle({ tenantId: t, title: "Draft" })).toBeNull();
-      expect(await q.findEmbeddedEntryByTitle({ tenantId: t, title: "Gone" })).toBeNull();
-      expect(await q.findEmbeddedEntryByTitle({ tenantId: await b.newTenant(), title: "Pricing" })).toBeNull();
+      expect(await q.findActiveEntryByTitle({ tenantId: t, title: "pricing" })).toBeNull();
+      expect(await q.findActiveEntryByTitle({ tenantId: t, title: "Draft" })).toEqual({ id: draft, title: "Draft", content: "Draft body" });
+      expect(await q.findActiveEntryByTitle({ tenantId: t, title: "Gone" })).toBeNull();
+      expect(await q.findActiveEntryByTitle({ tenantId: await b.newTenant(), title: "Pricing" })).toBeNull();
+    });
+
+    it("listActiveEntries returns active entries oldest first, with limit and exclude", async () => {
+      const t = await b.newTenant();
+      const at = (m: number) => new Date(Date.UTC(2026, 0, 1, 0, m));
+      const mk = async (title: string, createdAt: Date, isActive = true, embedding: number[] | null = null) => {
+        const id = randomUUID();
+        await b.db.insert(b.schema.kbEntries).values({ id, tenantId: t, title, content: `${title} body`, embedding, isActive, createdAt });
+        return id;
+      };
+      const second = await mk("second", at(2), true, vec(1));
+      const first = await mk("first", at(1));
+      await mk("inactive", at(0), false);
+      const third = await mk("third", at(3));
+      await entry(await b.newTenant(), "foreign", null);
+
+      const q = b.store.workerContextKb;
+      const all = await q.listActiveEntries({ tenantId: t, limit: 10, excludeId: null });
+      expect(all).toEqual([
+        { id: first, title: "first", content: "first body" },
+        { id: second, title: "second", content: "second body" },
+        { id: third, title: "third", content: "third body" },
+      ]);
+      expect((await q.listActiveEntries({ tenantId: t, limit: 2, excludeId: first })).map((r) => r.id)).toEqual([second, third]);
     });
 
     it("searchSimilarEntries ranks by cosine similarity, closest first, top-k", async () => {

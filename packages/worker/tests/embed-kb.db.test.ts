@@ -460,9 +460,9 @@ describe("handleKbEmbedJob - gap 1: permanent vs transient failures", () => {
     expect(state?.embedding_error).toMatch(/1536/);
   });
 
-  it("missing LLM config: records failed state, does NOT throw (no pg-boss retry)", async () => {
+  it("no embedding provider: marks the entry skipped (not failed), does NOT throw, no call", async () => {
     if (!dbAvailable) return;
-    // otherTenantId has no llm_configs row
+    // otherTenantId has neither an embedding_configs nor an llm_configs row
     const id = await insertKbEntry("No Config Test", "Content.", otherTenantId, "pending");
 
     await expect(
@@ -470,8 +470,8 @@ describe("handleKbEmbedJob - gap 1: permanent vs transient failures", () => {
     ).resolves.toBeUndefined();
 
     const state = await readEmbedState(id);
-    expect(state?.embedding_status).toBe("failed");
-    expect(state?.embedding_error).toMatch(/LLM configuration/i);
+    expect(state?.embedding_status).toBe("skipped");
+    expect(state?.embedding_error).toBeNull();
     expect(state?.embedding).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
   });

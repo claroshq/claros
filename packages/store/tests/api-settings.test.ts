@@ -94,6 +94,21 @@ for (const factory of testBackends()) {
       expect(rows).toHaveLength(1);
     });
 
+    it("inserts, finds and deactivates embedding configs, separate from LLM configs", async () => {
+      const t = await b.newTenant();
+      await s().insertActiveLlmConfig({ tenantId: t, provider: "anthropic", encryptedConfig: ENVELOPE });
+      expect(await s().findActiveEmbeddingConfig(t)).toBeNull();
+      const inserted = await s().insertActiveEmbeddingConfig({ tenantId: t, provider: "openai", encryptedConfig: ENVELOPE });
+      expect(inserted).toMatchObject({ provider: "openai", isActive: true });
+      expect(Object.keys(inserted!).sort()).toEqual(["createdAt", "id", "isActive", "provider"]);
+      expect(await s().findActiveEmbeddingConfig(t)).toEqual({ ...inserted, config: ENVELOPE });
+      expect((await s().findActiveLlmConfig(t))!.provider).toBe("anthropic");
+
+      await s().deactivateActiveEmbeddingConfigs(t);
+      expect(await s().findActiveEmbeddingConfig(t)).toBeNull();
+      expect(await s().findActiveLlmConfig(t)).not.toBeNull();
+    });
+
     it("reads and writes tenant settings", async () => {
       const t = await b.newTenant("Acme");
       const tenant = await s().findTenant(t);

@@ -30,9 +30,11 @@ export const kbEntries = sqliteTable(
     // null = never enqueued; 'pending' = job enqueued, not yet written;
     // 'failed' = permanently failed (dimensionality mismatch, bad model, etc.)
     // 'failed' entries carry the reason in embedding_error.
+    // 'skipped' = no vector and no job queued: no embedding provider when the
+    // job ran, or vectors dropped after an embedding model change.
     // When embedding is non-NULL, embedding_status is implicitly 'done' (no column
     // needed: the vector itself is the evidence).
-    embeddingStatus: text("embedding_status"), // null|pending|failed
+    embeddingStatus: text("embedding_status"), // null|pending|failed|skipped
     embeddingError: text("embedding_error"),   // human-readable reason when failed
     isActive: integer("is_active", { mode: "boolean" }).default(true),
     /** G18: free-form grouping used by kb_select. */

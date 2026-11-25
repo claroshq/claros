@@ -101,7 +101,7 @@ curl -X POST https://claros.example.com/v1/ingestion/keys \
 ```
 
 - `backend`: `postgres` or `d1`; `runtime`: `node` or `workers`.
-- `kb.semantic`: similarity search over embeddings (Postgres with pgvector); D1 uses full-text search.
+- `kb.semantic`: similarity search over embeddings is supported (Postgres with pgvector, D1 without a vector index). It runs once the product has an [embedding provider](KB.md#search-and-embeddings); without one, entries are found by word matching.
 - `events.partitioned`: monthly partitions of the events table (Postgres); D1 keeps a plain table.
 - `features`: stable ids, added as features ship and never renamed.
 

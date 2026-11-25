@@ -50,7 +50,7 @@ Every product-owned table carries `tenant_id` (user-facing name: product) and ev
 
 | Capability | Postgres + Node | D1 + Workers |
 |---|---|---|
-| Knowledge base search | pgvector similarity when an embedding model is configured, full-text fallback | SQLite FTS5 (`bm25`) |
+| Knowledge base search | pgvector cosine similarity when the product has an embedding provider, word matching otherwise | cosine similarity over the stored vectors (no vector index) when the product has an embedding provider, word matching otherwise |
 | Event storage | monthly partitioned `events` | plain `events` with a daily rollup and retention |
 | Transports (several per product, routed by topic kind; Cloudflare Email Service for transactional mail only) | Resend, SMTP (nodemailer), Cloudflare Email Service (REST API) | Resend, SMTP (worker-mailer), Cloudflare Email Service (`send_email` binding, else REST API) |
 | Custom domains from the CLI | no (use your reverse proxy) | yes |

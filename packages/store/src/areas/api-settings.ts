@@ -107,6 +107,12 @@ export interface ApiSettingsQueries {
   insertActiveLlmConfig(input: { tenantId: string; provider: string; encryptedConfig: string }): Promise<SettingsLlmRow | undefined>;
   /** The tenant's active LLM config including its encrypted envelope, or null. */
   findActiveLlmConfig(tenantId: string): Promise<SettingsLlmRowWithConfig | null>;
+  /** Deactivate every active embedding config of the tenant. */
+  deactivateActiveEmbeddingConfigs(tenantId: string): Promise<void>;
+  /** Insert a new active embedding config with an encrypted envelope and return its row. */
+  insertActiveEmbeddingConfig(input: { tenantId: string; provider: string; encryptedConfig: string }): Promise<SettingsLlmRow | undefined>;
+  /** The tenant's active embedding config including its encrypted envelope, or null. */
+  findActiveEmbeddingConfig(tenantId: string): Promise<SettingsLlmRowWithConfig | null>;
   /** Tenant metadata and settings, or null. */
   findTenant(tenantId: string): Promise<SettingsTenantRow | null>;
   /** The tenant's settings JSON wrapped in a row, or null when the tenant does not exist. */

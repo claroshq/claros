@@ -9,6 +9,9 @@ import {
   putTransport,
   fetchLlm,
   putLlm,
+  fetchEmbeddings,
+  putEmbeddings,
+  deleteEmbeddings,
   fetchTenant,
   patchTenant,
   sendTestEmail,
@@ -21,13 +24,16 @@ import {
   putThrottle,
   type TransportInput,
   type LlmInput,
+  type EmbeddingsInput,
   type BrandSettingsData,
   type ThrottleInput,
 } from "./api.js";
 import { FLOWS_QUERY_KEY } from "./flows.js";
+import { KB_QUERY_KEY } from "./kb.js";
 
 export const TRANSPORT_QUERY_KEY = ["settings", "transport"] as const;
 export const LLM_QUERY_KEY = ["settings", "llm"] as const;
+export const EMBEDDINGS_QUERY_KEY = ["settings", "embeddings"] as const;
 export const TENANT_QUERY_KEY = ["settings", "tenant"] as const;
 export const TEMPLATES_QUERY_KEY = ["templates"] as const;
 
@@ -59,8 +65,34 @@ export function usePutLlm() {
     mutationFn: (input: LlmInput) => putLlm(input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: LLM_QUERY_KEY });
+      // The chat config can serve embeddings (source llm_config).
+      void qc.invalidateQueries({ queryKey: EMBEDDINGS_QUERY_KEY });
     },
   });
+}
+
+export function useEmbeddings() {
+  return useQuery({ queryKey: EMBEDDINGS_QUERY_KEY, queryFn: fetchEmbeddings });
+}
+
+function useEmbeddingsMutation<A>(fn: (a: A) => ReturnType<typeof putEmbeddings>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: EMBEDDINGS_QUERY_KEY });
+      // Entries change state: vectors cleared, re-embedding queued.
+      void qc.invalidateQueries({ queryKey: KB_QUERY_KEY });
+    },
+  });
+}
+
+export function usePutEmbeddings() {
+  return useEmbeddingsMutation((input: EmbeddingsInput) => putEmbeddings(input));
+}
+
+export function useDeleteEmbeddings() {
+  return useEmbeddingsMutation((_: void) => deleteEmbeddings());
 }
 
 export function usePatchTenant() {

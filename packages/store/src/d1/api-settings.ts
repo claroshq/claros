@@ -5,7 +5,7 @@
  * written through json() (validated like ::jsonb) and read back as text.
  */
 import { eq, and, asc, sql } from "drizzle-orm";
-import { transportConfigs, llmConfigs, tenants } from "@claros/db/schema-sqlite";
+import { transportConfigs, llmConfigs, embeddingConfigs, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiSettingsQueries, SettingsSendTransportRow } from "../areas/api-settings.js";
 
@@ -99,6 +99,46 @@ export function d1ApiSettings(db: D1Db): ApiSettingsQueries {
         })
         .from(llmConfigs)
         .where(and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    async deactivateActiveEmbeddingConfigs(tenantId) {
+      await db
+        .update(embeddingConfigs)
+        .set({ isActive: false })
+        .where(and(eq(embeddingConfigs.tenantId, tenantId), eq(embeddingConfigs.isActive, true)));
+    },
+
+    async insertActiveEmbeddingConfig(input) {
+      const [inserted] = await db
+        .insert(embeddingConfigs)
+        .values({
+          tenantId: input.tenantId,
+          provider: input.provider,
+          config: input.encryptedConfig,
+          isActive: true,
+        })
+        .returning({
+          id: embeddingConfigs.id,
+          provider: embeddingConfigs.provider,
+          isActive: embeddingConfigs.isActive,
+          createdAt: embeddingConfigs.createdAt,
+        });
+      return inserted;
+    },
+
+    async findActiveEmbeddingConfig(tenantId) {
+      const rows = await db
+        .select({
+          id: embeddingConfigs.id,
+          provider: embeddingConfigs.provider,
+          config: embeddingConfigs.config,
+          isActive: embeddingConfigs.isActive,
+          createdAt: embeddingConfigs.createdAt,
+        })
+        .from(embeddingConfigs)
+        .where(and(eq(embeddingConfigs.tenantId, tenantId), eq(embeddingConfigs.isActive, true)))
         .limit(1);
       return rows[0] ?? null;
     },

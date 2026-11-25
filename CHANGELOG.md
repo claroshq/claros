@@ -6,6 +6,23 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Embedding provider, separate from the LLM provider: Settings, AI providers, Embeddings, or `GET/PUT/DELETE /v1/settings/embeddings` (owner session; new table `embedding_configs`). Providers: `openai` (default `text-embedding-3-small`) and `custom` (any OpenAI-compatible `/embeddings` endpoint). Saving verifies the endpoint with one embedding call that must return 1536 dimensions, and sends `dimensions: 1536` when the endpoint accepts it. Anthropic has no embeddings API, so a product that drafts with Anthropic can now embed with OpenAI. Saving or removing a provider with another endpoint, model or dimensions drops the stored vectors and starts re-embedding. See [Search and embeddings](docs/guide/KB.md#search-and-embeddings).
+- Knowledge base search without embeddings: when a product has no embedding provider (or the query embedding fails), `kb_context` finds entries by shared words instead of returning nothing. `kb_ref` finds its entry whether or not it is embedded.
+- `embedding_status` value `skipped` (badge "not embedded"): no vector and no job queued, because there was no embedding provider or the vectors were dropped after a model change. `POST /v1/kb/re-embed` picks these entries up.
+
+### Changed
+
+- An LLM config of provider `anthropic` or `ollama` without an explicit `embedding_model` is no longer used for embeddings. Before, every knowledge base entry of such a product ended `failed` (Anthropic answered 404). Run **Retry failed embeddings** once after upgrading: with no embedding provider the entries become `skipped`, with one they are embedded. OpenAI and custom LLM configs keep embedding as before.
+- The LLM settings form no longer has an embedding model field; the embedding model is set under Embeddings. `PUT /v1/settings/llm` still accepts `embedding_model`.
+- Settings, LLM provider is now Settings, AI providers (same URL, `/settings/llm`).
+
+### Fixed
+
+- `GET /v1/capabilities` reports `kb.semantic: true` on D1: D1 has done similarity search over stored vectors since v0.8.0 (without a vector index). The docs said D1 used full-text search; they now describe what runs.
+- The Knowledge Base page no longer says failed entries "will not inform drafts": pinned entries and `kb_select` use them either way; only semantic search skips them.
+
 ## [0.8.6] - 2026-11-25
 
 ### Added
