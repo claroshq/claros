@@ -6,5 +6,13 @@
  * ../d1/api-unsubscribe.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface ApiUnsubscribeQueries {}
+
+export interface ApiUnsubscribeQueries {
+  /** Recipient address and status of a tenant's message, or null when the message does not exist. */
+  getMessageRecipient(input: { tenantId: string; messageId: string }): Promise<{
+    recipientAddress: string | null;
+    status: string;
+  } | null>;
+  /** Write a suppression; idempotent (no-op when the address is already suppressed, case-insensitive). */
+  suppressAddress(input: { tenantId: string; email: string; reason: string; source: string }): Promise<void>;
+}

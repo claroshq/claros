@@ -57,8 +57,7 @@
  *   next_cursor in the response.
  */
 import { RoleRouter } from "../http/router.js";
-import { eq, and, sql } from "drizzle-orm";
-import { suppressions } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 
 // ---------------------------------------------------------------------------
@@ -173,14 +172,7 @@ export default function suppressionRoutes() {
       return c.json({ error: "Body must contain a valid 'email' address." }, 400);
     }
 
-    const result = await db.execute<{ id: string }>(sql`
-      INSERT INTO suppressions (tenant_id, email, reason, source)
-      VALUES (${tenantId}::uuid, ${email}, 'manual', 'admin')
-      ON CONFLICT (tenant_id, lower(email)) DO NOTHING
-      RETURNING id
-    `);
-
-    const added = result.rows.length > 0;
+    const added = await storeFor(db).apiSuppressions.addManualSuppression({ tenantId, email });
     return c.json({ email, added }, added ? 201 : 200);
   });
 
@@ -250,24 +242,10 @@ export default function suppressionRoutes() {
 
     // Bulk insert with ON CONFLICT DO NOTHING
     if (toInsert.length > 0) {
-      // Emails are already lowercased above (line 188). The ON CONFLICT clause
-      // must reference the functional index expression (tenant_id, lower(email))
-      // so Postgres uses the uq_suppressions_tenant_email_lower index to detect
-      // conflicts. Both within-batch duplicates and existing rows are caught.
-      const emailsSql = sql.join(
-        toInsert.map((e) => sql`${e}`),
-        sql`, `,
-      );
-
-      const result = await db.execute<{ id: string }>(sql`
-        INSERT INTO suppressions (tenant_id, email, reason, source)
-        SELECT ${tenantId}::uuid, e.email, 'imported', 'csv_import'
-        FROM unnest(ARRAY[${emailsSql}]::text[]) AS e(email)
-        ON CONFLICT (tenant_id, lower(email)) DO NOTHING
-        RETURNING id
-      `);
-
-      imported = result.rows.length;
+      // Emails are already lowercased above (line 188). The store method
+      // detects conflicts case-insensitively on (tenant_id, lower(email)), so
+      // both within-batch duplicates and existing rows are caught.
+      imported = await storeFor(db).apiSuppressions.importSuppressions({ tenantId, emails: toInsert });
       skipped = toInsert.length - imported; // rows in batch that conflicted
     }
 
@@ -300,34 +278,11 @@ export default function suppressionRoutes() {
       cursor = decodeCursor(query.after);
     }
 
-    let rows: (typeof suppressions.$inferSelect)[];
-
-    if (cursor) {
-      const cursorCreatedAt = cursor.created_at;
-      const cursorId = cursor.id;
-
-      rows = await db
-        .select()
-        .from(suppressions)
-        .where(
-          and(
-            eq(suppressions.tenantId, tenantId),
-            sql`
-              ROW(date_trunc('milliseconds', ${suppressions.createdAt}), ${suppressions.id}) >
-              ROW(${cursorCreatedAt}::timestamptz, ${cursorId}::uuid)
-            `,
-          ),
-        )
-        .orderBy(sql`date_trunc('milliseconds', ${suppressions.createdAt}) ASC`, suppressions.id)
-        .limit(fetchLimit);
-    } else {
-      rows = await db
-        .select()
-        .from(suppressions)
-        .where(eq(suppressions.tenantId, tenantId))
-        .orderBy(sql`date_trunc('milliseconds', ${suppressions.createdAt}) ASC`, suppressions.id)
-        .limit(fetchLimit);
-    }
+    const rows = await storeFor(db).apiSuppressions.listSuppressions({
+      tenantId,
+      after: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+      limit: fetchLimit,
+    });
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;

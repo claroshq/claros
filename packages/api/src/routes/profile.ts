@@ -19,8 +19,7 @@
  *   4. If never completed, pending_email expires after 24 hours - no harm done.
  */
 import { randomBytes, createHash } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
-import { users, sessions, tenants, transportConfigs } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { resolveTransportAdapter } from "@claros/adapters";
 import { buildEmailChangeEmail, type TransactionalEmailInput } from "../transactional-email.js";
 import type { Db } from "../plugins/db.js";
@@ -49,21 +48,7 @@ export default function profileRoutes() {
     const db: Db = c.var.db;
     const userId = c.var.tenant!.userId;
 
-    const rows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        name: users.name,
-        role: users.role,
-        pendingEmail: users.pendingEmail,
-        pendingEmailExpiresAt: users.pendingEmailExpiresAt,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    const user = rows[0]!;
+    const user = (await storeFor(db).apiProfile.getProfile({ userId }))!;
     // Only show pending_email if it hasn't expired
     const pendingEmail =
       user.pendingEmail && user.pendingEmailExpiresAt && user.pendingEmailExpiresAt > new Date()
@@ -100,10 +85,7 @@ export default function profileRoutes() {
 
       const trimmedName = name === null ? null : (name?.trim() || null);
 
-      await db
-        .update(users)
-        .set({ name: trimmedName })
-        .where(eq(users.id, userId));
+      await storeFor(db).apiProfile.setName({ userId, name: trimmedName });
 
       return c.json({ ok: true });
     },
@@ -130,25 +112,15 @@ export default function profileRoutes() {
       const newEmail = email.toLowerCase().trim();
 
       // Check current email - if same, no-op
-      const currentRows = await db
-        .select({ email: users.email })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
+      const currentEmail = await storeFor(db).apiProfile.getEmail({ userId });
 
-      if (currentRows[0]?.email === newEmail) {
+      if (currentEmail === newEmail) {
         return c.json({ error: "That is already your current email." }, 400);
       }
 
       // Check if already taken at request time (early feedback, but we also
       // check at verification time for the race condition)
-      const existing = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.tenantId, tenantId), eq(users.email, newEmail)))
-        .limit(1);
-
-      if (existing.length > 0) {
+      if (await storeFor(db).apiProfile.isEmailTaken({ tenantId, email: newEmail })) {
         return c.json({ error: "That email is already in use by another team member." }, 409);
       }
 
@@ -157,26 +129,19 @@ export default function profileRoutes() {
       const expiresAt = new Date(Date.now() + EMAIL_CHANGE_TTL_HOURS * 60 * 60 * 1000);
 
       // Store pending email on user row (overwrites any previous pending change)
-      await db
-        .update(users)
-        .set({
-          pendingEmail: newEmail,
-          pendingEmailTokenHash: hash,
-          pendingEmailExpiresAt: expiresAt,
-        })
-        .where(eq(users.id, userId));
+      await storeFor(db).apiProfile.setPendingEmail({
+        userId,
+        pendingEmail: newEmail,
+        tokenHash: hash,
+        expiresAt,
+      });
 
       // Build the verification URL
       const dashboardUrl = process.env.DASHBOARD_URL || process.env.BASE_URL || "http://localhost:3000";
       const verifyUrl = `${dashboardUrl}/auth/verify-email?token=${raw}`;
 
       // Resolve brand for branded email
-      const tenantRows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
-      const tenant = tenantRows[0]!;
+      const tenant = (await storeFor(db).apiProfile.getTenantBrand({ tenantId }))!;
       const settings = (tenant.settings as Record<string, unknown> | null) ?? {};
       const brand = (settings.brand as Record<string, unknown> | undefined) ?? {};
 
@@ -190,21 +155,11 @@ export default function profileRoutes() {
       );
 
       // Try to send via transport
-      const transports = await db.execute<{
-        provider: string;
-        config: string;
-        from_email: string;
-        from_name: string | null;
-      }>(sql`
-        SELECT provider, config::text AS config, from_email, from_name
-        FROM transport_configs
-        WHERE tenant_id = ${tenantId}::uuid AND is_active = true
-        LIMIT 1
-      `);
+      const transport = await storeFor(db).apiProfile.getActiveTransport({ tenantId });
 
       let sent = false;
-      if (transports.rows.length > 0) {
-        const row = transports.rows[0]!;
+      if (transport !== null) {
+        const row = transport;
         const result = resolveTransportAdapter(row.provider, row.config);
         if (result.ok) {
           try {
@@ -267,17 +222,7 @@ export default function profileRoutes() {
       const tokenHash = hashToken(token);
 
       // Load user's pending email
-      const userRows = await db
-        .select({
-          pendingEmail: users.pendingEmail,
-          pendingEmailTokenHash: users.pendingEmailTokenHash,
-          pendingEmailExpiresAt: users.pendingEmailExpiresAt,
-        })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      const user = userRows[0];
+      const user = await storeFor(db).apiProfile.getPendingEmailChange({ userId });
       if (!user || !user.pendingEmail || !user.pendingEmailTokenHash || !user.pendingEmailExpiresAt) {
         return c.json({ error: "No pending email change." }, 400);
       }
@@ -294,18 +239,9 @@ export default function profileRoutes() {
 
       // Check collision AT VERIFICATION TIME
       // Another user may have claimed this email between request and verification
-      const collision = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.tenantId, tenantId), eq(users.email, user.pendingEmail)))
-        .limit(1);
-
-      if (collision.length > 0) {
+      if (await storeFor(db).apiProfile.isEmailTaken({ tenantId, email: user.pendingEmail })) {
         // Clear the pending email - the change cannot proceed
-        await db
-          .update(users)
-          .set({ pendingEmail: null, pendingEmailTokenHash: null, pendingEmailExpiresAt: null })
-          .where(eq(users.id, userId));
+        await storeFor(db).apiProfile.clearPendingEmail({ userId });
 
         return c.json({
           error: "That email address is now in use by another team member. Your email has not been changed.",
@@ -313,15 +249,7 @@ export default function profileRoutes() {
       }
 
       // Atomically swap the email and clear pending fields
-      await db
-        .update(users)
-        .set({
-          email: user.pendingEmail,
-          pendingEmail: null,
-          pendingEmailTokenHash: null,
-          pendingEmailExpiresAt: null,
-        })
-        .where(eq(users.id, userId));
+      await storeFor(db).apiProfile.applyEmailChange({ userId, email: user.pendingEmail });
 
       return c.json({ ok: true, email: user.pendingEmail });
     },
