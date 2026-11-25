@@ -12,8 +12,8 @@
  * Uses CREATE TABLE IF NOT EXISTS for safety even though we pre-check pg_class,
  * guarding against races if multiple scheduler instances fire concurrently.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,14 +81,7 @@ export async function processPartitionMaintenance(
     const name = partitionName(year, month);
 
     // Check if partition already exists in pg_class.
-    const existing = await db.execute<{ exists: number }>(sql`
-      SELECT 1 AS exists
-      FROM pg_class
-      WHERE relname = ${name}
-        AND relkind = 'r'
-    `);
-
-    if (existing.rows.length > 0) {
+    if (await storeFor(db).workerPartitionMaintenance.partitionExists(name)) {
       continue;
     }
 
@@ -103,12 +96,7 @@ export async function processPartitionMaintenance(
     const end = `${endYear}-${pad2(endMonth)}-01`;
 
     // Create the partition. IF NOT EXISTS guards against races.
-    await db.execute(
-      sql.raw(
-        `CREATE TABLE IF NOT EXISTS ${name} PARTITION OF events ` +
-          `FOR VALUES FROM ('${start}') TO ('${end}')`,
-      ),
-    );
+    await storeFor(db).workerPartitionMaintenance.createEventsPartition({ name, start, end });
 
     partitionsCreated.push(name);
   }

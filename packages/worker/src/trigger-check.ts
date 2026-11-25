@@ -9,9 +9,8 @@
  * lifecycle-transition triggers). Both use the shared enrollContactInFlows
  * function which handles advisory locking and guards.
  */
-import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { flows } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   matchesEventTrigger,
   type EnrollableFlow,
@@ -52,27 +51,7 @@ export async function handleTriggerCheck(
   const { tenant_id, contact_id, event_name } = data;
 
   // Load active, compiled event-trigger flows for this tenant
-  const tenantFlows = await db
-    .select({
-      id: flows.id,
-      tenantId: flows.tenantId,
-      priority: flows.priority,
-      triggerType: flows.triggerType,
-      triggerConfig: flows.triggerConfig,
-      flowClass: flows.flowClass,
-      reentryPolicy: flows.reentryPolicy,
-      reentryCooldownDays: flows.reentryCooldownDays,
-    })
-    .from(flows)
-    .where(
-      and(
-        eq(flows.tenantId, tenant_id),
-        eq(flows.status, "active"),
-        eq(flows.triggerType, "event"),
-        eq(flows.compileStatus, "ready"),
-        sql`${flows.compiledPlan} IS NOT NULL`,
-      ),
-    );
+  const tenantFlows = await storeFor(db).workerTriggerCheck.listActiveEventFlows(tenant_id);
 
   // Filter to flows matching this event name
   const matchingFlows: EnrollableFlow[] = tenantFlows
@@ -92,18 +71,16 @@ export async function handleTriggerCheck(
 
   if (matchingFlows.length === 0) return { enrolledMembershipIds: [] };
 
-  // Enroll within a transaction (advisory lock acquired inside)
+  // Enroll within a transaction (enrollContactInFlows opens it and acquires
+  // the advisory lock inside)
   const now = new Date();
-  let results: Awaited<ReturnType<typeof enrollContactInFlows>> = [];
-  await db.transaction(async (tx) => {
-    results = await enrollContactInFlows(
-      tx as unknown as Db,
-      contact_id,
-      tenant_id,
-      matchingFlows,
-      now,
-    );
-  });
+  const results = await enrollContactInFlows(
+    db,
+    contact_id,
+    tenant_id,
+    matchingFlows,
+    now,
+  );
 
   // Collect successfully enrolled membership IDs
   const enrolledMembershipIds = results

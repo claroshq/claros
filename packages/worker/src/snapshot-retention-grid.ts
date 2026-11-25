@@ -16,15 +16,13 @@
  * thresholds in effect at write time; history is not rewritten when a
  * tenant changes natural_frequency_days.
  */
-import { inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { retentionGridSnapshots, tenants } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   resolveLifecycleConfig,
   recencyThresholdDays,
   RETENTION_TENURE_BUCKETS,
   RETENTION_RECENCY_BUCKETS,
-  RETENTION_TENURE_THRESHOLDS_DAYS,
   type LifecycleConfig,
 } from "@claros/core";
 
@@ -66,19 +64,8 @@ export async function processGridSnapshotTick(
     snapshotDate,
   };
 
-  let tenantRows: { id: string; settings: unknown }[];
-  if (tenantIds && tenantIds.length > 0) {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .where(inArray(tenants.id, tenantIds))
-      .orderBy(tenants.id);
-  } else {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .orderBy(tenants.id);
-  }
+  const tenantRows: { id: string; settings: unknown }[] =
+    await storeFor(db).workerSnapshotRetentionGrid.listTenants(tenantIds);
 
   for (const tenant of tenantRows) {
     const settings = tenant.settings as Record<string, unknown> | null | undefined;
@@ -88,33 +75,10 @@ export async function processGridSnapshotTick(
     const recencyDays = recencyThresholdDays(config.natural_frequency_days);
 
     // Same bucketing as GET /v1/analytics/retention-grid.
-    const cells = (
-      await db.execute<{
-        tenure: string;
-        recency: string;
-        count: number;
-        paying: number;
-      }>(sql`
-        SELECT
-          CASE
-            WHEN first_seen_at >= now() - make_interval(days => ${RETENTION_TENURE_THRESHOLDS_DAYS.growing}) THEN 'new'
-            WHEN first_seen_at >= now() - make_interval(days => ${RETENTION_TENURE_THRESHOLDS_DAYS.established}) THEN 'growing'
-            WHEN first_seen_at >= now() - make_interval(days => ${RETENTION_TENURE_THRESHOLDS_DAYS.loyal}) THEN 'established'
-            ELSE 'loyal'
-          END AS tenure,
-          CASE
-            WHEN last_seen_at >= now() - make_interval(days => ${recencyDays.cooling}) THEN 'active'
-            WHEN last_seen_at >= now() - make_interval(days => ${recencyDays.idle}) THEN 'cooling'
-            WHEN last_seen_at >= now() - make_interval(days => ${recencyDays.dormant}) THEN 'idle'
-            ELSE 'dormant'
-          END AS recency,
-          count(*)::int AS count,
-          count(*) FILTER (WHERE payment_status IN ('paid', 'past_due'))::int AS paying
-        FROM contacts
-        WHERE tenant_id = ${tenant.id}
-        GROUP BY 1, 2
-      `)
-    ).rows;
+    const cells = await storeFor(db).workerSnapshotRetentionGrid.countGridCells({
+      tenantId: tenant.id,
+      recencyDays,
+    });
 
     const cellMap = new Map(cells.map((c) => [`${c.tenure}:${c.recency}`, c]));
 
@@ -133,21 +97,7 @@ export async function processGridSnapshotTick(
       }),
     );
 
-    await db
-      .insert(retentionGridSnapshots)
-      .values(rows)
-      .onConflictDoUpdate({
-        target: [
-          retentionGridSnapshots.tenantId,
-          retentionGridSnapshots.snapshotDate,
-          retentionGridSnapshots.tenureBucket,
-          retentionGridSnapshots.recencyBucket,
-        ],
-        set: {
-          contactCount: sql`excluded.contact_count`,
-          payingCount: sql`excluded.paying_count`,
-        },
-      });
+    await storeFor(db).workerSnapshotRetentionGrid.upsertSnapshotRows(rows);
 
     result.tenantsProcessed++;
     result.rowsWritten += rows.length;

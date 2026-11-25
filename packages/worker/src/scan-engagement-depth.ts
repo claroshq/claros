@@ -18,9 +18,8 @@
  * tenant (O(contacts for the tenant) with idx_contacts_tenant_state),
  * not per-event.
  */
-import { eq, and, sql, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { contacts, tenants } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   resolveLifecycleConfig,
   computeMinCohortSize,
@@ -78,19 +77,8 @@ export async function phaseEngagementDepth(
   };
 
   // Load tenants: use provided list or discover all.
-  let tenantRows: { id: string; settings: unknown }[];
-  if (tenantIds && tenantIds.length > 0) {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .where(inArray(tenants.id, tenantIds))
-      .orderBy(tenants.id);
-  } else {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .orderBy(tenants.id);
-  }
+  const tenantRows: { id: string; settings: unknown }[] =
+    await storeFor(db).workerScanEngagementDepth.listTenants(tenantIds);
 
   for (const tenant of tenantRows) {
     const settings = tenant.settings as Record<string, unknown> | null | undefined;
@@ -141,50 +129,18 @@ async function processTenantEngagementDepth(
   // represent recent activity without scanning the events table.
   // -----------------------------------------------------------------------
 
-  const rows = await db.execute<{
-    contact_id: string;
-    event_count: string; // pg returns bigint as string
-    cohort_size: string;
-    power_cutoff: number | null;
-  }>(sql`
-    WITH event_counts AS (
-      SELECT
-        c.id AS contact_id,
-        (COALESCE(c.event_count_bucket_current, 0) + COALESCE(c.event_count_bucket_prev, 0)) AS event_count
-      FROM contacts c
-      WHERE
-        c.tenant_id = ${tenantId}
-        AND c.lifecycle_state = 'engaged'
-        AND (COALESCE(c.event_count_bucket_current, 0) + COALESCE(c.event_count_bucket_prev, 0)) > 0
-    ),
-    cohort AS (
-      SELECT COUNT(*) AS cohort_size FROM event_counts
-    ),
-    percentile AS (
-      SELECT
-        CASE
-          WHEN (SELECT cohort_size FROM cohort) >= ${minCohort}
-          THEN percentile_cont(${1 - config.power_user_percentile}) WITHIN GROUP (
-                 ORDER BY event_count ASC
-               )
-          ELSE NULL
-        END AS power_cutoff
-      FROM event_counts
-    )
-    SELECT
-      ec.contact_id,
-      ec.event_count,
-      (SELECT cohort_size FROM cohort)  AS cohort_size,
-      (SELECT power_cutoff FROM percentile) AS power_cutoff
-    FROM event_counts ec
-  `);
+  const rows = await storeFor(db).workerScanEngagementDepth.loadEngagedEventCounts({
+    tenantId,
+    minCohort,
+    percentile: 1 - config.power_user_percentile,
+  });
 
-  if (rows.rows.length === 0) {
+  if (rows.length === 0) {
     return { contactsUpdated: 0, contactsUnchanged: 0 };
   }
 
   // Compute the power cutoff once (it is the same for every row)
-  const firstRow = rows.rows[0]!;
+  const firstRow = rows[0]!;
   const rawCutoff = firstRow.power_cutoff;
   // percentile_cont returns a float. We ceil it so that a contact whose
   // event_count equals exactly the computed percentile value (which may be
@@ -200,7 +156,7 @@ async function processTenantEngagementDepth(
 
   const assignments = new Map<string, EngagementDepth>();
 
-  for (const row of rows.rows) {
+  for (const row of rows) {
     const eventCount = Number(row.event_count);
     const depth = assignEngagementDepth({ eventCount, powerCutoff, regularThreshold });
     if (depth !== null) {
@@ -227,40 +183,13 @@ async function processTenantEngagementDepth(
   for (let i = 0; i < entries.length; i += UPDATE_BATCH_SIZE) {
     const batch = entries.slice(i, i + UPDATE_BATCH_SIZE);
 
-    // Build a CASE expression for this batch.
-    // UPDATE contacts SET engagement_depth = CASE id WHEN $1 THEN $2 ... END
-    // WHERE id IN (...) AND tenant_id = $tenantId AND ...
-    //
-    // Drizzle does not have a built-in CASE-over-values for bulk updates, so
-    // we use raw SQL for this statement. The contact IDs and depth values are
-    // all application-validated (UUIDs from PG, depth values from our own
-    // assignEngagementDepth function), so the interpolation is safe.
+    const updatedCount = await storeFor(db).workerScanEngagementDepth.writeEngagementDepths({
+      tenantId,
+      assignments: batch,
+    });
 
-    // Build VALUES: (contact_id::uuid, depth::text)
-    // We emit these as a sql`` template so drizzle parameterises them.
-    const valueParts = batch.map(
-      ([id, depth]) => sql`(${id}::uuid, ${depth}::text)`,
-    );
-
-    // Combine with commas
-    const valuesList = valueParts.reduce(
-      (acc, part, idx) => (idx === 0 ? part : sql`${acc}, ${part}`),
-    );
-
-    const result = await db.execute<{ id: string }>(sql`
-      UPDATE contacts c
-      SET engagement_depth = v.depth
-      FROM (VALUES ${valuesList}) AS v(contact_id, depth)
-      WHERE
-        c.id          = v.contact_id
-        AND c.tenant_id   = ${tenantId}
-        AND c.lifecycle_state = 'engaged'
-        AND c.engagement_depth IS DISTINCT FROM v.depth
-      RETURNING c.id
-    `);
-
-    contactsUpdated += result.rows.length;
-    contactsUnchanged += batch.length - result.rows.length;
+    contactsUpdated += updatedCount;
+    contactsUnchanged += batch.length - updatedCount;
   }
 
   return { contactsUpdated, contactsUnchanged };
