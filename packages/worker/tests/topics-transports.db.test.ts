@@ -316,12 +316,16 @@ describe("routing and List-Unsubscribe per topic kind", () => {
   });
 
   it("the targeted drain (drain-message) routes the same way", async () => {
+    // handleDrainMessage reads the signing key from the environment; pin it so
+    // the test does not depend on the developer's .env.
+    vi.stubEnv("UNSUBSCRIBE_SIGNING_KEY", SIGNING_KEY);
     const tx = await message(transactionalTopic);
     const resolver = buildTenantTransportResolver(db as never);
     const out = await handleDrainMessage({ tenant_id: tenantId, message_id: tx } as never, db as never, resolver);
     expect(out).toEqual({ claimed: true, outcome: "sent" });
     expect(cloudflareCalls()).toHaveLength(1);
     expect(await row(tx)).toMatchObject({ status: "sent", transportId: cloudflareId });
+    vi.unstubAllEnvs();
   });
 });
 
