@@ -12,6 +12,9 @@ import {
   fetchTenant,
   patchTenant,
   sendTestEmail,
+  fetchBrandLogo,
+  uploadBrandLogo,
+  deleteBrandLogo,
   fetchTemplates,
   applyTemplate,
   fetchThrottle,
@@ -69,6 +72,25 @@ export function usePatchTenant() {
       void qc.invalidateQueries({ queryKey: TENANT_QUERY_KEY });
     },
   });
+}
+
+export const BRAND_LOGO_QUERY_KEY = ["settings", "brand-logo"] as const;
+
+export function useBrandLogo() {
+  return useQuery({ queryKey: BRAND_LOGO_QUERY_KEY, queryFn: fetchBrandLogo });
+}
+
+/** Upload or remove the brand logo; both change brand.logo_url, so the tenant is refetched too. */
+export function useBrandLogoMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: BRAND_LOGO_QUERY_KEY });
+    void qc.invalidateQueries({ queryKey: TENANT_QUERY_KEY });
+  };
+  return {
+    upload: useMutation({ mutationFn: (file: File) => uploadBrandLogo(file), onSuccess }),
+    remove: useMutation({ mutationFn: () => deleteBrandLogo(), onSuccess }),
+  };
 }
 
 export function useSendTestEmail() {

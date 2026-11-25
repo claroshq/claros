@@ -6,16 +6,27 @@
  * defaults. The test-send form lives here because what it exercises is
  * exactly this configuration (plus transport and postal address).
  */
-import React, { useEffect, useState } from "react";
-import { useSetupState, usePatchTenant, useSendTestEmail } from "../../settings.js";
-import type { BrandSettingsData } from "../../api.js";
+import React, { useEffect, useRef, useState } from "react";
+import { useSetupState, usePatchTenant, useSendTestEmail, useBrandLogo, useBrandLogoMutations } from "../../settings.js";
+import type { BrandLogo, BrandSettingsData } from "../../api.js";
 import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { Section, FormError, errorMessage } from "./shared.js";
 
+/** Same limits as the upload route (packages/core/src/brand-logo.ts). */
+const LOGO_TYPES = ["image/png", "image/jpeg"];
+const LOGO_MAX_BYTES = 256 * 1024;
+
+function formatBytes(n: number): string {
+  return n < 1024 ? `${n} B` : `${Math.round(n / 1024)} KB`;
+}
+
 export default function BrandingSettings() {
   const { tenant, isLoading } = useSetupState();
+  const logoQuery = useBrandLogo();
+  const logoMutations = useBrandLogoMutations();
+  const uploaded: BrandLogo | null = logoQuery.data?.logo ?? null;
   const patch = usePatchTenant();
   const testEmail = useSendTestEmail();
   const [brandName, setBrandName] = useState("");
@@ -32,15 +43,16 @@ export default function BrandingSettings() {
 
   // Initialize form from fetched data
   useEffect(() => {
-    if (!tenant || initialized) return;
+    if (!tenant || logoQuery.isLoading || initialized) return;
     const b = tenant.brand;
     setBrandName(b.brand_name ?? "");
-    setLogoUrl(b.logo_url ?? "");
+    // The URL field is for an external logo; an uploaded logo in use is shown above it.
+    setLogoUrl(uploaded?.in_use ? "" : (b.logo_url ?? ""));
     setAccentColor(b.accent_color ?? "");
     setFooterText(b.footer_text ?? "");
     setReplyTo(b.reply_to ?? "");
     setInitialized(true);
-  }, [tenant, initialized]);
+  }, [tenant, initialized, logoQuery.isLoading, uploaded]);
 
   if (isLoading || !tenant) return <Skeleton className="h-48 w-full" />;
 
@@ -53,7 +65,8 @@ export default function BrandingSettings() {
     try {
       const brand: Partial<BrandSettingsData> = {};
       brand.brand_name = brandName.trim() || null;
-      brand.logo_url = logoUrl.trim() || null;
+      // An empty URL field keeps an uploaded logo that is in use.
+      if (logoUrl.trim() || !uploaded?.in_use) brand.logo_url = logoUrl.trim() || null;
       brand.accent_color = accentColor.trim() || null;
       brand.footer_text = footerText.trim() || null;
       brand.reply_to = replyTo.trim() || null;
@@ -124,9 +137,20 @@ export default function BrandingSettings() {
           </div>
         </div>
 
+        <LogoUpload
+          logo={uploaded}
+          height={tenant.brand.logo_height}
+          mutations={logoMutations}
+          onUploaded={() => { setLogoUrl(""); setSaved(false); }}
+          onUse={async (url) => {
+            await patch.mutateAsync({ brand: { logo_url: url } });
+            setLogoUrl("");
+          }}
+        />
+
         <div>
           <label className="mb-1.5 block text-[14px] font-medium text-foreground">
-            Logo URL
+            External logo URL
           </label>
           <Input
             value={logoUrl}
@@ -135,7 +159,7 @@ export default function BrandingSettings() {
             disabled={patch.isPending}
           />
           <p className="mt-1 text-[12px] text-muted-foreground">
-            Absolute URL to your logo image (PNG or SVG, max 64px height). If empty, brand name is shown as text.
+            Optional: an absolute URL to a logo hosted elsewhere. When set, it replaces the uploaded logo in mail. If there is no logo, the brand name is shown as text.
           </p>
         </div>
 
@@ -214,5 +238,113 @@ export default function BrandingSettings() {
         )}
       </div>
     </Section>
+  );
+}
+
+/**
+ * Upload control for the brand logo: preview, type and size hints, replace
+ * and remove. The image is stored by Claros and served from this instance
+ * (or the product's public host), so mail does not depend on another site.
+ */
+function LogoUpload({
+  logo,
+  height,
+  mutations,
+  onUploaded,
+  onUse,
+}: {
+  logo: BrandLogo | null;
+  height: number | null;
+  mutations: ReturnType<typeof useBrandLogoMutations>;
+  onUploaded: () => void;
+  onUse: (url: string) => Promise<void>;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const busy = mutations.upload.isPending || mutations.remove.isPending;
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    if (!LOGO_TYPES.includes(file.type)) {
+      setError("The logo must be a PNG or JPEG image.");
+      return;
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setError(`The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(file.size)}).`);
+      return;
+    }
+    try {
+      await mutations.upload.mutateAsync(file);
+      onUploaded();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleRemove() {
+    setError(null);
+    try {
+      await mutations.remove.mutateAsync();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleUse(url: string) {
+    setError(null);
+    try {
+      await onUse(url);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-[14px] font-medium text-foreground">Logo</label>
+      <input
+        ref={input}
+        type="file"
+        accept={LOGO_TYPES.join(",")}
+        className="hidden"
+        onChange={handleFile}
+        aria-label="Logo file"
+      />
+      <div className="flex flex-wrap items-center gap-4">
+        {logo && (
+          <div className="flex h-20 min-w-32 items-center justify-center rounded-md border border-border bg-white px-4">
+            <img
+              src={logo.url}
+              alt="Uploaded logo"
+              style={{ height: `${Math.min(64, height ?? 32)}px`, width: "auto" }}
+            />
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => input.current?.click()}>
+            {mutations.upload.isPending ? "Uploading..." : logo ? "Replace" : "Upload logo"}
+          </Button>
+          {logo && !logo.in_use && (
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => handleUse(logo.url)}>
+              Use in mail
+            </Button>
+          )}
+          {logo && (
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={handleRemove}>
+              {mutations.remove.isPending ? "Removing..." : "Remove"}
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="mt-1 text-[12px] text-muted-foreground">
+        PNG or JPEG, up to {formatBytes(LOGO_MAX_BYTES)}. Served by Claros, so mail does not depend on another site.
+        {logo && ` Current: ${logo.content_type === "image/png" ? "PNG" : "JPEG"}, ${logo.width} x ${logo.height} px, ${formatBytes(logo.size)}.`}
+        {logo && !logo.in_use && " Not used in mail: the external logo URL below replaces it."}
+      </p>
+      <FormError message={error} />
+    </div>
   );
 }

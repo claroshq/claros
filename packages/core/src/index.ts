@@ -352,3 +352,5 @@ export {
 } from "./dates.js";
 
 export { PUBLIC_STRINGS, publicLanguage, publicStrings, type PublicStrings } from "./i18n.js";
+
+export * from "./brand-logo.js";

@@ -1005,6 +1005,54 @@ export async function patchTenant(payload: {
   return body;
 }
 
+/** An uploaded brand logo (GET/POST /v1/settings/brand/logo). */
+export interface BrandLogo {
+  /** Hosted URL with ?v=, as brand.logo_url holds it after an upload. */
+  url: string;
+  content_type: string;
+  width: number;
+  height: number;
+  /** Bytes. */
+  size: number;
+  sha256: string;
+  updated_at: string;
+  /** True when brand.logo_url points at this uploaded logo. */
+  in_use: boolean;
+}
+
+/** GET /v1/settings/brand/logo - the uploaded logo, or null. */
+export async function fetchBrandLogo(): Promise<{ logo: BrandLogo | null }> {
+  const res = await apiFetch("/v1/settings/brand/logo");
+  if (!res.ok) {
+    throw new Error(`/v1/settings/brand/logo returned ${res.status}`);
+  }
+  return res.json();
+}
+
+/** POST /v1/settings/brand/logo - upload a PNG or JPEG (the file is the body). */
+export async function uploadBrandLogo(file: File): Promise<{ logo: BrandLogo; brand: BrandSettingsData }> {
+  const res = await apiFetch("/v1/settings/brand/logo", {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body;
+}
+
+/** DELETE /v1/settings/brand/logo - remove the uploaded logo. */
+export async function deleteBrandLogo(): Promise<{ deleted: boolean; brand: BrandSettingsData }> {
+  const res = await apiFetch("/v1/settings/brand/logo", { method: "DELETE" });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body;
+}
+
 /** POST /v1/settings/test-email - send a test email using current brand settings. */
 export async function sendTestEmail(to: string): Promise<{ sent: boolean; to: string }> {
   const res = await apiFetch("/v1/settings/test-email", {

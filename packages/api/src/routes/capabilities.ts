@@ -70,6 +70,7 @@ export const FEATURES = [
   "value_gate_settings",
   "webhook_batch_interval",
   "engagement_events",
+  "brand_logo_upload",
 ] as const;
 
 export type Runtime = "node" | "workers";

@@ -28,6 +28,7 @@ export const API_PATH_PREFIXES = [
   "/invite",
   "/unsubscribe",
   "/webhooks",
+  "/brand",
   "/v1",
 ] as const;
 

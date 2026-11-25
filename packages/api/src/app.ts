@@ -12,7 +12,7 @@
  *
  * Assembly:
  *   1. Context: db, enqueue, logger; session -> tenant resolution
- *   2. Public routes: health, version, auth, claim, unsubscribe, invite, webhooks
+ *   2. Public routes: health, version, auth, claim, unsubscribe, invite, webhooks, brand
  *   3. Dashboard routes under /v1 (session cookie + per-route minimum role)
  *   4. Ingestion routes under /v1 (API key auth, CORS)
  *   5. Static dashboard + SPA fallback (when the runtime provides one)
@@ -61,6 +61,7 @@ import configRoutes from "./routes/config.js";
 import capabilitiesRoutes from "./routes/capabilities.js";
 import webhookEndpointRoutes from "./routes/webhook-endpoints.js";
 import flowStepsRoutes from "./routes/flow-steps.js";
+import { brandSettingsRoutes, publicBrandRoutes } from "./routes/brand.js";
 
 export { API_PATH_PREFIXES } from "./http/spa.js";
 
@@ -183,6 +184,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/unsubscribe", unsubscribeRoutes());
     app.route("/invite", inviteRoutes({ dashboardUrl }));
     app.route("/webhooks/resend", resendWebhookRoutes());
+    app.route("/brand", publicBrandRoutes());
   }
 
   // --- Dashboard routes (session cookie, per-route minimum role) --------------
@@ -196,6 +198,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/suppressions", suppressionRoutes());
     app.route("/v1/templates", templatesRoutes());
     app.route("/v1/messages", messagesRoutes());
+    app.route("/v1/settings/brand", brandSettingsRoutes({ baseUrl }));
     app.route("/v1/settings", settingsRoutes());
     app.route("/v1/ingestion", ingestionRoutes());
     app.route("/v1/library", libraryRoutes());

@@ -53,7 +53,7 @@ Variables and secrets:
 
 ## Dashboard and the SPA fallback
 
-Files that exist in the dashboard build are served by Cloudflare before the Worker runs. API paths (`/health`, `/version`, `/auth`, `/invite`, `/unsubscribe`, `/webhooks`, `/v1`) always reach the Worker first. Any other path the Worker does not know gets `index.html`, so client-side routes work; unknown API paths and non-GET requests get a JSON 404. These are the same rules as on Node.
+Files that exist in the dashboard build are served by Cloudflare before the Worker runs. API paths (`/health`, `/version`, `/auth`, `/invite`, `/unsubscribe`, `/webhooks`, `/brand`, `/v1`) always reach the Worker first. Any other path the Worker does not know gets `index.html`, so client-side routes work; unknown API paths and non-GET requests get a JSON 404. These are the same rules as on Node.
 
 ## Deploy with `npx @claroshq/claros deploy`
 
@@ -129,7 +129,7 @@ If `kb_fts` does not exist in that database, create it first with the statements
 
 ### Product public hosts
 
-A product with a public host (`public_host`, set with `claros products set-host` or `PATCH /v1/products/:slug`) gets `https://<public host>` in the unsubscribe links of its mail instead of `BASE_URL`. On that host the unsubscribe pages answer only for that product's links (404 for others). Links on the instance host keep working for every product, including mail sent before the host was set. On Workers a host set through the API gets its route at the next `claros deploy`; until then its links do not resolve, so prefer `claros products set-host`. On Node, point the host at the server yourself (DNS and reverse proxy).
+A product with a public host (`public_host`, set with `claros products set-host` or `PATCH /v1/products/:slug`) gets `https://<public host>` in the unsubscribe links of its mail instead of `BASE_URL`. On that host the unsubscribe pages answer only for that product's links (404 for others). Links on the instance host keep working for every product, including mail sent before the host was set. The same rule applies to an [uploaded brand logo](../guide/INSTALLATION.md#brand-logo) (`/brand/logo` on the public host). On Workers a host set through the API gets its route at the next `claros deploy`; until then its links do not resolve, so prefer `claros products set-host`. On Node, point the host at the server yourself (DNS and reverse proxy).
 
 ## Try it locally with `wrangler dev`
 

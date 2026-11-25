@@ -621,6 +621,43 @@ describe("Workers runtime: management API (admin key, config, webhooks)", () => 
       return rows.length === 1 && rows[0].status === "delivered";
     });
   }, 60_000);
+
+  it("an uploaded logo is stored in D1 and served on the instance host and the product's public host", async () => {
+    // A real 120x30 PNG.
+    const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAHgAAAAeCAIAAABoq03CAAAARUlEQVR42u3QQQ0AAAgEoCtjMuNbwhbOBxsJSPVwIApEi0a0aNEWRItGtGjRFkSLRrRo0YgWjWjRohEtGtGiRSNaNKI/Wks8Yl25h3DNAAAAAElFTkSuQmCC", "base64"));
+    const res = await mf.dispatchFetch("http://localhost/v1/settings/brand/logo", {
+      method: "POST",
+      headers: { authorization: `Bearer ${adminKey}`, "content-type": "image/png" },
+      body: png,
+    });
+    expect(res.status).toBe(201);
+    const { logo, brand } = (await res.json()) as { logo: { url: string; width: number; height: number }; brand: { logo_url: string } };
+    const v = createHash("sha256").update(png).digest("hex").slice(0, 12);
+    expect(logo).toMatchObject({ url: `${BASE_URL}/brand/workers-admin/logo?v=${v}`, width: 120, height: 30 });
+    expect(brand.logo_url).toBe(logo.url);
+
+    const served = await mf.dispatchFetch(`http://localhost/brand/workers-admin/logo?v=${v}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    expect(served.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+
+    // SVG is refused.
+    const svg = await mf.dispatchFetch("http://localhost/v1/settings/brand/logo", {
+      method: "POST",
+      headers: { authorization: `Bearer ${adminKey}`, "content-type": "image/svg+xml" },
+      body: "<svg xmlns='http://www.w3.org/2000/svg'/>",
+    });
+    expect(svg.status).toBe(415);
+
+    // On a public host: only that product's logo.
+    await db.update(schema.tenants).set({ publicHost: "news.workers-admin.test" }).where(eq(schema.tenants.id, productId));
+    const hosted = await mf.dispatchFetch("https://news.workers-admin.test/brand/logo");
+    expect(hosted.status).toBe(200);
+    expect(new Uint8Array(await hosted.arrayBuffer())).toEqual(png);
+    expect((await mf.dispatchFetch("https://news.workers-admin.test/brand/default/logo")).status).toBe(404);
+    expect((await mf.dispatchFetch("http://localhost/brand/no-such-product/logo")).status).toBe(404);
+  });
 });
 
 describe("Workers bundle", () => {

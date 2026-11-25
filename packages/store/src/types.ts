@@ -65,6 +65,7 @@ import type { ApiAdminAuthQueries } from "./areas/api-admin-auth.js";
 import type { WorkerWebhooksQueries } from "./areas/worker-webhooks.js";
 import type { ApiConfigQueries } from "./areas/api-config.js";
 import type { ApiWebhooksQueries } from "./areas/api-webhooks.js";
+import type { ApiBrandQueries } from "./areas/api-brand.js";
 
 export interface Store {
   readonly dialect: "pg" | "sqlite";
@@ -130,6 +131,7 @@ export interface Store {
   readonly workerWebhooks: WorkerWebhooksQueries;
   readonly apiConfig: ApiConfigQueries;
   readonly apiWebhooks: ApiWebhooksQueries;
+  readonly apiBrand: ApiBrandQueries;
 }
 
 export type * from "./areas/api-settings.js";
@@ -196,4 +198,5 @@ export type * from "./areas/shared-conditions.js";
 export type * from "./areas/worker-dates.js";
 export type * from "./areas/api-import.js";
 export type * from "./areas/api-webhooks.js";
+export type * from "./areas/api-brand.js";
 export type * from "./areas/worker-approvals-digest.js";

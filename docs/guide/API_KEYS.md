@@ -36,7 +36,7 @@ curl https://claros.example.com/v1/suppressions?since=2026-11-01T00:00:00Z \
 
 | Scope | Routes |
 |---|---|
-| `config` | `GET /v1/config`, `PUT /v1/config` ([config as code](CONFIG.md)), `GET /v1/flows`, `POST /v1/flows/:ref/pause`, `POST /v1/flows/:ref/resume` (`:ref` is the flow id or slug) |
+| `config` | `GET /v1/config`, `PUT /v1/config` ([config as code](CONFIG.md)), `GET /v1/flows`, `POST /v1/flows/:ref/pause`, `POST /v1/flows/:ref/resume` (`:ref` is the flow id or slug), `GET/POST/DELETE /v1/settings/brand/logo` ([brand logo](INSTALLATION.md#brand-logo), v0.8.5) |
 | `suppressions` | `GET/POST /v1/suppressions`, `POST /v1/suppressions/import`, `DELETE /v1/suppressions/:email` |
 | `messages` | `GET /v1/messages`, approve, reject, bulk approve and reject, retry, `PATCH /v1/messages/:id`, regenerate, cancel, unapprove, `POST /v1/contacts/:id/exclude` ([approvals](APPROVALS.md)) |
 | `contacts:read` | `GET /v1/contacts`, `GET /v1/contacts/:id`, `GET /v1/contacts/:id/timeline` |

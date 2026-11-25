@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-11-25
+
+### Added
+
+- Brand logo upload: upload the product's logo (PNG or JPEG, at most 256 KB) in Settings, Branding, or with `POST /v1/settings/brand/logo` (the image is the request body; owner session or an admin key with the `config` scope). Claros stores it in the database (Postgres `bytea`, D1 `BLOB`, new table `brand_assets`) and serves it without authentication at `/brand/logo` on the product's public host and at `/brand/<product slug>/logo` on the instance host, so the logo in mail no longer depends on another site staying reachable. The upload sets `brand.logo_url` to the hosted URL with a `?v=` content hash (cached for a year) and, when unset, `brand.logo_height` from the image. Older `?v=` URLs keep showing the current logo. SVG and other types answer `415`, larger files `413`. `GET /v1/settings/brand/logo` returns the logo's details and `DELETE` removes it. An external `brand.logo_url` still works and replaces the upload in mail; `GET /v1/config` exports the hosted URL, so applying an export again changes nothing. `GET /v1/capabilities` lists the feature `brand_logo_upload`. Same behaviour on Postgres and D1; Workers installs need `npx @claroshq/claros upgrade` (the new migration and the `/brand/*` route). See [Brand logo](docs/guide/INSTALLATION.md#brand-logo).
+
 ## [0.8.4] - 2026-11-25
 
 ### Added
@@ -195,7 +201,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.5...HEAD
+[0.8.5]: https://github.com/claroshq/claros/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/claroshq/claros/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/claroshq/claros/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/claroshq/claros/compare/v0.8.1...v0.8.2
