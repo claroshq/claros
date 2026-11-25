@@ -59,4 +59,9 @@ export interface Env {
   DASHBOARD_URL?: string;
   ENCRYPTION_KEY?: string;
   UNSUBSCRIBE_SIGNING_KEY?: string;
+  /**
+   * Cloudflare Email Service `send_email` binding (optional). When present,
+   * cloudflare transports send through it instead of the REST API.
+   */
+  EMAIL?: unknown;
 }

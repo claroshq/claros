@@ -69,4 +69,16 @@ export interface ApiIngestQueries {
    * recordTrackEvent.
    */
   recordIdentifyEvent(input: IngestIdentifyInput): Promise<{ deduplicated: boolean }>;
+  /**
+   * Apply an identify `topics` trait ({ <slug>: boolean }) to the contact with this external id:
+   * true -> 'subscribed', false -> 'unsubscribed' (source as given). Slugs that are not topics of
+   * the tenant are returned in `unknown` and ignored. All writes are one atomic unit.
+   */
+  applyContactTopics(input: {
+    tenantId: string;
+    externalId: string;
+    topics: Record<string, boolean>;
+    source: string;
+    now: Date;
+  }): Promise<{ applied: string[]; unknown: string[] }>;
 }

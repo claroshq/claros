@@ -28,7 +28,7 @@ Event  ->  Contact  ->  Flow membership  ->  Message
 - **Flows** are the automations. A flow has a trigger, a compiled plan of steps, and policies. When a contact matches a trigger, the engine enrolls them: they become a flow membership.
 - **Messages** are individual emails. Each step a membership reaches creates exactly one message, which is generated, optionally approved, and sent.
 
-All four live inside a **product**. From v0.8 (unreleased), one install can serve several products, each with its own data, settings and team; see [PRODUCTS.md](./PRODUCTS.md).
+All four live inside a **product**. From v0.8 (unreleased), one install can serve several products, each with its own data, settings and team; see [PRODUCTS.md](./PRODUCTS.md). Topics let contacts choose which kinds of mail they receive ([TOPICS.md](./TOPICS.md)), and a product can route mail through several transports ([TRANSPORTS.md](./TRANSPORTS.md)); both are unreleased (v0.8).
 
 The engine is deterministic. Everything below the flow is Postgres jobs and SQL. AI participates in exactly two places, both off the execution path: compiling a flow's prompt into its plan, and drafting a message's copy before it enters the approval queue.
 

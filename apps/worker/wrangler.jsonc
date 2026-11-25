@@ -57,6 +57,10 @@
     ]
   },
 
+  // Optional: Cloudflare Email Service binding for cloudflare transports
+  // (transactional mail only). Without it they use the REST API token.
+  // "send_email": [{ "name": "EMAIL" }],
+
   // Secrets (ENCRYPTION_KEY, UNSUBSCRIBE_SIGNING_KEY): `wrangler secret put`,
   // locally in .dev.vars (see .dev.vars.example). NODE_ENV is not a var here:
   // wrangler replaces process.env.NODE_ENV at build time ("production" for a

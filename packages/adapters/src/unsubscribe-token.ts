@@ -53,6 +53,13 @@ export interface UnsubscribeTokenPayload {
   messageId: string;
   /** Schema version. Currently always 1. */
   v: 1;
+  /**
+   * Topic UUID (topics.id), present on tokens of messages with a
+   * non-transactional topic: one-click then unsubscribes that topic only.
+   * Absent on older tokens and on messages without a topic: the whole
+   * product is unsubscribed, as before topics.
+   */
+  topicId?: string;
 }
 
 /** Discriminated error union returned by verifyUnsubscribeToken. */
@@ -122,12 +129,14 @@ function sign(payloadBase64: string, key: Buffer): Buffer {
  * @param tenantId - Tenant UUID.
  * @param messageId - Message UUID (lifecycle_messages.id).
  * @param keyOverride - Optional signing key override (testing only).
+ * @param options.topicId - Topic the one-click unsubscribe applies to (optional).
  * @returns URL-safe token string (no padding, no special chars).
  */
 export function generateUnsubscribeToken(
   tenantId: string,
   messageId: string,
   keyOverride?: string,
+  options?: { topicId?: string | null },
 ): string {
   const key = resolveKey(keyOverride);
 
@@ -135,6 +144,7 @@ export function generateUnsubscribeToken(
     tenantId,
     messageId,
     v: PAYLOAD_VERSION,
+    ...(options?.topicId ? { topicId: options.topicId } : {}),
   };
 
   const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -242,6 +252,7 @@ function isValidPayload(val: unknown): val is UnsubscribeTokenPayload {
     typeof obj.tenantId === "string" &&
     obj.tenantId.length > 0 &&
     typeof obj.messageId === "string" &&
-    obj.messageId.length > 0
+    obj.messageId.length > 0 &&
+    (obj.topicId === undefined || (typeof obj.topicId === "string" && obj.topicId.length > 0))
   );
 }

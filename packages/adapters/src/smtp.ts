@@ -141,6 +141,7 @@ export class SmtpTransportAdapter implements TransportAdapter {
         subject: params.subject,
         html: params.bodyHtml,
         text: params.bodyText,
+        ...(params.replyTo ? { replyTo: params.replyTo } : {}),
         headers: params.headers ?? {},
         // Use our message ID as the SMTP Message-ID header for traceability.
         messageId: `${params.messageId}@claros`,

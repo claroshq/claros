@@ -1,68 +1,49 @@
 /**
- * Transport resolver - reads a tenant's active transport configuration and
+ * Transport resolver - reads a tenant's active transports and routing and
  * delegates credential decryption + adapter construction to the shared
  * resolveTransportAdapter() in @claros/adapters.
  *
- * Called once per drain tick per tenant. No caching - per the recorded
+ * Called per drain tick per tenant and route. No caching - per the recorded
  * [impl] decision: "Transport configuration is read and decrypted per drain
- * tick. No caching." This is a correctness tradeoff; the deferred cache
- * design is in BACKLOG.md "transport resolver caching".
+ * tick. No caching."
+ *
+ * Routing (G26, selectTransport in @claros/core):
+ *   - route 'default': tenants.settings.transport_routing.default when it
+ *     names an active transport, else the oldest active transport (the only
+ *     one on a product that never configured several, as before).
+ *   - route 'transactional': transport_routing.transactional when active,
+ *     else the default.
  *
  * Behavior by case:
- *
- *   - Tenant has no active transport_configs row:
- *       Returns null. The drain skips this tenant's messages without any write.
- *       This is the normal state on a fresh install before transport is
- *       configured. Nothing is sent, nothing is written.
- *
- *   - Tenant has an active row for provider = 'resend':
- *       Decrypts the config, reads the API key, constructs and returns a
- *       ResendTransportAdapter.
- *
- *   - Tenant has an active row for provider = 'smtp':
- *       Decrypts the config, reads host/port/credentials, constructs and
- *       returns a SmtpTransportAdapter.
- *
- *   - ENCRYPTION_KEY is missing or invalid:
- *       Returns null with a logged operator error. Same safe fallback.
- *
- *   - Decryption fails (wrong key, corrupted envelope):
- *       Returns null with a logged operator error. Same safe fallback.
+ *   - No active transport: returns null. The drain skips this tenant's
+ *     messages without any write (the normal state on a fresh install).
+ *   - resend / smtp / cloudflare: decrypts the config and returns the
+ *     adapter with its transport_configs row in `transportInfo`.
+ *   - ENCRYPTION_KEY missing or invalid, decryption failure, or an
+ *     unsupported kind: returns null with a logged operator error.
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { resolveTransportAdapter } from "@claros/adapters";
+import { selectTransport } from "@claros/core";
 import { storeFor } from "@claros/store";
-import type { TransportAdapter, TransportResolver } from "./transport.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import type { TenantTransportAdapter, TransportResolver, TransportRoute } from "./transport.js";
 
 type Db = NodePgDatabase<Record<string, never>>;
-
-// ---------------------------------------------------------------------------
-// buildTenantTransportResolver
-// ---------------------------------------------------------------------------
 
 /**
  * Constructs a TransportResolver that reads tenant transport configuration
  * and uses the shared resolveTransportAdapter() for credential handling.
- *
- * @param db - Drizzle database instance.
- * @returns A TransportResolver function.
  */
 export function buildTenantTransportResolver(db: Db): TransportResolver {
-  return async (tenantId: string): Promise<TransportAdapter | null> => {
-    // Step 1: Read the active transport config for this tenant.
-    const row = await storeFor(db).workerTransportResolver.getActiveTransportConfig(tenantId);
+  return async (tenantId: string, route: TransportRoute = "default"): Promise<TenantTransportAdapter | null> => {
+    const store = storeFor(db).workerTransportResolver;
+    const active = await store.listActiveTransports(tenantId);
+    if (active.length === 0) return null;
+    const routing = active.length > 1 ? await store.getTransportRouting(tenantId) : {};
+    const row = selectTransport(active, routing, route);
+    if (row === null) return null;
 
-    if (row === null) {
-      // No active transport configured. Messages stay at 'approved'.
-      return null;
-    }
-
-    // Step 2: Resolve adapter via the shared function in @claros/adapters.
-    const result = resolveTransportAdapter(row.provider, row.config);
+    const result = resolveTransportAdapter(row.kind, row.config);
 
     if (!result.ok) {
       const { failure } = result;
@@ -81,12 +62,22 @@ export function buildTenantTransportResolver(db: Db): TransportResolver {
         console.warn(
           `[transport-resolver] Provider '${failure.provider}' is not supported. ` +
             `Tenant ${tenantId} messages will remain at 'approved'. ` +
-            `Supported providers: resend, smtp.`,
+            `Supported providers: resend, smtp, cloudflare.`,
         );
       }
       return null;
     }
 
-    return result.transport.adapter;
+    // A fresh adapter per call: attaching the row keeps its class (and methods).
+    return Object.assign(result.transport.adapter, {
+      transportInfo: {
+        id: row.id,
+        kind: row.kind,
+        fromEmail: row.from_email,
+        fromName: row.from_name,
+        replyTo: row.reply_to,
+        dailyLimit: row.daily_limit,
+      },
+    }) as TenantTransportAdapter;
   };
 }

@@ -35,6 +35,7 @@ export function d1ApiResendWebhook(db: D1Db): ApiResendWebhookQueries {
       const rows = await db.all<{ config: string }>(sql`
         SELECT config FROM transport_configs
         WHERE tenant_id = ${id} AND provider = 'resend' AND is_active = 1
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       const raw = rows[0]?.config;

@@ -65,6 +65,17 @@
  *   suppression is written). Requests on the instance host (BASE_URL) serve
  *   every product, so links in mail sent before a host was set keep working.
  *
+ * Topics (G8a, D18):
+ *   A token may carry a topicId (messages with a non-transactional topic).
+ *   One-click then sets the contact's status for that topic to
+ *   'unsubscribed' instead of suppressing the address; tokens without a
+ *   topic (older mail, messages without a topic) suppress the whole product
+ *   as before. When the product has non-transactional topics, the GET page
+ *   lists them with checkboxes (checked = subscribed) plus "Unsubscribe from
+ *   all"; the form POST carries action=topics (save the checkboxes) or
+ *   action=all (suppression). A POST without action follows the token, like
+ *   one-click. GET still never writes.
+ *
  * Migration check:
  *   This implementation requires migration 0015 (recipient_address column on
  *   lifecycle_messages). That migration must be applied before this code runs.
@@ -93,6 +104,18 @@ const SOURCE_PAGE = "page" as const;
 // Shared logic
 // ---------------------------------------------------------------------------
 
+type UnsubscribeAction =
+  | { kind: "token" }
+  | { kind: "all" }
+  | { kind: "topics"; form: Record<string, unknown> };
+
+type ResolveOutcome =
+  | { ok: true; email: string; scope: "product" | "topic" | "topics" }
+  | { ok: false; missingKey?: true };
+
+/** Source for topic changes from the browser page. */
+const TOPIC_SOURCE_PAGE = "page" as const;
+
 /**
  * Resolve a token, look up the recipient_address from the message row,
  * confirm status = 'sent', write a suppression, return the email.
@@ -113,7 +136,8 @@ async function resolveAndSuppress(
   db: Db,
   token: string,
   source: typeof SOURCE_ONE_CLICK | typeof SOURCE_PAGE,
-): Promise<{ ok: true; email: string } | { ok: false; missingKey?: true }> {
+  action: UnsubscribeAction = { kind: "token" },
+): Promise<ResolveOutcome> {
   // Step 1: verify the token.
   // verifyUnsubscribeToken throws when UNSUBSCRIBE_SIGNING_KEY is absent - that
   // is a server misconfiguration, not a bad token. Catch and surface as a
@@ -128,7 +152,7 @@ async function resolveAndSuppress(
     return { ok: false };
   }
 
-  const { tenantId, messageId } = result.payload;
+  const { tenantId, messageId, topicId } = result.payload;
 
   // Step 2: resolve the message row - must exist, have status = 'sent', and
   // have a recipient_address set. recipient_address is written before the send
@@ -145,26 +169,60 @@ async function resolveAndSuppress(
   const { recipientAddress, status } = messageRow;
 
   if (status !== "sent") {
-    // Message exists but was not successfully delivered. This covers:
-    //   - status = 'approved' or 'sending': not yet sent (recipient_address may
-    //     be null or set; either way delivery has not occurred)
-    //   - status = 'failed': permanent transport failure; message never delivered
-    //   - any other non-terminal status: also not delivered
-    // Token is structurally valid but the message was not sent - reject.
+    // Message exists but was not successfully delivered. Token is
+    // structurally valid but the message was not sent - reject.
     return { ok: false };
   }
 
   if (!recipientAddress || recipientAddress.trim().length === 0) {
-    // Sent message with no recipient_address recorded - should not happen in
-    // normal operation (drain always writes it before the send attempt), but
-    // treat it as invalid for safety.
+    // Sent message with no recipient_address recorded - treat as invalid.
     return { ok: false };
   }
 
   // Normalize: lowercase the email before storage.
   const normalizedEmail = recipientAddress.toLowerCase();
+  const now = new Date();
 
-  // Step 3: write the suppression - idempotent via ON CONFLICT DO NOTHING
+  // Step 3a: topic changes (G8a). Transactional topics are never listed or
+  // changed here; only the suppression list stops them.
+  if (action.kind === "topics") {
+    const topics = await storeFor(db).apiUnsubscribe.listContactTopics({ tenantId, contactId: messageRow.contactId });
+    const statuses = topics
+      .filter((t) => t.kind !== "transactional")
+      .map((t) => ({
+        topicId: t.topicId,
+        status: (action.form[`topic_${t.topicId}`] !== undefined ? "subscribed" : "unsubscribed") as
+          | "subscribed"
+          | "unsubscribed",
+      }));
+    await storeFor(db).apiUnsubscribe.setContactTopicStatuses({
+      tenantId,
+      contactId: messageRow.contactId,
+      statuses,
+      source: TOPIC_SOURCE_PAGE,
+      now,
+    });
+    return { ok: true, email: normalizedEmail, scope: "topics" };
+  }
+
+  if (action.kind === "token" && topicId) {
+    const topics = await storeFor(db).apiUnsubscribe.listContactTopics({ tenantId, contactId: messageRow.contactId });
+    const topic = topics.find((t) => t.topicId === topicId);
+    // A topic that no longer exists (or is transactional) falls back to the
+    // product-wide unsubscribe below: the recipient asked to stop this mail.
+    if (topic && topic.kind !== "transactional") {
+      await storeFor(db).apiUnsubscribe.setContactTopicStatuses({
+        tenantId,
+        contactId: messageRow.contactId,
+        statuses: [{ topicId, status: "unsubscribed" }],
+        source,
+        now,
+      });
+      return { ok: true, email: normalizedEmail, scope: "topic" };
+    }
+  }
+
+  // Step 3b: write the suppression - idempotent via ON CONFLICT DO NOTHING
   await storeFor(db).apiUnsubscribe.suppressAddress({
     tenantId,
     email: normalizedEmail,
@@ -172,7 +230,32 @@ async function resolveAndSuppress(
     source,
   });
 
-  return { ok: true, email: normalizedEmail };
+  return { ok: true, email: normalizedEmail, scope: "product" };
+}
+
+/**
+ * The product's non-transactional topics with the recipient's status, for
+ * the GET page. Read only; any failure yields an empty list (the plain page).
+ */
+async function pageTopics(
+  db: Db,
+  tenantId: string,
+  messageId: string,
+): Promise<Array<{ id: string; name: string; subscribed: boolean }>> {
+  try {
+    const message = await storeFor(db).apiUnsubscribe.getMessageRecipient({ tenantId, messageId });
+    if (message === null || message.status !== "sent") return [];
+    const topics = await storeFor(db).apiUnsubscribe.listContactTopics({ tenantId, contactId: message.contactId });
+    return topics
+      .filter((t) => t.kind !== "transactional")
+      .map((t) => ({
+        id: t.topicId,
+        name: t.name,
+        subscribed: (t.status ?? (t.defaultSubscribed ? "subscribed" : "unsubscribed")) === "subscribed",
+      }));
+  } catch {
+    return [];
+  }
 }
 
 /** Lowercase host name of the request (no port). */
@@ -245,8 +328,93 @@ function unsubscribePageHtml(token: string): string {
   ].join("\n");
 }
 
+/** Escape text for HTML content and attributes. */
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * The page for a product with topics (G8a): one checkbox per topic
+ * (checked = subscribed), "Save preferences" (action=topics) and
+ * "Unsubscribe from all" (action=all). Nothing is written until the human
+ * submits.
+ */
+function topicPreferencesPageHtml(
+  token: string,
+  topics: Array<{ id: string; name: string; subscribed: boolean }>,
+): string {
+  const safeToken = token.replace(/[^A-Za-z0-9._~-]/g, "");
+  const rows = topics.map((t) => {
+    const id = t.id.replace(/[^A-Za-z0-9-]/g, "");
+    return [
+      `    <label class="topic">`,
+      `      <input type="checkbox" name="topic_${id}" value="1"${t.subscribed ? " checked" : ""}>`,
+      `      <span>${escapeHtml(t.name)}</span>`,
+      `    </label>`,
+    ].join("\n");
+  });
+  return [
+    "<!DOCTYPE html>",
+    "<html lang=\"en\">",
+    "<head>",
+    "  <meta charset=\"UTF-8\">",
+    "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "  <title>Email preferences</title>",
+    "  <style>",
+    "    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 24px; color: #111; }",
+    "    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }",
+    "    p { color: #555; margin-bottom: 1.5rem; }",
+    "    .topic { display: flex; gap: 10px; align-items: center; padding: 10px 0; font-size: 1rem; }",
+    "    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 1.5rem; }",
+    "    button { border: none; padding: 12px 24px; font-size: 1rem; cursor: pointer; border-radius: 4px; }",
+    "    .save { background: #111; color: #fff; }",
+    "    .all { background: #d00; color: #fff; }",
+    "  </style>",
+    "</head>",
+    "<body>",
+    "  <h1>Email preferences</h1>",
+    "  <p>Choose which emails you want to receive, or unsubscribe from all emails from this sender.</p>",
+    "  <form method=\"POST\" action=\"/unsubscribe\">",
+    `    <input type=\"hidden\" name=\"token\" value=\"${safeToken}\">`,
+    ...rows,
+    "    <div class=\"actions\">",
+    "      <button class=\"save\" type=\"submit\" name=\"action\" value=\"topics\">Save preferences</button>",
+    "      <button class=\"all\" type=\"submit\" name=\"action\" value=\"all\">Unsubscribe from all</button>",
+    "    </div>",
+    "  </form>",
+    "</body>",
+    "</html>",
+  ].join("\n");
+}
+
+/** HTML shown after topic preferences were saved. */
+function preferencesSavedHtml(): string {
+  return [
+    "<!DOCTYPE html>",
+    "<html lang=\"en\">",
+    "<head>",
+    "  <meta charset=\"UTF-8\">",
+    "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "  <title>Preferences saved</title>",
+    "  <style>",
+    "    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 24px; color: #111; }",
+    "    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }",
+    "    p { color: #555; }",
+    "  </style>",
+    "</head>",
+    "<body>",
+    "  <h1>Preferences saved</h1>",
+    "  <p>Your email preferences were updated.</p>",
+    "</body>",
+    "</html>",
+  ].join("\n");
+}
+
 /** HTML shown after a successful unsubscribe. */
-function unsubscribeSuccessHtml(): string {
+function unsubscribeSuccessHtml(topicOnly = false): string {
+  const message = topicOnly
+    ? "You have been unsubscribed from this type of email. Other emails from this sender are not affected."
+    : "You have been unsubscribed. You will no longer receive emails from this sender.";
   return [
     "<!DOCTYPE html>",
     "<html lang=\"en\">",
@@ -262,7 +430,7 @@ function unsubscribeSuccessHtml(): string {
     "</head>",
     "<body>",
     "  <h1>Unsubscribed</h1>",
-    "  <p>You have been unsubscribed. You will no longer receive emails from this sender.</p>",
+    `  <p>${message}</p>`,
     "</body>",
     "</html>",
   ].join("\n");
@@ -385,6 +553,14 @@ export default function unsubscribeRoutes() {
       return notFound(c);
     }
 
+    // Products with topics get the preferences page (read only here).
+    if (c.var.db) {
+      const topics = await pageTopics(c.var.db, verifyResult.payload.tenantId, verifyResult.payload.messageId);
+      if (topics.length > 0) {
+        return c.html(topicPreferencesPageHtml(token, topics), 200, HTML_HEADERS);
+      }
+    }
+
     return c.html(unsubscribePageHtml(token), 200, HTML_HEADERS);
   });
 
@@ -414,7 +590,16 @@ export default function unsubscribeRoutes() {
     const tenantOfToken = tokenTenant(token);
     if (tenantOfToken && !(await hostAllowsTenant(db, c.req.url, tenantOfToken))) return notFound(c);
 
-    const outcome = await resolveAndSuppress(db, token, SOURCE_PAGE);
+    // action=topics: save the checkboxes; action=all: product-wide
+    // suppression; no action (v0.6 form, JSON callers): follow the token.
+    const actionField = typeof reqBody?.action === "string" ? reqBody.action : "";
+    const action: UnsubscribeAction =
+      actionField === "topics"
+        ? { kind: "topics", form: reqBody }
+        : actionField === "all"
+          ? { kind: "all" }
+          : { kind: "token" };
+    const outcome = await resolveAndSuppress(db, token, SOURCE_PAGE, action);
 
     const contentType = (c.req.header("content-type") ?? "").toLowerCase();
     const wantsJson = contentType.includes("application/json");
@@ -437,7 +622,10 @@ export default function unsubscribeRoutes() {
       return c.json({ unsubscribed: true }, 200);
     }
 
-    return c.html(unsubscribeSuccessHtml(), 200, HTML_HEADERS);
+    if (outcome.scope === "topics") {
+      return c.html(preferencesSavedHtml(), 200, HTML_HEADERS);
+    }
+    return c.html(unsubscribeSuccessHtml(outcome.scope === "topic"), 200, HTML_HEADERS);
   });
 
   return app;

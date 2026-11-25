@@ -39,6 +39,7 @@ import PaceSettings from "./pages/settings/PaceSettings.js";
 import BrandingSettings from "./pages/settings/BrandingSettings.js";
 import PostalSettings from "./pages/settings/PostalSettings.js";
 import ProductsSettings from "./pages/settings/ProductsSettings.js";
+import TopicsSettings from "./pages/settings/TopicsSettings.js";
 import NotFoundPage from "./pages/NotFoundPage.js";
 import IntegratePage from "./pages/IntegratePage.js";
 import SentLogPage from "./pages/SentLogPage.js";
@@ -101,6 +102,7 @@ export default function App() {
           <Route path="team" element={<TeamSettings />} />
           <Route path="llm" element={<LlmSettings />} />
           <Route path="transport" element={<TransportSettings />} />
+          <Route path="topics" element={<TopicsSettings />} />
           <Route path="pace" element={<PaceSettings />} />
           <Route path="branding" element={<BrandingSettings />} />
           <Route path="postal" element={<PostalSettings />} />

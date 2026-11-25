@@ -4,7 +4,7 @@
  * jsonb formatting (key order, spacing) differs from the JSON text stored on
  * SQLite; callers parse it, so only the parsed value is the contract.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, asc } from "drizzle-orm";
 import { transportConfigs } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 
@@ -26,6 +26,7 @@ export async function findActiveTransportText(db: D1Db, tenantId: string): Promi
     })
     .from(transportConfigs)
     .where(and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)))
+    .orderBy(asc(transportConfigs.createdAt), asc(transportConfigs.id))
     .limit(1);
   return rows[0] ?? null;
 }

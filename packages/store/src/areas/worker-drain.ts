@@ -18,6 +18,17 @@ export interface WorkerDrainClaimedMessage {
   bodyHtml: string | null;
   bodyText: string | null;
   retryCount: number | null;
+  /** Topic of the message (copied from the flow at creation), or null. */
+  topicId: string | null;
+}
+
+/** What the topic gate needs for one message: the topic and the contact's status for it. */
+export interface WorkerDrainTopicGate {
+  /** marketing | lifecycle | transactional */
+  kind: string;
+  defaultSubscribed: boolean;
+  /** The contact's explicit status ('subscribed' | 'unsubscribed'), or null when there is no row. */
+  status: string | null;
 }
 
 /** Contact fields the drain needs to send. */
@@ -64,20 +75,32 @@ export interface WorkerDrainQueries {
   listTenantsWithDueMessages(now: Date): Promise<string[]>;
   /** daily_limit of the tenant's active transport config, or null when unset or no active config. */
   getTransportDailyLimit(tenantId: string): Promise<number | null>;
-  /** Number of the tenant's messages with status 'sent' and sent_at >= since. */
-  countSentSince(tenantId: string, since: Date): Promise<number>;
+  /**
+   * Number of the tenant's messages with status 'sent' and sent_at >= since. With transportId,
+   * only messages sent through that transport, plus those with no recorded transport (sent
+   * before transports were recorded), so a single-transport product counts exactly as before.
+   */
+  countSentSince(tenantId: string, since: Date, transportId?: string): Promise<number>;
   /** CAS sending -> approved; true when this call won. */
   releaseClaim(messageId: string, now: Date): Promise<boolean>;
   /** CAS sending -> approved with scheduled_send_at = sendAt; true when this call won. */
   deferClaim(messageId: string, sendAt: Date, now: Date): Promise<boolean>;
-  /** CAS sending -> suppressed; true when this call won. */
-  markSuppressed(messageId: string, now: Date): Promise<boolean>;
+  /** CAS sending -> suppressed (with status_reason when given); true when this call won. */
+  markSuppressed(messageId: string, now: Date, reason?: string): Promise<boolean>;
   /** Set recipient_address while the message is still 'sending' (CAS); true when this call won. */
   setRecipientAddress(messageId: string, email: string, now: Date): Promise<boolean>;
-  /** CAS sending -> sent with sent_at and provider_message_id; true when this call won. */
-  markSent(messageId: string, providerMessageId: string | null, now: Date): Promise<boolean>;
-  /** CAS sending -> failed; true when this call won. */
-  markFailed(messageId: string, now: Date): Promise<boolean>;
+  /**
+   * CAS sending -> sent with sent_at and provider_message_id (and transport_id when given);
+   * true when this call won.
+   */
+  markSent(messageId: string, providerMessageId: string | null, now: Date, transportId?: string | null): Promise<boolean>;
+  /** CAS sending -> failed (with status_reason when given); true when this call won. */
+  markFailed(messageId: string, now: Date, reason?: string): Promise<boolean>;
+  /**
+   * The topic (of this tenant) and the contact's status for it, or null when the topic does
+   * not exist in the tenant.
+   */
+  getTopicGate(input: { tenantId: string; contactId: string; topicId: string }): Promise<WorkerDrainTopicGate | null>;
   /** The contact's email and properties, or null when the contact does not exist. */
   getContact(contactId: string): Promise<WorkerDrainContact | null>;
   /** Whether the email is on the tenant's suppression list (case-insensitive). */

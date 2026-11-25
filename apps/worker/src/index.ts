@@ -18,6 +18,7 @@ import { buildApp, spaFallback, type ClarosApp, type Db, type EnqueueFn, type St
 import { dueTicks } from "@claros/core";
 import { createD1Store, registerStore } from "@claros/store";
 import { consumeDeadJobs, consumeJobs, queueEnqueue } from "./jobs.js";
+import { syncTransportRuntime } from "./transports.js";
 import type { Env, ExecutionContext, Fetcher, JobMessage, MessageBatch, ScheduledController } from "./bindings.js";
 
 export type { Env, JobMessage } from "./bindings.js";
@@ -116,11 +117,13 @@ function assetsFallback(assets: Fetcher): StaticFallback {
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     syncProcessEnv(env);
+    syncTransportRuntime(env);
     return (await app(env)).fetch(request);
   },
 
   async queue(batch: MessageBatch<JobMessage>, env: Env, _ctx: ExecutionContext): Promise<void> {
     syncProcessEnv(env);
+    syncTransportRuntime(env);
     if (batch.queue.endsWith("-dlq")) return consumeDeadJobs(batch);
     const rt = runtime(env);
     return consumeJobs(batch, { db: rt.db, enqueue: rt.enqueue });
@@ -133,6 +136,7 @@ export default {
    */
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     syncProcessEnv(env);
+    syncTransportRuntime(env);
     const due = dueTicks(new Date(controller.scheduledTime));
     await env.JOBS.sendBatch(due.map((name) => ({ body: { name, data: {} } })));
   },

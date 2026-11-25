@@ -13,7 +13,7 @@
  * Addresses are compared the same way for ASCII, which covers practically every
  * email address.
  */
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   contacts,
   flows,
@@ -21,6 +21,8 @@ import {
   suppressions,
   tenants,
   transportConfigs,
+  topics,
+  contactTopics,
 } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { WorkerDrainQueries } from "../areas/worker-drain.js";
@@ -35,6 +37,7 @@ interface ClaimRow {
   body_html: string | null;
   body_text: string | null;
   retry_count: number | null;
+  topic_id: string | null;
   created_at: number | null;
   flow_class: string | null;
   priority: number | null;
@@ -91,7 +94,7 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
           )
           AND status = 'approved'
         RETURNING id, tenant_id, contact_id, flow_id, flow_step_order,
-                  subject, body_html, body_text, retry_count, created_at,
+                  subject, body_html, body_text, retry_count, created_at, topic_id,
                   (SELECT f2.flow_class FROM flows f2 WHERE f2.id = flow_id) AS flow_class,
                   (SELECT f2.priority FROM flows f2 WHERE f2.id = flow_id) AS priority
       `);
@@ -106,6 +109,7 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
         bodyHtml: row.body_html,
         bodyText: row.body_text,
         retryCount: row.retry_count,
+        topicId: row.topic_id ?? null,
       }));
     },
 
@@ -124,11 +128,12 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
         .select({ dailyLimit: transportConfigs.dailyLimit })
         .from(transportConfigs)
         .where(and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)))
+        .orderBy(asc(transportConfigs.createdAt), asc(transportConfigs.id))
         .limit(1);
       return rows[0]?.dailyLimit ?? null;
     },
 
-    async countSentSince(tenantId, since) {
+    async countSentSince(tenantId, since, transportId) {
       const rows = await db
         .select({ cnt: sql<number>`count(*)` })
         .from(lifecycleMessages)
@@ -137,6 +142,9 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
             eq(lifecycleMessages.tenantId, tenantId),
             eq(lifecycleMessages.status, "sent"),
             gte(lifecycleMessages.sentAt, since),
+            transportId
+              ? or(eq(lifecycleMessages.transportId, transportId), isNull(lifecycleMessages.transportId))
+              : undefined,
           ),
         );
       return Number(rows[0]?.cnt ?? 0);
@@ -150,20 +158,44 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
       return casFromSending(messageId, { status: "approved", scheduledSendAt: sendAt, updatedAt: now });
     },
 
-    markSuppressed(messageId, now) {
-      return casFromSending(messageId, { status: "suppressed", updatedAt: now });
+    markSuppressed(messageId, now, reason) {
+      return casFromSending(messageId, { status: "suppressed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) });
     },
 
     setRecipientAddress(messageId, email, now) {
       return casFromSending(messageId, { recipientAddress: email, updatedAt: now });
     },
 
-    markSent(messageId, providerMessageId, now) {
-      return casFromSending(messageId, { status: "sent", sentAt: now, providerMessageId, updatedAt: now });
+    markSent(messageId, providerMessageId, now, transportId) {
+      return casFromSending(messageId, {
+        status: "sent",
+        sentAt: now,
+        providerMessageId,
+        updatedAt: now,
+        ...(transportId ? { transportId } : {}),
+      });
     },
 
-    markFailed(messageId, now) {
-      return casFromSending(messageId, { status: "failed", updatedAt: now });
+    markFailed(messageId, now, reason) {
+      return casFromSending(messageId, { status: "failed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) });
+    },
+
+    async getTopicGate({ tenantId, contactId, topicId }) {
+      const rows = await db
+        .select({
+          kind: topics.kind,
+          defaultSubscribed: topics.defaultSubscribed,
+          status: contactTopics.status,
+        })
+        .from(topics)
+        .leftJoin(
+          contactTopics,
+          and(eq(contactTopics.topicId, topics.id), eq(contactTopics.contactId, contactId)),
+        )
+        .where(and(eq(topics.id, topicId), eq(topics.tenantId, tenantId)))
+        .limit(1);
+      const row = rows[0];
+      return row ? { kind: row.kind, defaultSubscribed: row.defaultSubscribed, status: row.status ?? null } : null;
     },
 
     async getContact(contactId) {
@@ -227,6 +259,7 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
         .select({ fromEmail: transportConfigs.fromEmail, fromName: transportConfigs.fromName })
         .from(transportConfigs)
         .where(and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)))
+        .orderBy(asc(transportConfigs.createdAt), asc(transportConfigs.id))
         .limit(1);
       return rows[0] ?? null;
     },

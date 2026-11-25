@@ -78,6 +78,7 @@ import {
 } from "../llm-providers.js";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter, validatedBody } from "../http/router.js";
+import { loadTransportSetup, registerTransportRoutes, saveRouting, sendTestEmail } from "./settings-transports.js";
 import { validateBody, coerceInt, coerceBool, coerceString } from "../http/validate.js";
 
 // ---------------------------------------------------------------------------
@@ -232,6 +233,7 @@ const testEmailBodySchema = z.object({
 
 export default function settingsRoutes() {
   const r = new RoleRouter();
+  registerTransportRoutes(r);
   // -------------------------------------------------------------------------
   // PUT /v1/settings/transport
   // -------------------------------------------------------------------------
@@ -351,7 +353,16 @@ export default function settingsRoutes() {
       //   - If insert fails, the tenant is left with no active config.
       //     The operator retries the PUT. This is the safer failure mode
       //     vs. wrapping in a transaction and rolling back the deactivation.
-      await storeFor(db).apiSettings.deactivateActiveTransportConfigs(tenantId);
+      //
+      // With several transports (G26) this endpoint replaces the default
+      // transport only; other transports stay active. A product with one
+      // transport behaves exactly as before.
+      const setup = await loadTransportSetup(db, tenantId);
+      if (setup.active.length <= 1 || setup.defaultTransport === null) {
+        await storeFor(db).apiSettings.deactivateActiveTransportConfigs(tenantId);
+      } else {
+        await storeFor(db).apiSettings.deactivateTransport({ tenantId, id: setup.defaultTransport.id });
+      }
 
       const inserted = await storeFor(db).apiSettings.insertActiveTransportConfig({
         tenantId,
@@ -361,6 +372,15 @@ export default function settingsRoutes() {
         fromName: from_name ?? null,
         dailyLimit: daily_limit ?? null,
       });
+
+      // Keep routing pointing at the replacement: other transports remain, so
+      // the new row must be named as the default explicitly.
+      if (setup.active.length > 1 && setup.defaultTransport !== null && inserted) {
+        const replaced = setup.defaultTransport.id;
+        const routing = { ...setup.routing, default: inserted.id };
+        if (routing.transactional === replaced) routing.transactional = inserted.id;
+        await saveRouting(db, tenantId, setup.settings, routing);
+      }
 
       return c.json({
         transport: {
@@ -393,7 +413,8 @@ export default function settingsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const row = await storeFor(db).apiSettings.findActiveTransportConfig(tenantId);
+    // The default transport (G26): routing.default, else the oldest active one.
+    const row = (await loadTransportSetup(db, tenantId)).defaultTransport;
 
     if (!row) {
       return c.json({ transport: null });
@@ -972,129 +993,27 @@ export default function settingsRoutes() {
       const tenantId = c.var.tenant!.id;
       const { to } = v.value;
 
-      // Validate recipient
       if (!to.includes("@") || to.trim().length < 3) {
         return c.json({ error: "Invalid recipient email address." }, 400);
       }
-
-      // Resolve tenant settings (name, postal_address, brand)
+      // The default transport (G26); see sendTestEmail in settings-transports.ts.
+      const transport = (await loadTransportSetup(db, tenantId)).defaultTransport;
       const tenantRow = await storeFor(db).apiSettings.findTenantNameAndSettings(tenantId);
-
       if (!tenantRow) {
         return c.json({ error: "Tenant not found." }, 404);
       }
-
-      const tenantName = tenantRow.name;
-      const settings = (tenantRow.settings as Record<string, unknown> | null) ?? {};
-      const postalAddress = settings.postal_address as string | undefined;
-      const brand = (settings.brand as BrandSettings | undefined) ?? {};
-
+      const postalAddress = ((tenantRow.settings as Record<string, unknown> | null)?.postal_address) as string | undefined;
       if (!postalAddress || postalAddress.trim().length === 0) {
         return c.json({ error: "Postal address is not configured. Set it in Settings before sending a test email." }, 400);
       }
-
-      // Resolve transport
-      const configRow = await storeFor(db).apiSettings.findActiveTransportForSend(tenantId);
-
-      if (!configRow) {
+      if (!transport) {
         return c.json({ error: "Email transport is not configured. Set it up in Settings before sending a test email." }, 400);
       }
-
-      const resolveResult = resolveTransportAdapter(configRow.provider, configRow.config);
-
-      if (!resolveResult.ok) {
-        return c.json({ error: "Failed to initialize email transport. Check your transport configuration." }, 500);
+      const row = await storeFor(db).apiSettings.findActiveTransport({ tenantId, id: transport.id });
+      if (!row) {
+        return c.json({ error: "Email transport is not configured. Set it up in Settings before sending a test email." }, 400);
       }
-
-      const adapter = resolveResult.transport.adapter;
-      const fromEmail = configRow.from_email;
-      const fromName = configRow.from_name ?? undefined;
-
-      // Build test email content
-      const subject = `Test email from ${tenantName}`;
-      const bodyHtml = [
-        `<p>This is a test email from <strong>${escapeHtmlSimple(tenantName)}</strong>.</p>`,
-        `<p>If you can read this, your email branding and transport are working correctly.</p>`,
-        `<p>This message was sent using your current brand settings. Check that:</p>`,
-        `<ul>`,
-        `<li>The logo or brand name appears in the header</li>`,
-        `<li>The accent color bar is visible at the top</li>`,
-        `<li>The footer contains your postal address and unsubscribe link</li>`,
-        `<li>The overall layout looks professional in your email client</li>`,
-        `</ul>`,
-        `<p style="color:#6b7280;font-size:13px;">Sent at ${new Date().toISOString()}</p>`,
-      ].join("\n");
-
-      const bodyText = [
-        `This is a test email from ${tenantName}.`,
-        ``,
-        `If you can read this, your email branding and transport are working correctly.`,
-        ``,
-        `This message was sent using your current brand settings. Check that:`,
-        `- The overall layout looks professional in your email client`,
-        `- The footer contains your postal address and unsubscribe link`,
-        ``,
-        `Sent at ${new Date().toISOString()}`,
-      ].join("\n");
-
-      // Build compliance fragments with real unsubscribe token and headers.
-      // The test-email must carry List-Unsubscribe headers like every real send.
-      const signingKey = process.env.UNSUBSCRIBE_SIGNING_KEY;
-      if (!signingKey) {
-        return c.json({ error: "UNSUBSCRIBE_SIGNING_KEY is not set. Set it before sending any email (including test emails)." }, 400);
-      }
-
-      const testMessageId = `test-${Date.now()}`;
-      const { generateUnsubscribeToken } = await import("@claros/adapters");
-      const token = generateUnsubscribeToken(tenantId, testMessageId, signingKey);
-      // Links in a product's mail use its public host when it has one.
-      const baseUrlForLinks = tenantRow.publicHost
-        ? `https://${tenantRow.publicHost}`
-        : process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
-      const oneClickUrl = `${baseUrlForLinks}/unsubscribe/one-click?token=${token}`;
-      const browserUrl = `${baseUrlForLinks}/unsubscribe?token=${token}`;
-
-      const complianceHtml = buildShellComplianceHtml(browserUrl, postalAddress);
-      const complianceText = buildShellComplianceText(browserUrl, postalAddress);
-
-      // Wrap in shell
-      const deliveredHtml = wrapInShell({
-        bodyHtml,
-        brand,
-        tenantName,
-        complianceFooterHtml: complianceHtml,
-      });
-      const deliveredText = wrapInTextShell({
-        bodyText,
-        brand,
-        tenantName,
-        complianceFooterText: complianceText,
-      });
-
-      // Send
-      try {
-        const result = await adapter.send({
-          to: to.trim(),
-          from: fromEmail,
-          fromName,
-          subject,
-          bodyHtml: deliveredHtml,
-          bodyText: deliveredText,
-          messageId: testMessageId,
-          headers: {
-            "List-Unsubscribe": `<${oneClickUrl}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
-        });
-
-        if (result.success) {
-          return c.json({ sent: true, to: to.trim() });
-        }
-
-        return c.json({ error: "Transport rejected the message. Check your transport configuration." }, 502);
-      } catch (err) {
-        return c.json({ error: "Failed to send test email. Check your transport configuration and credentials." }, 502);
-      }
+      return sendTestEmail(c, db, tenantId, to, row);
     },
   );
   return r.app;

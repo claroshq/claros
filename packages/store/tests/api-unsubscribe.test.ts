@@ -86,10 +86,14 @@ for (const factory of testBackends()) {
       expect(await b.store.apiUnsubscribe.getMessageRecipient({ tenantId: t, messageId: sent })).toEqual({
         recipientAddress: "ann@example.com",
         status: "sent",
+        contactId: expect.any(String),
+        topicId: null,
       });
       expect(await b.store.apiUnsubscribe.getMessageRecipient({ tenantId: t, messageId: pending })).toEqual({
         recipientAddress: null,
         status: "approved",
+        contactId: expect.any(String),
+        topicId: null,
       });
       expect(await b.store.apiUnsubscribe.getMessageRecipient({ tenantId: await b.newTenant(), messageId: sent })).toBeNull();
       expect(await b.store.apiUnsubscribe.getMessageRecipient({ tenantId: t, messageId: randomUUID() })).toBeNull();

@@ -18,6 +18,8 @@ export interface WorkerDrainMessageClaimed {
   body_html: string | null;
   body_text: string | null;
   retry_count: number | null;
+  /** Topic of the message, or null. */
+  topic_id: string | null;
 }
 
 export interface WorkerDrainMessageQueries {

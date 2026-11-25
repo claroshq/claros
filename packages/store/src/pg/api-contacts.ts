@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
 import type { ApiContactsQueries, ContactListRow } from "../areas/api-contacts.js";
+import { listContactTopicStatuses } from "./contact-topics.js";
 
 export function pgApiContacts(db: PgDb): ApiContactsQueries {
   return {
@@ -163,6 +164,10 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
           LIMIT ${fetchLimit}
         `)
       ).rows;
+    },
+
+    listContactTopics({ tenantId, contactId }) {
+      return listContactTopicStatuses(db, tenantId, contactId);
     },
   };
 }

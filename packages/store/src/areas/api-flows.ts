@@ -29,6 +29,8 @@ export interface ApiFlowRow {
   compiledAt: Date | null;
   compileStatus: string | null;
   compileError: string | null;
+  /** Topic of the flow's messages (G8a), or null. */
+  topicId: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 }
@@ -54,6 +56,7 @@ export interface ApiFlowPatch {
   compiledAt?: null;
   compileStatus?: null;
   compileError?: null;
+  topicId?: string | null;
 }
 
 export interface ApiFlowsQueries {
@@ -76,6 +79,7 @@ export interface ApiFlowsQueries {
     promptSource: string | null;
     compiledPlan: null;
     compiledAt: null;
+    topicId?: string | null;
   }): Promise<ApiFlowRow | undefined>;
   /** The tenant's flows ordered by created_at; archived ones only when includeArchived. */
   listFlows(args: { tenantId: string; includeArchived: boolean }): Promise<ApiFlowRow[]>;

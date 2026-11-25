@@ -2,7 +2,7 @@
  * Postgres implementation of the queries used by packages/worker/src/drain.ts.
  */
 import { eq, and, sql } from "drizzle-orm";
-import { tenants, contacts, flows, lifecycleMessages, suppressions } from "@claros/db/schema";
+import { tenants, contacts, flows, lifecycleMessages, suppressions, topics, contactTopics } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { WorkerDrainQueries } from "../areas/worker-drain.js";
 
@@ -39,6 +39,7 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         body_html: string | null;
         body_text: string | null;
         retry_count: number | null;
+        topic_id: string | null;
         flow_class: string;
         priority: number | null;
         created_at: string | Date | null;
@@ -62,11 +63,11 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
           SET status = 'sending', updated_at = ${now}
           WHERE id IN (SELECT id FROM candidates)
           RETURNING id, tenant_id, contact_id, flow_id, flow_step_order,
-                    subject, body_html, body_text, retry_count, created_at
+                    subject, body_html, body_text, retry_count, created_at, topic_id
         )
         SELECT
           c.id, c.tenant_id, c.contact_id, c.flow_id, c.flow_step_order,
-          c.subject, c.body_html, c.body_text, c.retry_count,
+          c.subject, c.body_html, c.body_text, c.retry_count, c.topic_id,
           f.flow_class, f.priority, c.created_at
         FROM claimed c
         JOIN flows f ON f.id = c.flow_id
@@ -86,6 +87,7 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         bodyHtml: row.body_html,
         bodyText: row.body_text,
         retryCount: row.retry_count,
+        topicId: row.topic_id ?? null,
       }));
     },
 
@@ -105,18 +107,23 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         SELECT daily_limit
         FROM transport_configs
         WHERE tenant_id = ${tenantId} AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       return transportRows.rows[0]?.daily_limit ?? null;
     },
 
-    async countSentSince(tenantId, since) {
+    async countSentSince(tenantId, since, transportId) {
+      const transportFilter = transportId
+        ? sql`AND (transport_id = ${transportId} OR transport_id IS NULL)`
+        : sql``;
       const countRows = await db.execute<{ cnt: string }>(sql`
         SELECT COUNT(*)::text AS cnt
         FROM lifecycle_messages
         WHERE tenant_id = ${tenantId}
           AND status = 'sent'
           AND sent_at >= ${since}
+          ${transportFilter}
       `);
       return parseInt(countRows.rows[0]?.cnt ?? "0", 10);
     },
@@ -143,10 +150,10 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
       return updated.length > 0;
     },
 
-    async markSuppressed(messageId, now) {
+    async markSuppressed(messageId, now, reason) {
       const updated = await db
         .update(lifecycleMessages)
-        .set({ status: "suppressed", updatedAt: now })
+        .set({ status: "suppressed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) })
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
         .returning({ id: lifecycleMessages.id });
       return updated.length > 0;
@@ -161,7 +168,7 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
       return updated.length > 0;
     },
 
-    async markSent(messageId, providerMessageId, now) {
+    async markSent(messageId, providerMessageId, now, transportId) {
       const updated = await db
         .update(lifecycleMessages)
         .set({
@@ -169,16 +176,17 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
           sentAt: now,
           providerMessageId,
           updatedAt: now,
+          ...(transportId ? { transportId } : {}),
         })
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
         .returning({ id: lifecycleMessages.id });
       return updated.length > 0;
     },
 
-    async markFailed(messageId, now) {
+    async markFailed(messageId, now, reason) {
       const updated = await db
         .update(lifecycleMessages)
-        .set({ status: "failed", updatedAt: now })
+        .set({ status: "failed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) })
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
         .returning({ id: lifecycleMessages.id });
       return updated.length > 0;
@@ -270,6 +278,7 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         FROM transport_configs
         WHERE tenant_id = ${tenantId}
           AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       if (configRow.rows.length === 0) return null;
@@ -277,6 +286,24 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         fromEmail: configRow.rows[0]!.from_email,
         fromName: configRow.rows[0]!.from_name,
       };
+    },
+
+    async getTopicGate({ tenantId, contactId, topicId }) {
+      const rows = await db
+        .select({
+          kind: topics.kind,
+          defaultSubscribed: topics.defaultSubscribed,
+          status: contactTopics.status,
+        })
+        .from(topics)
+        .leftJoin(
+          contactTopics,
+          and(eq(contactTopics.topicId, topics.id), eq(contactTopics.contactId, contactId)),
+        )
+        .where(and(eq(topics.id, topicId), eq(topics.tenantId, tenantId)))
+        .limit(1);
+      const row = rows[0];
+      return row ? { kind: row.kind, defaultSubscribed: row.defaultSubscribed, status: row.status ?? null } : null;
     },
 
     async getTenant(tenantId) {

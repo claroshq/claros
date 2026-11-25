@@ -17,6 +17,7 @@ import {
   Palette,
   MapPin,
   Boxes,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "../../components/page-header.js";
@@ -53,13 +54,14 @@ export default function SettingsLayout() {
       label: "Engine",
       items: [
         { to: "/settings/llm", label: "LLM provider", icon: Sparkles, warn: llm === null },
-        { to: "/settings/transport", label: "Email transport", icon: Mail, warn: transport === null },
+        { to: "/settings/transport", label: "Transports", icon: Mail, warn: transport === null },
         { to: "/settings/pace", label: "Sending pace", icon: Gauge },
       ],
     },
     {
       label: "Email",
       items: [
+        { to: "/settings/topics", label: "Topics", icon: Tags },
         { to: "/settings/branding", label: "Branding", icon: Palette },
         {
           to: "/settings/postal",

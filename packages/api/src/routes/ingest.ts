@@ -321,7 +321,7 @@ async function processIdentifyEvent(
   const traits = body.traits as Record<string, unknown> | undefined;
   const traitPlan = !traits || Object.keys(traits).length === 0 ? null : partitionTraits(traits);
 
-  return storeFor(db).apiIngest.recordIdentifyEvent({
+  const result = await storeFor(db).apiIngest.recordIdentifyEvent({
     tenantId,
     userId: body.userId,
     traits: body.traits ?? null,
@@ -331,6 +331,42 @@ async function processIdentifyEvent(
     timestamp: eventTimestamp,
     now,
   });
+
+  // Topic consent (G8a): traits.topics = { <slug>: boolean } sets the
+  // contact's topic statuses (source 'identify'). Slugs that are not topics of
+  // the product, and non-boolean values, are ignored (the identify response
+  // has no warnings field). The trait is also kept in properties like any other.
+  if (!result.deduplicated) {
+    const wanted = topicTrait(traits);
+    if (wanted) {
+      await storeFor(db).apiIngest.applyContactTopics({
+        tenantId,
+        externalId: body.userId,
+        topics: wanted,
+        source: "identify",
+        now,
+      });
+    }
+  }
+
+  return result;
+}
+
+/** Most topics one identify call may set. */
+const MAX_TOPIC_TRAITS = 100;
+
+/** The boolean entries of traits.topics, or null when there are none. */
+function topicTrait(traits: Record<string, unknown> | undefined): Record<string, boolean> | null {
+  const raw = traits?.topics;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: Record<string, boolean> = {};
+  let n = 0;
+  for (const [slug, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== "boolean" || slug.length === 0) continue;
+    out[slug] = value;
+    if (++n >= MAX_TOPIC_TRAITS) break;
+  }
+  return n > 0 ? out : null;
 }
 
 /** Validation failure response shared by the three ingestion routes. */

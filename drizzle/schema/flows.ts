@@ -7,6 +7,7 @@ import {
   integer,
 } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants.js";
+import { topics } from "./topics.js";
 
 export const flows = pgTable("flows", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -32,6 +33,8 @@ export const flows = pgTable("flows", {
   // [impl] task 11: compilation status tracking
   compileStatus: text("compile_status"), // null|pending|ready|failed
   compileError: text("compile_error"), // human-readable error when status = failed
+  /** Topic of the flow's messages (G8a); null = no topic, behaves as before topics. */
+  topicId: uuid("topic_id").references(() => topics.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

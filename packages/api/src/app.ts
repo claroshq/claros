@@ -55,6 +55,7 @@ import teamRoutes from "./routes/team.js";
 import profileRoutes from "./routes/profile.js";
 import productsRoutes from "./routes/products.js";
 import instanceRoutes from "./routes/instance.js";
+import topicsRoutes from "./routes/topics.js";
 
 export { API_PATH_PREFIXES } from "./http/spa.js";
 
@@ -193,6 +194,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/profile", profileRoutes());
     app.route("/v1/products", productsRoutes());
     app.route("/v1/instance", instanceRoutes());
+    app.route("/v1/topics", topicsRoutes());
   }
   app.route("/v1/diagnostics", diagnosticsRoutes());
 

@@ -20,6 +20,8 @@ import {
 } from "@claros/core";
 import type { PgDb } from "./db.js";
 import type { ApiIngestQueries, IngestTraitPlan } from "../areas/api-ingest.js";
+import { topics as topicsTable } from "@claros/db/schema";
+import { upsertContactTopicSql } from "./contact-topics.js";
 
 /**
  * Advisory-lock dedup check within a transaction.
@@ -694,6 +696,35 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
       );
 
       return { deduplicated: false };
+    },
+
+    async applyContactTopics({ tenantId, externalId, topics: wanted, source, now }) {
+      const slugs = Object.keys(wanted);
+      if (slugs.length === 0) return { applied: [], unknown: [] };
+      const known = await db
+        .select({ slug: topicsTable.slug })
+        .from(topicsTable)
+        .where(and(eq(topicsTable.tenantId, tenantId), inArray(topicsTable.slug, slugs)));
+      const knownSet = new Set(known.map((r) => r.slug));
+      const applied = slugs.filter((s) => knownSet.has(s));
+      const unknown = slugs.filter((s) => !knownSet.has(s));
+      if (applied.length > 0) {
+        await db.transaction(async (tx) => {
+          for (const slug of applied) {
+            await tx.execute(
+              upsertContactTopicSql({
+                tenantId,
+                topicCondition: sql`t.slug = ${slug}`,
+                contactCondition: sql`c.external_id = ${externalId}`,
+                status: wanted[slug] ? "subscribed" : "unsubscribed",
+                source,
+                now,
+              }),
+            );
+          }
+        });
+      }
+      return { applied, unknown };
     },
   };
 }

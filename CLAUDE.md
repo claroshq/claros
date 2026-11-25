@@ -38,7 +38,8 @@ New dependencies: only the ones approved in DECISIONS.md (D6). Anything else nee
 - Drain is per-tenant round-robin with per-tenant sub-batch caps. A big tenant must never starve a small tenant's dunning.
 - `contacts.email` is nullable; uniqueness via partial index. Email conflict (email owned by another external_id) -> reject the update, keep the event, surface it to the admin. No silent merges.
 - Suppression is checked before everything else at send time.
-- Every outgoing email carries List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) headers and the compliant footer, including test sends to real addresses. (Planned change D18: omitted only for topic kind `transactional`; until it ships, no exceptions.)
+- Every outgoing email carries the compliant footer and List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) headers, including test sends to real addresses. The only exception (D18, unreleased): messages whose topic kind is `transactional` carry no List-Unsubscribe headers (footer kept).
+- A `cloudflare` transport sends only messages whose topic kind is `transactional` (D16 hard guard, default deny): enforced in the drain right before send and when saving routing.
 - Embeddings on Postgres: OpenAI-compatible endpoint, `vector(1536)`.
 - Postgres `events` is partitioned by `received_at` (monthly range, no DEFAULT partition). The real primary key is `(id, received_at)`. Never query events by `id` without an additional filter (tenant_id, contact_id, or a received_at range).
 

@@ -10,9 +10,13 @@
  * already-read row data. The only environment read is ENCRYPTION_KEY (or an
  * explicit override).
  *
- * Behavior by provider:
+ * Behavior by provider (transport kind):
  *   - "resend": decrypts, constructs ResendTransportAdapter, returns it.
- *   - "smtp": decrypts, constructs SmtpTransportAdapter, returns it.
+ *   - "smtp": decrypts, constructs the SMTP adapter (nodemailer, or the
+ *     factory registered by the runtime, e.g. worker-mailer on Workers).
+ *   - "cloudflare": decrypts, constructs CloudflareTransportAdapter with the
+ *     runtime's send_email binding when registered, else the REST API
+ *     credentials { accountId, apiToken }.
  *   - anything else: returns null (unimplemented).
  *
  * Failure modes (all return null):
@@ -23,7 +27,12 @@
 import { decrypt, parseEncryptionKey } from "./crypto.js";
 import { ResendTransportAdapter } from "./resend.js";
 import { SmtpTransportAdapter, type SmtpAdapterConfig } from "./smtp.js";
+import { CloudflareTransportAdapter } from "./cloudflare.js";
+import { transportRuntime } from "./transport-runtime.js";
 import type { TransportAdapter } from "./transport-types.js";
+
+/** Transport kinds this build can send with. */
+export const SUPPORTED_TRANSPORT_KINDS = ["resend", "smtp", "cloudflare"] as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,8 +73,8 @@ export function resolveTransportAdapter(
   encryptedConfig: string,
   encryptionKeyOverride?: string,
 ): ResolveTransportResult {
-  // Gate: only resend and smtp are implemented.
-  if (provider !== "resend" && provider !== "smtp") {
+  // Gate: only the supported kinds are implemented.
+  if (!(SUPPORTED_TRANSPORT_KINDS as readonly string[]).includes(provider)) {
     return { ok: false, failure: { reason: "unsupported_provider", provider } };
   }
 
@@ -85,6 +94,12 @@ export function resolveTransportAdapter(
     if (provider === "resend") {
       const apiKey = parsed.apiKey as string;
       adapter = new ResendTransportAdapter({ apiKey });
+    } else if (provider === "cloudflare") {
+      adapter = new CloudflareTransportAdapter({
+        accountId: (parsed.accountId as string) || undefined,
+        apiToken: (parsed.apiToken as string) || undefined,
+        binding: transportRuntime().cloudflareBinding,
+      });
     } else {
       // provider === "smtp"
       const smtpConfig: SmtpAdapterConfig = {
@@ -95,7 +110,8 @@ export function resolveTransportAdapter(
         password: (parsed.password as string) || undefined,
         rejectUnauthorized: parsed.rejectUnauthorized as boolean | undefined,
       };
-      adapter = new SmtpTransportAdapter(smtpConfig);
+      const factory = transportRuntime().smtp;
+      adapter = factory ? factory(smtpConfig) : new SmtpTransportAdapter(smtpConfig);
     }
   } catch (err) {
     return {

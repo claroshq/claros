@@ -5,6 +5,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { lifecycleMessages, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { ApiUnsubscribeQueries } from "../areas/api-unsubscribe.js";
+import { listContactTopicStatuses, setContactTopicStatuses } from "./contact-topics.js";
 
 export function pgApiUnsubscribe(db: PgDb): ApiUnsubscribeQueries {
   return {
@@ -13,6 +14,8 @@ export function pgApiUnsubscribe(db: PgDb): ApiUnsubscribeQueries {
         .select({
           recipientAddress: lifecycleMessages.recipientAddress,
           status: lifecycleMessages.status,
+          contactId: lifecycleMessages.contactId,
+          topicId: lifecycleMessages.topicId,
         })
         .from(lifecycleMessages)
         .where(
@@ -37,6 +40,14 @@ export function pgApiUnsubscribe(db: PgDb): ApiUnsubscribeQueries {
     async findTenantIdByPublicHost(host) {
       const rows = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.publicHost, host)).limit(1);
       return rows[0]?.id ?? null;
+    },
+
+    listContactTopics({ tenantId, contactId }) {
+      return listContactTopicStatuses(db, tenantId, contactId);
+    },
+
+    setContactTopicStatuses(input) {
+      return setContactTopicStatuses(db, input);
     },
   };
 }

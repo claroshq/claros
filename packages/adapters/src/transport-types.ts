@@ -53,8 +53,16 @@ export interface TransportSendParams {
   bodyHtml: string;
   /** Plain text body (optional fallback). */
   bodyText?: string;
+  /** Reply-To address (transport reply_to, else the product's brand.reply_to). */
+  replyTo?: string;
   /** Additional headers (List-Unsubscribe, etc.). */
   headers?: Record<string, string>;
+  /**
+   * Provider tags (name -> value). Resend sends them as `tags`
+   * (claros_tenant, claros_message_id, claros_flow); transports without tags
+   * ignore them.
+   */
+  tags?: Record<string, string>;
   /** Message ID for idempotency / provider deduplication. */
   messageId: string;
 }
@@ -68,8 +76,10 @@ export interface TransportSendParams {
  *
  * Implementations:
  *   - ResendTransportAdapter (packages/adapters/src/resend.ts)
- *   - SES adapter (post-launch)
- *   - Generic SMTP adapter (post-launch)
+ *   - SmtpTransportAdapter (packages/adapters/src/smtp.ts, nodemailer on Node;
+ *     apps/worker injects a worker-mailer adapter on Workers)
+ *   - CloudflareTransportAdapter (packages/adapters/src/cloudflare.ts,
+ *     Cloudflare Email Service, transactional mail only)
  *   - LogTransportAdapter (tests only, lives in packages/worker/tests/)
  */
 export interface TransportAdapter {

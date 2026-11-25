@@ -31,6 +31,7 @@ for (const factory of testBackends()) {
         body_html: "H",
         body_text: "T",
         retry_count: 1,
+        topic_id: null,
       });
       expect(await getMessage(b, id)).toMatchObject({ status: "sending", updatedAt: NOW });
       expect(await b.store.workerDrainMessage.claimApprovedMessage(t, id, NOW)).toBeNull();

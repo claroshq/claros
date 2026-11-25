@@ -20,6 +20,7 @@ export function pgApiResendWebhook(db: PgDb): ApiResendWebhookQueries {
         WHERE tenant_id = ${tenantId}::uuid
           AND provider = 'resend'
           AND is_active = true
+        ORDER BY created_at ASC, id ASC
         LIMIT 1
       `);
       return rows.rows[0]?.config ?? null;

@@ -57,6 +57,7 @@ for (const factory of testBackends()) {
           bodyHtml: "<p>B</p>",
           bodyText: "B",
           retryCount: 2,
+          topicId: null,
         });
         expect(await b.store.workerDrain.claimDrainBatch({ now: NOW, limit: 10, tenantIds: [t] })).toEqual([]);
 

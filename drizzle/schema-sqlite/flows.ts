@@ -4,6 +4,7 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants.js";
+import { topics } from "./topics.js";
 
 export const flows = sqliteTable("flows", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -29,6 +30,8 @@ export const flows = sqliteTable("flows", {
   // [impl] task 11: compilation status tracking
   compileStatus: text("compile_status"), // null|pending|ready|failed
   compileError: text("compile_error"), // human-readable error when status = failed
+  /** Topic of the flow's messages (G8a); null = no topic. */
+  topicId: text("topic_id").references(() => topics.id),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
 });

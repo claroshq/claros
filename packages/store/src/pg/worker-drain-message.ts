@@ -21,7 +21,7 @@ export function pgWorkerDrainMessage(db: PgDb): WorkerDrainMessageQueries {
           AND status = 'approved'
           AND (scheduled_send_at IS NULL OR scheduled_send_at <= ${now})
         RETURNING id, tenant_id, contact_id, flow_id, flow_step_order,
-                  subject, body_html, body_text, retry_count
+                  subject, body_html, body_text, retry_count, topic_id
       `);
       return claimed.rows[0] ?? null;
     },

@@ -73,6 +73,12 @@ export interface ComplianceInput {
    * environment reads.
    */
   signingKey: string;
+  /**
+   * Topic of the message when its kind is not 'transactional': the token then
+   * carries it and one-click unsubscribes that topic only. Omit for messages
+   * without a topic (the whole product, as before topics).
+   */
+  topicId?: string | null;
 }
 
 /** Compliance output: ready-to-inject headers and footer strings. */
@@ -228,7 +234,9 @@ export function resolveSigningKey(keyOverride?: string): string | null {
  *   - Kept minimal and plain - no brand, no tracking, renders in all clients
  */
 export function buildComplianceOutput(input: ComplianceInput): ComplianceOutput {
-  const token = generateUnsubscribeToken(input.tenantId, input.messageId, input.signingKey);
+  const token = generateUnsubscribeToken(input.tenantId, input.messageId, input.signingKey, {
+    topicId: input.topicId ?? null,
+  });
 
   const oneClickUrl = `${input.baseUrl}/unsubscribe/one-click?token=${token}`;
   const browserUrl = `${input.baseUrl}/unsubscribe?token=${token}`;

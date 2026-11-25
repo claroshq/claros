@@ -6,6 +6,7 @@
  * ../d1/api-contacts.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
+import type { ContactTopicStatusRow } from "./shared-topics.js";
 
 /** Filters for the People list. Null means "no filter". */
 export interface ContactListFilter {
@@ -63,4 +64,6 @@ export interface ApiContactsQueries {
     before: { occurredAt: string; id: string } | null;
     limit: number;
   }): Promise<Record<string, unknown>[]>;
+  /** Every topic of the tenant with the contact's explicit status for it (null = the topic default). */
+  listContactTopics(input: { tenantId: string; contactId: string }): Promise<ContactTopicStatusRow[]>;
 }

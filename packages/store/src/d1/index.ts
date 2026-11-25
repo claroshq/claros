@@ -56,6 +56,7 @@ import { d1WorkerScanTimeTransitions } from "./worker-scan-time-transitions.js";
 import { d1WorkerSnapshotRetentionGrid } from "./worker-snapshot-retention-grid.js";
 import { d1WorkerTransportResolver } from "./worker-transport-resolver.js";
 import { d1WorkerTriggerCheck } from "./worker-trigger-check.js";
+import { d1ApiTopics } from "./api-topics.js";
 
 export function createD1Store(db: D1Db): Store {
   return {
@@ -113,5 +114,6 @@ export function createD1Store(db: D1Db): Store {
     workerSnapshotRetentionGrid: d1WorkerSnapshotRetentionGrid(db),
     workerTransportResolver: d1WorkerTransportResolver(db),
     workerTriggerCheck: d1WorkerTriggerCheck(db),
+    apiTopics: d1ApiTopics(db),
   };
 }
