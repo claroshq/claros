@@ -66,6 +66,7 @@ import { pgWorkerWebhooks } from "./worker-webhooks.js";
 import { pgApiConfig } from "./api-config.js";
 import { pgApiWebhooks } from "./api-webhooks.js";
 import { pgApiBrand } from "./api-brand.js";
+import { pgEmailLayouts } from "./email-layouts.js";
 
 export function createPgStore(db: PgDb): Store {
   return {
@@ -133,5 +134,6 @@ export function createPgStore(db: PgDb): Store {
     apiConfig: pgApiConfig(db),
     apiWebhooks: pgApiWebhooks(db),
     apiBrand: pgApiBrand(db),
+    emailLayouts: pgEmailLayouts(db),
   };
 }

@@ -41,6 +41,7 @@ import {
 } from "@claros/core";
 import { renderMarkdownToHtml, markdownToText } from "@claros/brain-oss";
 import { actorOf } from "../http/admin-auth.js";
+import { loadCustomLayout } from "./layouts.js";
 import type { AppContext } from "../http/env.js";
 
 // ---------------------------------------------------------------------------
@@ -113,6 +114,7 @@ async function buildPreviews(db: Db, tenantId: string, rows: MessageListRow[]): 
     addr || "No postal address set. Mail is held until one is set in Settings.",
     tenant?.locale ?? null,
   );
+  const layout = await loadCustomLayout(db, tenantId, brand.template);
   const plans = new Map<string, unknown>();
   for (const flowId of new Set(rows.filter((r) => r.body_html).map((r) => r.flow_id))) {
     const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: flowId });
@@ -128,6 +130,7 @@ async function buildPreviews(db: Db, tenantId: string, rows: MessageListRow[]): 
       complianceFooterHtml: footer,
       eyebrow: presentation.eyebrow,
       preheader: presentation.preheader,
+      layout,
     }));
   }
   return out;

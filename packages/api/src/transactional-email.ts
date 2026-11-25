@@ -59,7 +59,9 @@ export function buildLoginEmail(
 
   const html = wrapInShell({
     bodyHtml,
-    brand: input.brand,
+    // Claros' own mail (login, invites) keeps the layout brand.layout picks;
+    // the product's email template is for its contacts' mail.
+    brand: { ...input.brand, template: undefined },
     tenantName: input.tenantName,
     complianceFooterHtml: "",
   });
@@ -106,7 +108,9 @@ export function buildInviteEmail(
 
   const html = wrapInShell({
     bodyHtml,
-    brand: input.brand,
+    // Claros' own mail (login, invites) keeps the layout brand.layout picks;
+    // the product's email template is for its contacts' mail.
+    brand: { ...input.brand, template: undefined },
     tenantName: input.tenantName,
     complianceFooterHtml: "",
   });
@@ -155,7 +159,9 @@ export function buildEmailChangeEmail(
 
   const html = wrapInShell({
     bodyHtml,
-    brand: input.brand,
+    // Claros' own mail (login, invites) keeps the layout brand.layout picks;
+    // the product's email template is for its contacts' mail.
+    brand: { ...input.brand, template: undefined },
     tenantName: input.tenantName,
     complianceFooterHtml: "",
   });

@@ -250,14 +250,19 @@ export const configSettingsSchema = z
   .object({
     /**
      * Brand fields as in the dashboard settings (brand_name, logo_url,
-     * logo_height, accent_color, footer_text, reply_to). Only layout is
-     * checked here; other keys are stored as given.
+     * logo_height, accent_color, footer_text, reply_to). Only layout and
+     * template are checked here; other keys are stored as given.
      */
     brand: z
       .object({
         layout: z
           .enum(BRAND_LAYOUTS)
           .describe('Email layout: "narrow" (default) is a centered card at most 600px wide; "wide" fills the reading pane and keeps paragraphs at most 680px wide.')
+          .optional(),
+        template: z
+          .string()
+          .regex(/^(?:[a-z][a-z0-9_-]{0,31}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)
+          .describe('Email template the product sends with: a built-in key (classic, letter, banner, compact, wide, broadsheet, canvas) or the id of a template made on the Templates page. Wins over layout. A name that matches no template falls back to layout.')
           .optional(),
       })
       .passthrough()

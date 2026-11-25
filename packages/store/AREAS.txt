@@ -55,3 +55,4 @@ ops	packages/worker/src/alerts.ts (also packages/api/src/routes/instance.ts and 
 apiAdminAuth	packages/api/src/http/admin-auth.ts
 workerWebhooks	packages/worker/src/webhooks.ts
 apiConfig	packages/api/src/routes/config.ts
+emailLayouts	packages/api/src/routes/layouts.ts (also packages/worker/src/drain.ts and packages/api/src/routes/settings-transports.ts)

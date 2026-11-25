@@ -205,6 +205,35 @@ export {
 } from "./email-shell.js";
 
 export {
+  LAYOUT_WIDTHS,
+  LAYOUT_PLACEHOLDERS,
+  REQUIRED_PLACEHOLDERS,
+  LAYOUT_MAX_BYTES,
+  BUILTIN_LAYOUTS,
+  SAMPLE_BODY_HTML,
+  SAMPLE_COMPLIANCE_HTML,
+  builtinLayout,
+  isCustomLayoutRef,
+  layoutKeyForBrandLayout,
+  layoutValues,
+  renderLayout,
+  resolveLayout,
+  tintHex,
+  type LayoutWidth,
+  type LayoutTemplate,
+  type LayoutPlaceholder,
+  type BuiltinLayout,
+} from "./layout-templates.js";
+
+export {
+  validateLayoutSource,
+  lintLayoutSource,
+  checkLayoutSource,
+  type LintIssue,
+  type LintSeverity,
+} from "./email-lint.js";
+
+export {
   TOPIC_KINDS,
   TRANSPORT_KINDS,
   TOPIC_SLUG_PATTERN,

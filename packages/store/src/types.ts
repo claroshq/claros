@@ -66,6 +66,7 @@ import type { WorkerWebhooksQueries } from "./areas/worker-webhooks.js";
 import type { ApiConfigQueries } from "./areas/api-config.js";
 import type { ApiWebhooksQueries } from "./areas/api-webhooks.js";
 import type { ApiBrandQueries } from "./areas/api-brand.js";
+import type { EmailLayoutsQueries } from "./areas/email-layouts.js";
 
 export interface Store {
   readonly dialect: "pg" | "sqlite";
@@ -132,12 +133,14 @@ export interface Store {
   readonly apiConfig: ApiConfigQueries;
   readonly apiWebhooks: ApiWebhooksQueries;
   readonly apiBrand: ApiBrandQueries;
+  readonly emailLayouts: EmailLayoutsQueries;
 }
 
 export type * from "./areas/api-settings.js";
 export type * from "./areas/api-ingest.js";
 export type * from "./areas/worker-content.js";
 export type * from "./areas/worker-drain.js";
+export type * from "./areas/email-layouts.js";
 export type * from "./areas/api-flows.js";
 export type * from "./areas/worker-scan-step-advancement.js";
 export type * from "./areas/api-kb.js";

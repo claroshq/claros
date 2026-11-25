@@ -17,6 +17,10 @@ An AI-native alternative to Customer.io, Loops, and Mautic. Flows are written in
 
 ![Approval queue](docs/guide/assets/approvals.png)
 
+**Templates you edit by talking to them.** Pick one of seven built-in email templates (narrow or wide), open it in the template studio and say what you want: "center the logo", "make the header band dark navy", "16px body text". The preview updates as each change lands. The assistant only works on that template and knows how Outlook, Gmail, Apple Mail and Yahoo render email: ask for something that would break in one of them (a CSS background photo, a flexbox row) and it tells you what would happen where and offers a version that works everywhere. Every template keeps the unsubscribe footer, and deterministic client checks run on every change.
+
+![Template studio](docs/guide/assets/template-studio.png)
+
 **Your stack, your keys.** Emails go through your Resend or SMTP account, or Cloudflare Email Service for transactional mail. AI runs against your OpenAI-compatible endpoint (OpenAI, Anthropic, Gemini, Groq, Ollama). The only infrastructure is Postgres, or your Cloudflare account on the Workers install. Nothing phones home.
 
 **A retention grid, not a vanity dashboard.** Contacts are bucketed by tenure and recency into a 4x4 grid. Each cell is an audience you can act on: create a flow, see who is there, watch the trend. The grid adapts to your product's natural rhythm.
@@ -55,7 +59,8 @@ The Cloudflare Workers + D1 install option, multi-product instances, topics and 
 
 - **Lifecycle state machine** - 7 contact states (`signed_up` through `resurrected`) with engagement depth scoring and a payment overlay. Event-driven and time-driven transitions
 - **Prompt-defined flows** - compiled to deterministic plans. Triggers: events, lifecycle transitions, retention-grid and lifecycle segments, contact dates (`date_property`, `date_schedule`) and manual enrollment. Steps with delays, conditions (`all` / `any` / `not`, traits, send history), send windows, exit conditions, context sources and the `choose` step. See [Flows](docs/guide/FLOWS.md)
-- **Brain** - compile, decide, draft, assess, choose. Real LLM calls to any OpenAI-compatible endpoint, only at compile time and content time, never in timing, targeting or the send path
+- **Brain** - compile, decide, draft, assess, choose. Real LLM calls to any OpenAI-compatible endpoint, only at compile time, content time and in the template studio, never in timing, targeting or the send path
+- **Email templates and the template studio** - seven built-in templates (`classic`, `letter`, `banner`, `compact` narrow; `wide`, `broadsheet`, `canvas` wide), custom copies, and a chat that edits a template with mail client knowledge built in; client checks for Outlook, Gmail, Apple Mail and Yahoo without the LLM. See [Email templates](docs/guide/TEMPLATES.md)
 - **Approval queue** - AI-drafted messages are held for human review by default; edit, regenerate, cancel or exclude a person; per-flow auto-approve when you trust it
 - **Event ingestion** - Segment-compatible `/v1/track`, `/v1/identify`, `/v1/batch`. Publishable and secret API keys, rate limits, browser snippet at `/claros.js`
 - **Multi-product instances** - one install serves several products, each with its own contacts, flows, topics, transports, brand, keys and team; per-product memberships, instance admins, instance keys (`clr_ik_`) and the `X-Claros-Product` header; a product picker in the dashboard; archive and unarchive. See [Products](docs/guide/PRODUCTS.md)
@@ -90,7 +95,7 @@ The Cloudflare Workers + D1 install option, multi-product instances, topics and 
 | [Concepts and Guides](docs/guide/CONCEPTS.md) | The model: events, contacts, compilation, approvals, content modes. Task guides |
 | [Flow Prompt Library](docs/guide/FLOW-PROMPTS.md) | Working prompts to paste into the flow editor |
 | [Ingestion](docs/guide/INGESTION.md) | Sending events: curl, browser snippet, server SDKs, Segment compatibility, GTM |
-| [Flows](docs/guide/FLOWS.md), [Config as code](docs/guide/CONFIG.md), [Products](docs/guide/PRODUCTS.md), [Topics](docs/guide/TOPICS.md), [Transports](docs/guide/TRANSPORTS.md) | Triggers and step fields, the config file, multi-product instances, consent, sending |
+| [Flows](docs/guide/FLOWS.md), [Email templates](docs/guide/TEMPLATES.md), [Config as code](docs/guide/CONFIG.md), [Products](docs/guide/PRODUCTS.md), [Topics](docs/guide/TOPICS.md), [Transports](docs/guide/TRANSPORTS.md) | Triggers and step fields, the config file, multi-product instances, consent, sending |
 | [API keys](docs/guide/API_KEYS.md), [Webhooks](docs/guide/WEBHOOKS.md), [Approvals](docs/guide/APPROVALS.md), [Alerts](docs/guide/ALERTS.md), [Knowledge base](docs/guide/KB.md), [Import](docs/guide/IMPORT.md) | Integrating with your product and operating an instance |
 | [FAQ and Troubleshooting](docs/guide/FAQ.md) | Lost admin access, secrets, email not sending, AI features idle, backups, data egress |
 | [Contributing](CONTRIBUTING.md) | Issues, pull requests, running the checks locally |

@@ -23,7 +23,7 @@ New dependencies: only the ones approved in DECISIONS.md (D6). Anything else nee
 ## Architecture rules
 
 1. **Roles communicate only through the database and the job queue.** No in-memory coupling across api / worker / scheduler.
-2. **The LLM runs in exactly two places:** flow compile time and content draft time (plus the planned `choose` step, which picks among deterministically filtered candidates). Never in timing, targeting or the send path.
+2. **The LLM runs in exactly three places:** flow compile time, content draft time (plus the `choose` step, which picks among deterministically filtered candidates) and template authoring time (the template studio, `POST /v1/layouts/assist`, operator-initiated in the dashboard). Never in timing, targeting or the send path.
 3. **`packages/*` stay runtime-agnostic.** No Cloudflare (`cloudflare:*`) imports outside the Workers adapters and `apps/worker`; no `pg`/`pg-boss` imports outside the Postgres adapters and `apps/server`. Above the repository layer, code never sees a SQL dialect.
 4. **`packages/core` is pure logic, no I/O.** Dependency direction: core <- adapters <- api; worker <- core, adapters, brain-oss; scheduler <- worker; server <- api, worker, scheduler.
 5. **Multi-tenancy:** every product-owned table has `tenant_id`, every query is tenant-scoped, every index on such a table leads with `tenant_id`. Key-authenticated requests take the tenant from the key only. No exceptions, including admin and test helpers.

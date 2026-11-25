@@ -83,6 +83,7 @@ import {
   evaluateThrottleGate,
   resolveThrottleConfig,
   wrapInShell,
+  isCustomLayoutRef,
   wrapInTextShell,
   buildShellComplianceHtml,
   buildShellComplianceText,
@@ -663,11 +664,17 @@ export async function processOneMessage(
     bodyText = tagTextLinks(bodyText, tenantSettings.linkTracking, ctx);
   }
 
+  // The product's email template: a stored one when brand.template names
+  // one that exists, else the built-in brand.template or brand.layout picks.
+  const customLayout = isCustomLayoutRef(brand.template)
+    ? await storeFor(db).emailLayouts.getLayout({ tenantId: candidate.tenantId, id: brand.template })
+    : null;
   const deliveredHtml = wrapInShell({
     bodyHtml,
     brand,
     tenantName,
     complianceFooterHtml: shellComplianceHtml,
+    layout: customLayout ? { source: customLayout.source, width: customLayout.width === "wide" ? "wide" : "narrow" } : null,
     eyebrow: presentation.eyebrow,
     preheader: presentation.preheader,
   });

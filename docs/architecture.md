@@ -39,7 +39,8 @@ Every product-owned table carries `tenant_id` (user-facing name: product) and ev
 
 ## Engine rules
 
-- The LLM runs only at flow compile time and content draft time, never in the send path.
+- The LLM runs only at flow compile time, content draft time and, in the template studio, while an operator edits an email template; never in the send path.
+- Every outgoing message is wrapped in the product's email template at send time (`settings.brand.template`, built in or stored in `email_layouts`); the template always carries the compliance footer.
 - Message state transitions use compare-and-swap on status; delivery feedback only moves forward.
 - Suppression is checked before anything else at send time.
 - Every outgoing message carries a compliant footer and, unless its topic kind is `transactional`, RFC 8058 one-click unsubscribe headers.

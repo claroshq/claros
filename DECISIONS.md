@@ -108,3 +108,15 @@ Asked for from the People page: delete a person, add notes, change free/paid, ad
 - **Plan (free/paid) is not editable in the dashboard.** `payment_status` is written by the product's identify calls (`plan` or `payment_status` trait) and flows trigger on it; a dashboard edit would be overwritten silently by the next identify. The person page shows the value and says where it comes from. A manual override would need its own field and precedence rules; not built.
 - **No tags.** Segments and conditions read `properties`, which the product sends. Manual tags would either do nothing in flows or open the same two-writers problem as the plan. Notes cover hand-written context.
 - **Sent mail over template.** The timeline's message row links to the Sent Mail detail (the stored body as sent). That page links to the flow step and, when the step renders a template, to the template's current version in the flow editor. `template_ref` is read from the flow's current plan, so after a plan edit it names the template the step uses now.
+
+## 2026-11-25: Email templates and the template studio
+
+Requested by the maintainer: a template library with built-in narrow and wide templates, and a chat that edits a template ("vibe coding"), restricted to that job and aware of mail client support. Defaults taken while implementing (the maintainer may override):
+
+- **Name.** The dashboard says "Templates"; the API is `/v1/layouts` and the table `email_layouts`, because `/v1/templates` (business-model templates) and `/v1/email-templates` (v0.6 content templates) already exist and stay as they are.
+- **A template is the whole document**, HTML with placeholders (`{{body}}`, `{{compliance_footer}}`, `{{logo}}`, ...), filled in one pass at send time. `{{body}}` and `{{compliance_footer}}` are required exactly once, so no template can drop the unsubscribe link and postal address. Built-in templates are code; `classic` and `wide` are the v0.8.7 narrow and wide shells, pinned byte for byte.
+- **Selection.** `settings.brand.template` (built-in key or custom id) wins over `brand.layout`; unset or naming a deleted template, `brand.layout` decides as before. One template per product; per-flow or per-topic templates are not built.
+- **Third LLM place.** The studio calls the product's chat LLM at authoring time only (operator-initiated, dashboard), never on the send path. Architecture rule 2 in CLAUDE.md now names three places. Tokens are counted toward the daily LLM usage but the studio does not wait for the budget.
+- **Scope and client knowledge** are enforced in the prompt (off-topic answers get one sentence, breaking changes are proposed, not applied) and backed by deterministic checks in `@claros/core` (`validateLayoutSource` blocks saving, `lintLayoutSource` lists client issues). The model's template is validated before the operator sees it, with one repair round. Output is tagged text, not JSON.
+- **Stateless studio.** The working copy and chat live in the browser (sessionStorage per product and template); the server stores only saved templates. No chat history table.
+
