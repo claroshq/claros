@@ -12,9 +12,8 @@
  * Segment-triggered flows enroll in phase 2b (scan-segment-enrollment.ts),
  * not here: this phase only handles lifecycle_transition triggers.
  */
-import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { flows } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   matchesLifecycleTransition,
   type EnrollableFlow,
@@ -83,27 +82,8 @@ export async function phaseEnrollment(
   for (const [tenantId, tenantTransitions] of byTenant) {
     // Load all active, compiled lifecycle-transition flows for this tenant.
     // Small cardinality: a tenant typically has < 50 flows total.
-    const tenantFlows = await db
-      .select({
-        id: flows.id,
-        tenantId: flows.tenantId,
-        priority: flows.priority,
-        triggerType: flows.triggerType,
-        triggerConfig: flows.triggerConfig,
-        flowClass: flows.flowClass,
-        reentryPolicy: flows.reentryPolicy,
-        reentryCooldownDays: flows.reentryCooldownDays,
-      })
-      .from(flows)
-      .where(
-        and(
-          eq(flows.tenantId, tenantId),
-          eq(flows.status, "active"),
-          eq(flows.triggerType, "lifecycle_transition"),
-          eq(flows.compileStatus, "ready"),
-          sql`${flows.compiledPlan} IS NOT NULL`,
-        ),
-      );
+    const tenantFlows =
+      await storeFor(db).workerScanEnrollment.listActiveLifecycleTransitionFlows(tenantId);
 
     for (const transition of tenantTransitions) {
       stats.transitionsEvaluated++;
@@ -132,16 +112,15 @@ export async function phaseEnrollment(
 
       stats.enrollmentsAttempted += matchingFlows.length;
 
-      // Enroll within a transaction (advisory lock acquired inside)
-      const results = await db.transaction(async (tx) => {
-        return enrollContactInFlows(
-          tx as unknown as Db,
-          transition.contactId,
-          tenantId,
-          matchingFlows,
-          now,
-        );
-      });
+      // Enroll within a transaction (enrollContactInFlows opens it and
+      // acquires the advisory lock inside)
+      const results = await enrollContactInFlows(
+        db,
+        transition.contactId,
+        tenantId,
+        matchingFlows,
+        now,
+      );
 
       for (const result of results) {
         if (result.enrolled) {

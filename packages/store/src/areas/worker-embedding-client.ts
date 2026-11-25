@@ -6,5 +6,19 @@
  * ../d1/worker-embedding-client.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface WorkerEmbeddingClientQueries {}
+
+/** The tenant's active llm_configs row. */
+export interface WorkerEmbeddingLlmConfig {
+  id: string;
+  tenantId: string;
+  provider: string;
+  /** Encrypted JSON envelope. */
+  config: string;
+  isActive: boolean | null;
+  createdAt: Date | null;
+}
+
+export interface WorkerEmbeddingClientQueries {
+  /** The tenant's active LLM config, or null when none is active. */
+  getActiveLlmConfig(tenantId: string): Promise<WorkerEmbeddingLlmConfig | null>;
+}

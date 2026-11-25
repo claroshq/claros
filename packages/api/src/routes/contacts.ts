@@ -33,7 +33,7 @@
  *     (contact_id, transitioned_at DESC).
  */
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import {
   resolveLifecycleConfig,
   tenureBucketRange,
@@ -185,10 +185,6 @@ export default function contactsRoutes() {
     const state = parsed.data.lifecycle_state ?? null;
     const depth = parsed.data.engagement_depth ?? null;
     const search = parsed.data.search?.trim() ? `%${parsed.data.search.trim()}%` : null;
-    // DESC keyset: newest contacts first. Rows strictly older than the cursor.
-    const cursorClause = cursor
-      ? sql`AND ROW(created_at, id) < ROW(${cursor.created_at}::timestamptz, ${cursor.id}::uuid)`
-      : sql``;
 
     // Retention-grid bucket filters resolve to day ranges via the tenant's
     // lifecycle config (recency thresholds depend on natural_frequency_days).
@@ -198,10 +194,7 @@ export default function contactsRoutes() {
     let recencyMin: number | null = null;
     let recencyMax: number | null = null;
     if (parsed.data.tenure_bucket || parsed.data.recency_bucket) {
-      const tenantRows = await db.execute<{ settings: unknown }>(sql`
-        SELECT settings FROM tenants WHERE id = ${tenantId}
-      `);
-      const settings = tenantRows.rows[0]?.settings as
+      const settings = (await storeFor(db).apiContacts.getTenantSettings({ tenantId })) as
         | Record<string, unknown>
         | null
         | undefined;
@@ -223,40 +216,21 @@ export default function contactsRoutes() {
       }
     }
 
-    const rows = (
-      await db.execute<{
-        id: string;
-        tenant_id: string;
-        external_id: string;
-        email: string | null;
-        name: string | null;
-        company: string | null;
-        lifecycle_state: string;
-        engagement_depth: string | null;
-        payment_status: string | null;
-        last_seen_at: string | null;
-        created_at: string;
-      }>(sql`
-        SELECT id, tenant_id, external_id, email, name, company,
-               lifecycle_state, engagement_depth, payment_status,
-               last_seen_at, created_at
-        FROM contacts
-        WHERE tenant_id = ${tenantId}
-          AND (${state}::text IS NULL OR lifecycle_state = ${state})
-          AND (${depth}::text IS NULL OR engagement_depth = ${depth})
-          AND (${search}::text IS NULL OR
-               email ILIKE ${search} OR
-               name ILIKE ${search} OR
-               external_id ILIKE ${search})
-          AND (${tenureMin}::int IS NULL OR first_seen_at <= now() - make_interval(days => ${tenureMin}))
-          AND (${tenureMax}::int IS NULL OR first_seen_at > now() - make_interval(days => ${tenureMax}))
-          AND (${recencyMin}::int IS NULL OR last_seen_at <= now() - make_interval(days => ${recencyMin}))
-          AND (${recencyMax}::int IS NULL OR last_seen_at > now() - make_interval(days => ${recencyMax}))
-          ${cursorClause}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ${fetchLimit}
-      `)
-    ).rows;
+    const rows = await storeFor(db).apiContacts.listContacts({
+      tenantId,
+      filter: {
+        lifecycleState: state,
+        engagementDepth: depth,
+        searchPattern: search,
+        tenureMinDays: tenureMin,
+        tenureMaxDays: tenureMax,
+        recencyMinDays: recencyMin,
+        recencyMaxDays: recencyMax,
+        // DESC keyset: newest contacts first. Rows strictly older than the cursor.
+        before: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+      },
+      limit: fetchLimit,
+    });
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
@@ -286,45 +260,17 @@ export default function contactsRoutes() {
       return c.json({ error: "Contact not found." }, 404);
     }
 
-    const contactRows = (
-      await db.execute<Record<string, unknown>>(sql`
-        SELECT id, tenant_id, external_id, email, name, company, properties,
-               lifecycle_state, engagement_depth, payment_status,
-               first_seen_at, last_seen_at, activated_at, created_at
-        FROM contacts
-        WHERE tenant_id = ${tenantId} AND id = ${id}::uuid
-        LIMIT 1
-      `)
-    ).rows;
+    const contact = await storeFor(db).apiContacts.getContact({ tenantId, contactId: id });
 
-    if (contactRows.length === 0) {
+    if (contact === null) {
       return c.json({ error: "Contact not found." }, 404);
     }
 
-    const contact = contactRows[0]!;
-
-    const memberships = (
-      await db.execute<Record<string, unknown>>(sql`
-        SELECT m.id, m.flow_id, f.name AS flow_name, m.status, m.current_step,
-               m.entered_at, m.completed_at, m.exited_at, m.exit_reason
-        FROM flow_memberships m
-        JOIN flows f ON f.id = m.flow_id AND f.tenant_id = ${tenantId}
-        WHERE m.tenant_id = ${tenantId} AND m.contact_id = ${id}::uuid
-        ORDER BY m.entered_at DESC
-      `)
-    ).rows;
+    const memberships = await storeFor(db).apiContacts.listContactMemberships({ tenantId, contactId: id });
 
     let suppression: Record<string, unknown> | null = null;
     if (typeof contact.email === "string" && contact.email.length > 0) {
-      const supRows = (
-        await db.execute<Record<string, unknown>>(sql`
-          SELECT id, reason, source, created_at
-          FROM suppressions
-          WHERE tenant_id = ${tenantId} AND lower(email) = lower(${contact.email})
-          LIMIT 1
-        `)
-      ).rows;
-      suppression = supRows[0] ?? null;
+      suppression = await storeFor(db).apiContacts.findSuppression({ tenantId, email: contact.email });
     }
 
     return c.json({ contact, memberships, suppression });
@@ -358,14 +304,8 @@ export default function contactsRoutes() {
 
     // Existence check with tenant scoping; the timeline of another tenant's
     // contact is as absent as the contact.
-    const exists = (
-      await db.execute<{ id: string }>(sql`
-        SELECT id FROM contacts
-        WHERE tenant_id = ${tenantId} AND id = ${id}::uuid
-        LIMIT 1
-      `)
-    ).rows;
-    if (exists.length === 0) {
+    const exists = await storeFor(db).apiContacts.contactExists({ tenantId, contactId: id });
+    if (!exists) {
       return c.json({ error: "Contact not found." }, 404);
     }
 
@@ -374,67 +314,13 @@ export default function contactsRoutes() {
     const fetchLimit = limit + 1;
     const cursor = query.after ? decodeCursor(query.after) : null;
     const contactId = id;
-    // DESC keyset: rows strictly older than the cursor, applied inside each
-    // branch so the branch LIMIT cannot cut off rows a later page needs.
-    const eventCursor = cursor
-      ? sql`AND ROW(e."timestamp", e.id) < ROW(${cursor.created_at}::timestamptz, ${cursor.id}::uuid)`
-      : sql``;
-    const transitionCursor = cursor
-      ? sql`AND ROW(t.transitioned_at, t.id) < ROW(${cursor.created_at}::timestamptz, ${cursor.id}::uuid)`
-      : sql``;
-    const messageCursor = cursor
-      ? sql`AND ROW(COALESCE(m.sent_at, m.created_at), m.id) < ROW(${cursor.created_at}::timestamptz, ${cursor.id}::uuid)`
-      : sql``;
-
-    const rows = (
-      await db.execute<Record<string, unknown>>(sql`
-        SELECT * FROM (
-          (
-            SELECT 'event' AS kind, e.id, e."timestamp" AS occurred_at,
-                   e.type AS event_type, e.event_name, e.properties,
-                   NULL::text AS from_state, NULL::text AS to_state,
-                   NULL::text AS subject, NULL::text AS status,
-                   NULL::text AS feedback, NULL::uuid AS flow_id,
-                   NULL::text AS flow_name, NULL::integer AS flow_step_order,
-                   e.context, NULL::jsonb AS metadata
-            FROM events e
-            WHERE e.tenant_id = ${tenantId} AND e.contact_id = ${contactId}::uuid
-            ${eventCursor}
-            ORDER BY e."timestamp" DESC, e.id DESC
-            LIMIT ${fetchLimit}
-          )
-          UNION ALL
-          (
-            SELECT 'transition', t.id, t.transitioned_at,
-                   NULL, NULL, NULL,
-                   t.from_state, t.to_state,
-                   NULL, NULL, NULL, NULL, NULL, NULL,
-                   NULL::jsonb, t.metadata
-            FROM lifecycle_transitions t
-            WHERE t.tenant_id = ${tenantId} AND t.contact_id = ${contactId}::uuid
-            ${transitionCursor}
-            ORDER BY t.transitioned_at DESC, t.id DESC
-            LIMIT ${fetchLimit}
-          )
-          UNION ALL
-          (
-            SELECT 'message', m.id, COALESCE(m.sent_at, m.created_at),
-                   NULL, NULL, NULL,
-                   NULL, NULL,
-                   m.subject, m.status, m.feedback, m.flow_id, f.name, m.flow_step_order,
-                   NULL::jsonb, NULL::jsonb
-            FROM lifecycle_messages m
-            JOIN flows f ON f.id = m.flow_id AND f.tenant_id = ${tenantId}
-            WHERE m.tenant_id = ${tenantId} AND m.contact_id = ${contactId}::uuid
-            ${messageCursor}
-            ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.id DESC
-            LIMIT ${fetchLimit}
-          )
-        ) merged
-        ORDER BY merged.occurred_at DESC, merged.id DESC
-        LIMIT ${fetchLimit}
-      `)
-    ).rows;
+    // DESC keyset: rows strictly older than the cursor (applied per branch).
+    const rows = await storeFor(db).apiContacts.listContactTimeline({
+      tenantId,
+      contactId,
+      before: cursor ? { occurredAt: cursor.created_at, id: cursor.id } : null,
+      limit: fetchLimit,
+    });
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;

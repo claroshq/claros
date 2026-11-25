@@ -61,15 +61,8 @@
  *   round-robin implementation without forking this file. Cloud passes a
  *   different FetchDrainBatch function at startup via apps/server wiring.
  */
-import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import {
-  tenants,
-  contacts,
-  flows,
-  lifecycleMessages,
-  suppressions,
-} from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   evaluateThrottleGate,
   resolveThrottleConfig,
@@ -175,75 +168,9 @@ export const fetchDrainBatchSimple: FetchDrainBatch = async (
 ): Promise<DrainCandidate[]> => {
   if (tenantIds.length === 0) return [];
 
-  // Build tenant filter for the IN clause.
-  const tenantFilter = sql.join(tenantIds.map((id) => sql`${id}`), sql`, `);
-
-  // Two-step approach:
-  //   1. CTE: select + lock + claim (atomically set to 'sending')
-  //   2. Re-select the claimed rows joined with flows for ordering
-  //
-  // The CTE guarantees disjoint sets across concurrent workers (SKIP LOCKED).
-  // The final SELECT re-orders by the spec-mandated sort (critical first, then
-  // priority, then FIFO). UPDATE RETURNING does not preserve CTE order, so
-  // we must re-sort.
-  const rows = await db.execute<{
-    id: string;
-    tenant_id: string;
-    contact_id: string;
-    flow_id: string;
-    flow_step_order: number | null;
-    subject: string | null;
-    body_html: string | null;
-    body_text: string | null;
-    retry_count: number | null;
-    flow_class: string;
-    priority: number | null;
-    created_at: string | Date | null;
-  }>(sql`
-    WITH candidates AS (
-      SELECT lm.id
-      FROM lifecycle_messages lm
-      JOIN flows f ON f.id = lm.flow_id
-      WHERE lm.status = 'approved'
-        AND lm.tenant_id IN (${tenantFilter})
-        AND (lm.scheduled_send_at IS NULL OR lm.scheduled_send_at <= ${now})
-      ORDER BY
-        CASE WHEN f.flow_class = 'critical' THEN 0 ELSE 1 END ASC,
-        f.priority DESC,
-        lm.created_at ASC
-      LIMIT ${globalLimit}
-      FOR UPDATE OF lm SKIP LOCKED
-    ),
-    claimed AS (
-      UPDATE lifecycle_messages
-      SET status = 'sending', updated_at = ${now}
-      WHERE id IN (SELECT id FROM candidates)
-      RETURNING id, tenant_id, contact_id, flow_id, flow_step_order,
-                subject, body_html, body_text, retry_count, created_at
-    )
-    SELECT
-      c.id, c.tenant_id, c.contact_id, c.flow_id, c.flow_step_order,
-      c.subject, c.body_html, c.body_text, c.retry_count,
-      f.flow_class, f.priority, c.created_at
-    FROM claimed c
-    JOIN flows f ON f.id = c.flow_id
-    ORDER BY
-      CASE WHEN f.flow_class = 'critical' THEN 0 ELSE 1 END ASC,
-      f.priority DESC,
-      c.created_at ASC
-  `);
-
-  return rows.rows.map((row) => ({
-    id: row.id,
-    tenantId: row.tenant_id,
-    contactId: row.contact_id,
-    flowId: row.flow_id,
-    flowStepOrder: row.flow_step_order,
-    subject: row.subject,
-    bodyHtml: row.body_html,
-    bodyText: row.body_text,
-    retryCount: row.retry_count,
-  }));
+  // The claim (FOR UPDATE SKIP LOCKED + status = 'sending') is one statement
+  // inside the Store; see WorkerDrainQueries.claimDrainBatch.
+  return storeFor(db).workerDrain.claimDrainBatch({ now, limit: globalLimit, tenantIds });
 };
 
 // ---------------------------------------------------------------------------
@@ -297,23 +224,18 @@ export async function processDrainTick(
 
   // Step 1: Find tenants that have approved messages ready to drain.
   // This is a cheap read-only query (no locks, no writes).
-  const tenantRows = await db.execute<{ tenant_id: string }>(sql`
-    SELECT DISTINCT tenant_id
-    FROM lifecycle_messages
-    WHERE status = 'approved'
-      AND (scheduled_send_at IS NULL OR scheduled_send_at <= ${now})
-  `);
+  const dueTenantIds = await storeFor(db).workerDrain.listTenantsWithDueMessages(now);
 
-  if (tenantRows.rows.length === 0) return stats;
+  if (dueTenantIds.length === 0) return stats;
 
   // Step 2: Resolve transport for each tenant. Only proceed with tenants
   // that have a configured adapter. This is the gate that ensures zero
   // writes when no transport exists (the normal state before Phase 4).
   const tenantsWithTransport = new Map<string, TransportAdapter>();
-  for (const row of tenantRows.rows) {
-    const adapter = await resolveTransport(row.tenant_id);
+  for (const dueTenantId of dueTenantIds) {
+    const adapter = await resolveTransport(dueTenantId);
     if (adapter !== null) {
-      tenantsWithTransport.set(row.tenant_id, adapter);
+      tenantsWithTransport.set(dueTenantId, adapter);
     } else {
       stats.skippedNoTransport++;
     }
@@ -332,27 +254,14 @@ export async function processDrainTick(
   // Step 3b: Resolve daily_limit for each tenant
   const tenantDailyLimits = new Map<string, number | null>();
   for (const tenantId of tenantIds) {
-    const transportRows = await db.execute<{ daily_limit: number | null }>(sql`
-      SELECT daily_limit
-      FROM transport_configs
-      WHERE tenant_id = ${tenantId} AND is_active = true
-      LIMIT 1
-    `);
-    tenantDailyLimits.set(tenantId, transportRows.rows[0]?.daily_limit ?? null);
+    tenantDailyLimits.set(tenantId, await storeFor(db).workerDrain.getTransportDailyLimit(tenantId));
   }
 
   // Count sent messages today per tenant (for daily limit enforcement)
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tenantSentToday = new Map<string, number>();
   for (const tenantId of tenantIds) {
-    const countRows = await db.execute<{ cnt: string }>(sql`
-      SELECT COUNT(*)::text AS cnt
-      FROM lifecycle_messages
-      WHERE tenant_id = ${tenantId}
-        AND status = 'sent'
-        AND sent_at >= ${startOfDay}
-    `);
-    tenantSentToday.set(tenantId, parseInt(countRows.rows[0]?.cnt ?? "0", 10));
+    tenantSentToday.set(tenantId, await storeFor(db).workerDrain.countSentSince(tenantId, startOfDay));
   }
 
   const baseUrl = resolveBaseUrl(baseUrlOverride);
@@ -367,14 +276,7 @@ export async function processDrainTick(
     if (dailyLimit !== null && sentToday >= dailyLimit) {
       // Revert to approved, will retry tomorrow
       const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      await db
-        .update(lifecycleMessages)
-        .set({
-          status: "approved",
-          scheduledSendAt: tomorrow,
-          updatedAt: now,
-        })
-        .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+      await storeFor(db).workerDrain.deferClaim(candidate.id, tomorrow, now);
       continue;
     }
 
@@ -452,22 +354,15 @@ export async function processOneMessage(
   // Transport is already resolved (per-tenant, before claiming).
 
   // Step 1: Fetch contact email. If no email, revert to approved.
-  const contactRow = await db
-    .select({
-      email: contacts.email,
-      properties: contacts.properties,
-    })
-    .from(contacts)
-    .where(eq(contacts.id, candidate.contactId))
-    .limit(1);
+  const contactRow = await storeFor(db).workerDrain.getContact(candidate.contactId);
 
-  if (contactRow.length === 0 || !contactRow[0]!.email) {
+  if (contactRow === null || !contactRow.email) {
     await revertToApproved(db, candidate.id, now);
     return "no_email";
   }
 
-  const contactEmail = contactRow[0]!.email;
-  const contactProps = contactRow[0]!.properties as Record<string, unknown> | null;
+  const contactEmail = contactRow.email;
+  const contactProps = contactRow.properties as Record<string, unknown> | null;
   const contactTimezone = (contactProps?.timezone as string) ?? null;
 
   // Step 2: Resolve tenant postal address and brand settings.
@@ -543,34 +438,17 @@ export async function processOneMessage(
       // CAS: only write if the row is still at 'sending'. If reap concurrently
       // reverted it to 'approved' or 'failed', this update hits 0 rows and the
       // reap outcome wins (correct: reap ran first, drain was too slow).
-      await db
-        .update(lifecycleMessages)
-        .set({ status: "suppressed", updatedAt: now })
-        .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+      await storeFor(db).workerDrain.markSuppressed(candidate.id, now);
       return "suppressed";
 
     case "defer_frequency":
       // CAS: same guard as suppress. See comment above.
-      await db
-        .update(lifecycleMessages)
-        .set({
-          status: "approved",
-          scheduledSendAt: verdict.retryAfter,
-          updatedAt: now,
-        })
-        .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+      await storeFor(db).workerDrain.deferClaim(candidate.id, verdict.retryAfter, now);
       return "deferred_frequency";
 
     case "defer_window":
       // CAS: same guard as suppress. See comment above.
-      await db
-        .update(lifecycleMessages)
-        .set({
-          status: "approved",
-          scheduledSendAt: verdict.retryAfter,
-          updatedAt: now,
-        })
-        .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+      await storeFor(db).workerDrain.deferClaim(candidate.id, verdict.retryAfter, now);
       return "deferred_window";
 
     case "allow":
@@ -629,10 +507,7 @@ export async function processOneMessage(
   // while this message was being processed, this write hits 0 rows and the reap
   // outcome wins. In that case the send below will also have its status write hit
   // 0 rows, and the message is safely retried by reap.
-  await db
-    .update(lifecycleMessages)
-    .set({ recipientAddress: contactEmail, updatedAt: now })
-    .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+  await storeFor(db).workerDrain.setRecipientAddress(candidate.id, contactEmail, now);
 
   // Step 10: Send via transport.
   try {
@@ -657,24 +532,13 @@ export async function processOneMessage(
       //
       // recipient_address was already written before the send (Step 9). This write
       // only updates status, sentAt, and providerMessageId.
-      await db
-        .update(lifecycleMessages)
-        .set({
-          status: "sent",
-          sentAt: now,
-          providerMessageId: sendResult.providerMessageId ?? null,
-          updatedAt: now,
-        })
-        .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+      await storeFor(db).workerDrain.markSent(candidate.id, sendResult.providerMessageId ?? null, now);
       return "sent";
     } else if (sendResult.permanent === true) {
       // Permanent failure: mark failed immediately without waiting for reap.
       // CAS: same guard as suppress. If reap already moved the row, this hits
       // 0 rows and the reap outcome wins.
-      await db
-        .update(lifecycleMessages)
-        .set({ status: "failed", updatedAt: now })
-        .where(and(eq(lifecycleMessages.id, candidate.id), eq(lifecycleMessages.status, "sending")));
+      await storeFor(db).workerDrain.markFailed(candidate.id, now);
       return "permanent_failure";
     } else {
       // Transient failure: message stays at 'sending'.
@@ -705,10 +569,7 @@ export async function processOneMessage(
  * held it, this revert hits 0 rows and the reap outcome wins.
  */
 async function revertToApproved(db: Db, messageId: string, now: Date): Promise<void> {
-  await db
-    .update(lifecycleMessages)
-    .set({ status: "approved", updatedAt: now })
-    .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")));
+  await storeFor(db).workerDrain.releaseClaim(messageId, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -725,38 +586,20 @@ async function buildThrottleGateInput(
   // Check suppression (case-insensitive via functional index on lower(email)).
   // The index uq_suppressions_tenant_email_lower is keyed on lower(email), so
   // the query must use lower() on both sides to hit the index.
-  const suppressionRow = await db
-    .select({ id: suppressions.id })
-    .from(suppressions)
-    .where(
-      and(
-        eq(suppressions.tenantId, candidate.tenantId),
-        sql`lower(${suppressions.email}) = lower(${contactEmail})`,
-      ),
-    )
-    .limit(1);
-
-  const isSuppressed = suppressionRow.length > 0;
+  const isSuppressed = await storeFor(db).workerDrain.isSuppressed(candidate.tenantId, contactEmail);
 
   // Get flow class and step window_policy
-  const flowRow = await db
-    .select({
-      flowClass: flows.flowClass,
-      compiledPlan: flows.compiledPlan,
-    })
-    .from(flows)
-    .where(eq(flows.id, candidate.flowId))
-    .limit(1);
+  const flowRow = await storeFor(db).workerDrain.getFlowThrottleInfo(candidate.flowId);
 
   let flowClass: "critical" | "nurture" = "nurture";
   let windowPolicy: "immediate" | "respect_window" = "respect_window";
 
-  if (flowRow.length > 0) {
-    flowClass = flowRow[0]!.flowClass === "critical" ? "critical" : "nurture";
+  if (flowRow !== null) {
+    flowClass = flowRow.flowClass === "critical" ? "critical" : "nurture";
 
     // Extract window_policy from the compiled step
-    if (candidate.flowStepOrder !== null && flowRow[0]!.compiledPlan) {
-      const plan = flowRow[0]!.compiledPlan as { steps?: Array<{ order: number; window_policy?: string }> };
+    if (candidate.flowStepOrder !== null && flowRow.compiledPlan) {
+      const plan = flowRow.compiledPlan as { steps?: Array<{ order: number; window_policy?: string }> };
       if (Array.isArray(plan.steps)) {
         const step = plan.steps.find((s) => s.order === candidate.flowStepOrder);
         if (step?.window_policy === "immediate") {
@@ -767,44 +610,16 @@ async function buildThrottleGateInput(
   }
 
   // Get tenant throttle config
-  const tenantRow = await db
-    .select({ settings: tenants.settings })
-    .from(tenants)
-    .where(eq(tenants.id, candidate.tenantId))
-    .limit(1);
-
-  const tenantSettings = tenantRow.length > 0
-    ? (tenantRow[0]!.settings as Record<string, unknown> | null)
-    : null;
+  const tenantSettings = (await storeFor(db).workerDrain.getTenantSettings(candidate.tenantId)) as
+    | Record<string, unknown>
+    | null;
   const config = resolveThrottleConfig(tenantSettings?.throttle ?? null);
 
   // Get recent send history for this contact
   const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const recentSendsResult = await db.execute<{
-    count_24h: string;
-    count_7d: string;
-    last_sent: string | Date | null;
-  }>(sql`
-    SELECT
-      COUNT(*) FILTER (WHERE sent_at >= ${last24h})::text AS count_24h,
-      COUNT(*)::text AS count_7d,
-      MAX(sent_at) AS last_sent
-    FROM lifecycle_messages
-    WHERE contact_id = ${candidate.contactId}
-      AND status IN ('sending', 'sent')
-      AND sent_at >= ${last7d}
-  `);
-
-  const rawLastSent = recentSendsResult.rows[0]?.last_sent ?? null;
-  const recentSends = {
-    countLast24h: parseInt(recentSendsResult.rows[0]?.count_24h ?? "0", 10),
-    countLast7d: parseInt(recentSendsResult.rows[0]?.count_7d ?? "0", 10),
-    lastSentAt: rawLastSent !== null
-      ? (rawLastSent instanceof Date ? rawLastSent : new Date(rawLastSent))
-      : null,
-  };
+  const recentSends = await storeFor(db).workerDrain.getRecentSends(candidate.contactId, last24h, last7d);
 
   return {
     isSuppressed,
@@ -834,22 +649,10 @@ interface SenderInfo {
  */
 async function resolveSenderInfo(db: Db, tenantId: string): Promise<SenderInfo> {
   // Look up the active transport config for from address.
-  const configRow = await db.execute<{
-    from_email: string;
-    from_name: string | null;
-  }>(sql`
-    SELECT from_email, from_name
-    FROM transport_configs
-    WHERE tenant_id = ${tenantId}
-      AND is_active = true
-    LIMIT 1
-  `);
+  const sender = await storeFor(db).workerDrain.getSender(tenantId);
 
-  if (configRow.rows.length > 0) {
-    return {
-      fromEmail: configRow.rows[0]!.from_email,
-      fromName: configRow.rows[0]!.from_name,
-    };
+  if (sender !== null) {
+    return sender;
   }
 
   // Fallback: should not be reached in production (transport resolver
@@ -861,26 +664,6 @@ async function resolveSenderInfo(db: Db, tenantId: string): Promise<SenderInfo> 
 // ---------------------------------------------------------------------------
 // Tenant settings resolver (postal address + brand)
 // ---------------------------------------------------------------------------
-
-/**
- * Resolves the tenant's physical postal address from tenants.settings.
- *
- * Returns null if not configured. The caller is responsible for blocking
- * the send and surfacing an operator-facing error.
- */
-async function resolvePostalAddress(db: Db, tenantId: string): Promise<string | null> {
-  const tenantRow = await db
-    .select({ settings: tenants.settings })
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .limit(1);
-
-  if (tenantRow.length === 0) return null;
-  const settings = tenantRow[0]!.settings as Record<string, unknown> | null;
-  const addr = settings?.postal_address;
-  if (typeof addr !== "string" || addr.trim().length === 0) return null;
-  return addr.trim();
-}
 
 /**
  * Result from resolving tenant settings needed at drain time.
@@ -897,15 +680,11 @@ interface TenantDrainSettings {
  * Used at drain time to assemble the email shell.
  */
 async function resolveTenantDrainSettings(db: Db, tenantId: string): Promise<TenantDrainSettings | null> {
-  const tenantRow = await db
-    .select({ name: tenants.name, settings: tenants.settings })
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .limit(1);
+  const tenantRow = await storeFor(db).workerDrain.getTenant(tenantId);
 
-  if (tenantRow.length === 0) return null;
+  if (tenantRow === null) return null;
 
-  const settings = tenantRow[0]!.settings as Record<string, unknown> | null;
+  const settings = tenantRow.settings as Record<string, unknown> | null;
   const addr = settings?.postal_address;
   const postalAddress = (typeof addr === "string" && addr.trim().length > 0)
     ? addr.trim()
@@ -915,7 +694,7 @@ async function resolveTenantDrainSettings(db: Db, tenantId: string): Promise<Ten
 
   return {
     postalAddress,
-    tenantName: tenantRow[0]!.name,
+    tenantName: tenantRow.name,
     brand,
   };
 }

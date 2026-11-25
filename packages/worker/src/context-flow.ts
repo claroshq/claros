@@ -43,8 +43,8 @@
  *
  * All queries are scoped by tenant_id. Deterministic results.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 import { compiledPlanSchema } from "@claros/core";
 
 // ---------------------------------------------------------------------------
@@ -96,23 +96,6 @@ export interface FlowStepSection {
 }
 
 // ---------------------------------------------------------------------------
-// Raw DB row types
-// ---------------------------------------------------------------------------
-
-type FlowPlanRow = Record<string, unknown> & {
-  compiled_plan: unknown; // JSONB arrives as parsed object or null
-};
-
-type TransportRow = Record<string, unknown> & {
-  from_name: string | null;
-};
-
-type TenantRow = Record<string, unknown> & {
-  name: string;
-  settings: unknown; // JSONB arrives as parsed object or null
-};
-
-// ---------------------------------------------------------------------------
 // Builder
 // ---------------------------------------------------------------------------
 
@@ -143,19 +126,14 @@ export async function buildFlowStepSection(
   // -------------------------------------------------------------------------
   // Query 1: compiled plan from flows table
   // -------------------------------------------------------------------------
-  const flowRows = await db.execute<FlowPlanRow>(sql`
-    SELECT compiled_plan
-    FROM flows
-    WHERE id        = ${flowId}::uuid
-      AND tenant_id = ${tenantId}::uuid
-  `);
+  const flowRow = await storeFor(db).workerContextFlow.getCompiledPlan({ tenantId, flowId });
 
   let brainInstruction: string | undefined;
   let kbRef: string | undefined;
   let templateRef: string | undefined;
 
-  if (flowRows.rows.length > 0) {
-    const rawPlan = flowRows.rows[0]!.compiled_plan;
+  if (flowRow.found) {
+    const rawPlan = flowRow.compiledPlan;
 
     if (rawPlan != null) {
       // Defensively validate the compiled plan against the schema.
@@ -196,17 +174,11 @@ export async function buildFlowStepSection(
   // -------------------------------------------------------------------------
   // Query 2a: sender name from active transport config
   // -------------------------------------------------------------------------
-  const transportRows = await db.execute<TransportRow>(sql`
-    SELECT from_name
-    FROM transport_configs
-    WHERE tenant_id = ${tenantId}::uuid
-      AND is_active = true
-    LIMIT 1
-  `);
+  const transportRow = await storeFor(db).workerContextFlow.getActiveSenderName(tenantId);
 
   let senderName: string | undefined;
-  if (transportRows.rows.length > 0) {
-    const fromName = transportRows.rows[0]!.from_name;
+  if (transportRow.found) {
+    const fromName = transportRow.fromName;
     // from_name is nullable: absent rather than fabricated when null
     if (fromName != null) {
       senderName = fromName;
@@ -216,21 +188,17 @@ export async function buildFlowStepSection(
   // -------------------------------------------------------------------------
   // Query 2b: product name and brain_context from tenants
   // -------------------------------------------------------------------------
-  const tenantRows = await db.execute<TenantRow>(sql`
-    SELECT name, settings
-    FROM tenants
-    WHERE id = ${tenantId}::uuid
-  `);
+  const tenantRow = await storeFor(db).workerContextFlow.getTenantNameAndSettings(tenantId);
 
   let productName: string | undefined;
   let brainContext: string | undefined;
-  if (tenantRows.rows.length > 0) {
+  if (tenantRow !== null) {
     // tenants.name is NOT NULL by schema - always a string when the row exists
-    productName = tenantRows.rows[0]!.name;
+    productName = tenantRow.name;
 
     // settings.brain_context is optional; absent rather than fabricated.
     // Non-string values (corrupt settings JSON) are treated as absent.
-    const settings = tenantRows.rows[0]!.settings as Record<string, unknown> | null;
+    const settings = tenantRow.settings as Record<string, unknown> | null;
     const rawBrainContext = settings?.brain_context;
     if (typeof rawBrainContext === "string" && rawBrainContext.trim().length > 0) {
       brainContext = rawBrainContext;

@@ -20,8 +20,7 @@
  *   - Work attributed to removed members (approvals, etc.) is preserved.
  */
 import { randomBytes, createHash } from "node:crypto";
-import { eq, and, sql, ne, isNull } from "drizzle-orm";
-import { users, sessions, invites, tenants, transportConfigs } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { resolveTransportAdapter } from "@claros/adapters";
 import { buildInviteEmail, type TransactionalEmailInput } from "../transactional-email.js";
 import type { Db } from "../plugins/db.js";
@@ -46,18 +45,7 @@ export default function teamRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        name: users.name,
-        role: users.role,
-        lastLoginAt: users.lastLoginAt,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(and(eq(users.tenantId, tenantId), isNull(users.deactivatedAt)))
-      .orderBy(users.createdAt);
+    const rows = await storeFor(db).apiTeam.listMembers({ tenantId });
 
     return c.json({ members: rows });
   });
@@ -84,17 +72,7 @@ export default function teamRoutes() {
       const inviteRole = role === "owner" ? "owner" : "member";
 
       // Check if email is already a member
-      const existing = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(
-          eq(users.tenantId, tenantId),
-          eq(users.email, normalizedEmail),
-          isNull(users.deactivatedAt),
-        ))
-        .limit(1);
-
-      if (existing.length > 0) {
+      if (await storeFor(db).apiTeam.isActiveMemberEmail({ tenantId, email: normalizedEmail })) {
         return c.json({ error: "That email is already a team member." }, 409);
       }
 
@@ -103,39 +81,26 @@ export default function teamRoutes() {
       const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
       // Insert invite
-      const [inserted] = await db
-        .insert(invites)
-        .values({
-          tenantId,
-          email: normalizedEmail,
-          role: inviteRole,
-          tokenHash: hash,
-          invitedBy: inviterId,
-          expiresAt,
-        })
-        .returning({ id: invites.id });
+      const insertedId = await storeFor(db).apiTeam.createInvite({
+        tenantId,
+        email: normalizedEmail,
+        role: inviteRole,
+        tokenHash: hash,
+        invitedBy: inviterId,
+        expiresAt,
+      });
 
       // Build the invite URL
       const dashboardUrl = process.env.DASHBOARD_URL || process.env.BASE_URL || "http://localhost:3000";
       const inviteUrl = `${dashboardUrl}/invite/accept?token=${raw}`;
 
       // Try to send branded invite email
-      const tenantRows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
-      const tenant = tenantRows[0]!;
+      const tenant = (await storeFor(db).apiTeam.getTenantBrand({ tenantId }))!;
       const settings = (tenant.settings as Record<string, unknown> | null) ?? {};
       const brand = (settings.brand as Record<string, unknown> | undefined) ?? {};
 
       // Get inviter name for the email
-      const inviterRows = await db
-        .select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, inviterId))
-        .limit(1);
-      const inviterName = inviterRows[0]?.name ?? null;
+      const inviterName = await storeFor(db).apiTeam.getUserName({ userId: inviterId });
 
       const emailInput: TransactionalEmailInput = {
         brand: brand as TransactionalEmailInput["brand"],
@@ -148,20 +113,10 @@ export default function teamRoutes() {
 
       // Attempt send
       let emailSent = false;
-      const transportRows = await db.execute<{
-        provider: string;
-        config: string;
-        from_email: string;
-        from_name: string | null;
-      }>(sql`
-        SELECT provider, config::text AS config, from_email, from_name
-        FROM transport_configs
-        WHERE tenant_id = ${tenantId}::uuid AND is_active = true
-        LIMIT 1
-      `);
+      const transport = await storeFor(db).apiTeam.getActiveTransport({ tenantId });
 
-      if (transportRows.rows.length > 0) {
-        const row = transportRows.rows[0]!;
+      if (transport !== null) {
+        const row = transport;
         const result = resolveTransportAdapter(row.provider, row.config);
         if (result.ok) {
           try {
@@ -197,7 +152,7 @@ export default function teamRoutes() {
 
       return c.json({
         invite: {
-          id: inserted!.id,
+          id: insertedId,
           email: normalizedEmail,
           role: inviteRole,
           expires_at: expiresAt.toISOString(),
@@ -216,21 +171,7 @@ export default function teamRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select({
-        id: invites.id,
-        email: invites.email,
-        role: invites.role,
-        expiresAt: invites.expiresAt,
-        createdAt: invites.createdAt,
-      })
-      .from(invites)
-      .where(and(
-        eq(invites.tenantId, tenantId),
-        isNull(invites.acceptedAt),
-        sql`${invites.expiresAt} > now()`,
-      ))
-      .orderBy(invites.createdAt);
+    const rows = await storeFor(db).apiTeam.listPendingInvites({ tenantId });
 
     return c.json({ invites: rows });
   });
@@ -247,12 +188,9 @@ export default function teamRoutes() {
       const tenantId = c.var.tenant!.id;
 
       const id = c.req.param("id")!;
-      const deleted = await db
-        .delete(invites)
-        .where(and(eq(invites.id, id), eq(invites.tenantId, tenantId)))
-        .returning({ id: invites.id });
+      const deleted = await storeFor(db).apiTeam.deleteInvite({ tenantId, id });
 
-      if (deleted.length === 0) {
+      if (!deleted) {
         return c.json({ error: "Invite not found." }, 404);
       }
 
@@ -279,38 +217,22 @@ export default function teamRoutes() {
       }
 
       // Load the target user
-      const targetRows = await db
-        .select({ id: users.id, role: users.role })
-        .from(users)
-        .where(and(eq(users.id, id), eq(users.tenantId, tenantId), isNull(users.deactivatedAt)))
-        .limit(1);
+      const target = await storeFor(db).apiTeam.getActiveMember({ tenantId, userId: id });
 
-      if (targetRows.length === 0) {
+      if (target === null) {
         return c.json({ error: "Member not found." }, 404);
       }
 
-      const target = targetRows[0]!;
-
       // If demoting from owner to member, check we won't be left with zero owners
       if (target.role === "owner" && role === "member") {
-        const ownerCount = await db
-          .select({ cnt: sql<number>`count(*)::int` })
-          .from(users)
-          .where(and(
-            eq(users.tenantId, tenantId),
-            eq(users.role, "owner"),
-            isNull(users.deactivatedAt),
-          ));
+        const ownerCount = await storeFor(db).apiTeam.countActiveOwners({ tenantId });
 
-        if ((ownerCount[0]?.cnt ?? 0) <= 1) {
+        if (ownerCount <= 1) {
           return c.json({ error: "Cannot demote the last owner. Promote another member first." }, 400);
         }
       }
 
-      await db
-        .update(users)
-        .set({ role })
-        .where(eq(users.id, id));
+      await storeFor(db).apiTeam.setRole({ userId: id, role });
 
       return c.json({ ok: true, role });
     },
@@ -339,45 +261,24 @@ export default function teamRoutes() {
       }
 
       // Load target
-      const targetRows = await db
-        .select({ id: users.id, role: users.role })
-        .from(users)
-        .where(and(eq(users.id, id), eq(users.tenantId, tenantId), isNull(users.deactivatedAt)))
-        .limit(1);
+      const target = await storeFor(db).apiTeam.getActiveMember({ tenantId, userId: id });
 
-      if (targetRows.length === 0) {
+      if (target === null) {
         return c.json({ error: "Member not found." }, 404);
       }
 
-      const target = targetRows[0]!;
-
       // If removing an owner, check we won't be left with zero owners
       if (target.role === "owner") {
-        const ownerCount = await db
-          .select({ cnt: sql<number>`count(*)::int` })
-          .from(users)
-          .where(and(
-            eq(users.tenantId, tenantId),
-            eq(users.role, "owner"),
-            isNull(users.deactivatedAt),
-          ));
+        const ownerCount = await storeFor(db).apiTeam.countActiveOwners({ tenantId });
 
-        if ((ownerCount[0]?.cnt ?? 0) <= 1) {
+        if (ownerCount <= 1) {
           return c.json({ error: "Cannot remove the last owner." }, 400);
         }
       }
 
       // Deactivate user and delete sessions in one operation
       const now = new Date();
-      await db
-        .update(users)
-        .set({ deactivatedAt: now })
-        .where(eq(users.id, id));
-
-      // Delete all sessions for immediate access revocation
-      await db
-        .delete(sessions)
-        .where(eq(sessions.userId, id));
+      await storeFor(db).apiTeam.deactivateMember({ userId: id, now });
 
       return c.json({ ok: true });
     },

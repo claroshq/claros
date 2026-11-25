@@ -11,8 +11,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { buildApp } from "@claros/api";
-import { tenants, users } from "@claros/db/schema";
-import { eq } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import { createBoss, startWorker } from "@claros/worker";
 import { startScheduler } from "@claros/scheduler";
 
@@ -67,63 +66,28 @@ async function bootstrapSeed(db: ReturnType<typeof drizzle>): Promise<boolean> {
   const seedEmail = process.env.SEED_ADMIN_EMAIL;
   const normalizedEmail = seedEmail ? seedEmail.toLowerCase().trim() : null;
 
-  let freshInstall = false;
+  const { freshInstall, insertedTenant, tenantId } = await storeFor(db).serverMain.bootstrapSeed(normalizedEmail);
 
-  await db.transaction(async (tx) => {
-    // Fast-path: if any tenant exists, nothing to do.
-    const existing = await tx
-      .select({ id: tenants.id })
-      .from(tenants)
-      .limit(1);
-    if (existing.length > 0) return;
-
-    freshInstall = true;
-
-    // Attempt to insert the seed tenant. ON CONFLICT (slug) DO NOTHING means
-    // exactly one of N concurrent callers inserts; the rest skip silently.
-    const inserted = await tx
-      .insert(tenants)
-      .values({ name: "Default", slug: "default", plan: "free" })
-      .onConflictDoNothing()
-      .returning({ id: tenants.id });
-
-    // Resolve the tenant id whether we inserted or lost the race.
-    const tenantId =
-      inserted.length > 0
-        ? inserted[0]!.id
-        : (
-            await tx
-              .select({ id: tenants.id })
-              .from(tenants)
-              .where(eq(tenants.slug, "default"))
-              .limit(1)
-          )[0]!.id;
-
-    // If SEED_ADMIN_EMAIL is set, create the owner user (automated path).
-    if (normalizedEmail) {
-      await tx
-        .insert(users)
-        .values({ tenantId, email: normalizedEmail, role: "owner" })
-        .onConflictDoNothing();
-
-      if (inserted.length > 0) {
-        console.log("");
-        console.log("=== Bootstrap Seed ===");
-        console.log(`  Tenant ID : ${tenantId}`);
-        console.log(`  Owner     : ${normalizedEmail}`);
-        console.log("  Seed complete. You can now request a login link.");
-        console.log("======================");
-        console.log("");
-      }
-    } else if (inserted.length > 0) {
+  // Logged after the seed transaction commits (only by the caller that
+  // inserted the tenant).
+  if (normalizedEmail) {
+    if (insertedTenant) {
       console.log("");
-      console.log("=== Bootstrap ===");
+      console.log("=== Bootstrap Seed ===");
       console.log(`  Tenant ID : ${tenantId}`);
-      console.log("  No SEED_ADMIN_EMAIL - claim flow active (see URL below).");
-      console.log("==================");
+      console.log(`  Owner     : ${normalizedEmail}`);
+      console.log("  Seed complete. You can now request a login link.");
+      console.log("======================");
       console.log("");
     }
-  });
+  } else if (insertedTenant) {
+    console.log("");
+    console.log("=== Bootstrap ===");
+    console.log(`  Tenant ID : ${tenantId}`);
+    console.log("  No SEED_ADMIN_EMAIL - claim flow active (see URL below).");
+    console.log("==================");
+    console.log("");
+  }
 
   return freshInstall;
 }
@@ -330,11 +294,7 @@ async function start(): Promise<void> {
     await bootstrapSeed(db);
 
     // Check if any users exist. If not, mint a claim token.
-    const userCount = await db
-      .select({ id: users.id })
-      .from(users)
-      .limit(1);
-    if (userCount.length === 0) {
+    if (!(await storeFor(db).serverMain.hasAnyUser())) {
       const { randomBytes: rb } = await import("node:crypto");
       claimToken = rb(32).toString("base64url");
     }

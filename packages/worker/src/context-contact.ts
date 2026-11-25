@@ -23,8 +23,8 @@
  *     see the ambiguity note in the task 18 report.
  *   - All queries are scoped by tenant_id. No cross-tenant data leaks.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -155,7 +155,7 @@ export function tenureCategory(days: number): string {
  */
 type PgTimestamp = Date | string | null;
 
-type ContactRow = Record<string, unknown> & {
+type ContactRow = {
   name: string | null;
   email: string | null;
   company: string | null;
@@ -167,7 +167,7 @@ type ContactRow = Record<string, unknown> & {
   last_seen_at: PgTimestamp;
 };
 
-type PriorContactRow = Record<string, unknown> & {
+type PriorContactRow = {
   total_sent: string; // pg COUNT returns bigint as string
   messages_opened: string;
   messages_clicked: string;
@@ -218,64 +218,19 @@ export async function buildContactSections(
   now: Date,
 ): Promise<ContactSectionsResult | null> {
   // Query 1: contact row
-  const contactRows = await db.execute<ContactRow>(sql`
-    SELECT
-      name,
-      email,
-      company,
-      properties,
-      lifecycle_state,
-      engagement_depth,
-      payment_status,
-      first_seen_at,
-      last_seen_at
-    FROM contacts
-    WHERE id = ${contactId}
-      AND tenant_id = ${tenantId}
-  `);
+  const row: ContactRow | null = await storeFor(db).workerContextContact.getContact({
+    tenantId,
+    contactId,
+  });
 
-  if (contactRows.rows.length === 0) return null;
-  const row = contactRows.rows[0]!;
+  if (row === null) return null;
 
-  // Query 2: prior contact history
-  //
-  // feedback is a single advancing column (NULL -> opened -> clicked, or
-  // NULL -> clicked; terminals: bounced, complained). A message that advanced
-  // from opened to clicked is stored as feedback = 'clicked' - it is no longer
-  // 'opened'. Counting feedback = 'opened' alone therefore undercounts: every
-  // message that was opened AND clicked would be missed.
-  //
-  // Correct definition:
-  //   messages_opened: feedback IN ('opened', 'clicked')
-  //     clicked implies opened (legal transition only via opened or direct skip
-  //     to clicked when the open pixel was not fired, but the click itself is
-  //     stronger engagement evidence than an open alone).
-  //   messages_clicked: feedback = 'clicked'
-  //
-  // bounced and complained are NOT counted as opened: bounced = undelivered,
-  // complained = spam report. Neither indicates the contact read the email.
-  const priorRows = await db.execute<PriorContactRow>(sql`
-    SELECT
-      COUNT(*) FILTER (WHERE status = 'sent')                           AS total_sent,
-      COUNT(*) FILTER (WHERE feedback IN ('opened', 'clicked'))         AS messages_opened,
-      COUNT(*) FILTER (WHERE feedback = 'clicked')                      AS messages_clicked,
-      MAX(sent_at)   FILTER (WHERE status = 'sent')                     AS last_sent_at,
-      (
-        SELECT brain_action_type
-        FROM lifecycle_messages lm2
-        WHERE lm2.contact_id = ${contactId}
-          AND lm2.tenant_id = ${tenantId}
-          AND lm2.status = 'sent'
-          AND lm2.sent_at IS NOT NULL
-        ORDER BY lm2.sent_at DESC
-        LIMIT 1
-      )                                                    AS last_action_type
-    FROM lifecycle_messages
-    WHERE contact_id = ${contactId}
-      AND tenant_id = ${tenantId}
-  `);
-
-  const prior = priorRows.rows[0]!;
+  // Query 2: prior contact history (opened counts opened + clicked; see
+  // PriorContactSection.messagesOpened and the Store method)
+  const prior: PriorContactRow = await storeFor(db).workerContextContact.getPriorContactStats({
+    tenantId,
+    contactId,
+  });
 
   // ---------------------------------------------------------------------------
   // Contact section

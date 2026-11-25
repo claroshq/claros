@@ -14,15 +14,8 @@
  *   - ON CONFLICT DO NOTHING on message insert prevents duplicates.
  *   - If the membership is not active (already completed/exited), returns immediately.
  */
-import { eq, and, sql, gte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import {
-  contacts,
-  events,
-  flows,
-  flowMemberships,
-  lifecycleMessages,
-} from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   parseDelay,
   delayToMs,
@@ -89,31 +82,12 @@ export async function handleAdvanceMembership(
   };
 
   // Load the membership
-  const membershipRows = await db
-    .select({
-      id: flowMemberships.id,
-      contactId: flowMemberships.contactId,
-      flowId: flowMemberships.flowId,
-      currentStep: flowMemberships.currentStep,
-      enteredAt: flowMemberships.enteredAt,
-      conditionError: flowMemberships.conditionError,
-      status: flowMemberships.status,
-    })
-    .from(flowMemberships)
-    .where(
-      and(
-        eq(flowMemberships.id, membershipId),
-        eq(flowMemberships.tenantId, tenantId),
-      ),
-    )
-    .limit(1);
+  const membership = await storeFor(db).workerAdvanceMembership.getMembership({ tenantId, membershipId });
 
-  if (membershipRows.length === 0) {
+  if (membership === null) {
     result.skipped = true;
     return result;
   }
-
-  const membership = membershipRows[0]!;
 
   // Only process active memberships
   if (membership.status !== "active") {
@@ -122,33 +96,21 @@ export async function handleAdvanceMembership(
   }
 
   // Load flow
-  const flowRows = await db
-    .select({
-      status: flows.status,
-      compiledPlan: flows.compiledPlan,
-    })
-    .from(flows)
-    .where(eq(flows.id, membership.flowId))
-    .limit(1);
+  const flowRow = await storeFor(db).workerAdvanceMembership.getFlowPlan(membership.flowId);
 
-  if (flowRows.length === 0) {
+  if (flowRow === null) {
     result.skipped = true;
     return result;
   }
 
-  const flowRow = flowRows[0]!;
-
   // Handle archived flow: exit the membership
   if (flowRow.status === "archived") {
-    await db
-      .update(flowMemberships)
-      .set({ status: "exited", exitedAt: now, exitReason: "flow_archived" })
-      .where(
-        and(
-          eq(flowMemberships.id, membership.id),
-          eq(flowMemberships.status, "active"),
-        ),
-      );
+    await storeFor(db).workerAdvanceMembership.exitMembership({
+      membershipId: membership.id,
+      now,
+      exitReason: "flow_archived",
+      clearConditionError: false,
+    });
     result.exited = true;
     return result;
   }
@@ -170,35 +132,24 @@ export async function handleAdvanceMembership(
   const exitConditions = parsed.data.exit_conditions ?? [];
 
   // Build contact state
-  const contactRow = await db
-    .select({ lifecycleState: contacts.lifecycleState })
-    .from(contacts)
-    .where(eq(contacts.id, membership.contactId))
-    .limit(1);
+  const lifecycleState = await storeFor(db).workerAdvanceMembership.getContactLifecycleState(membership.contactId);
 
-  if (contactRow.length === 0) {
+  if (lifecycleState === null) {
     result.skipped = true;
     return result;
   }
 
   const contactState: ContactState = {
-    lifecycleState: contactRow[0]!.lifecycleState,
+    lifecycleState,
   };
 
   const eventChecker: EventChecker = {
     async hasEventSince(eventName: string, since: Date): Promise<boolean> {
-      const found = await db
-        .select({ id: events.id })
-        .from(events)
-        .where(
-          and(
-            eq(events.contactId, membership.contactId),
-            eq(events.eventName, eventName),
-            gte(events.timestamp, since),
-          ),
-        )
-        .limit(1);
-      return found.length > 0;
+      return storeFor(db).workerAdvanceMembership.hasEventSince({
+        contactId: membership.contactId,
+        eventName,
+        since,
+      });
     },
   };
 
@@ -214,30 +165,22 @@ export async function handleAdvanceMembership(
     if (ecResult.outcome === "unknown_shape") {
       const errMsg = formatConditionError({ type: "plan_exit" }, ecResult.message);
       if (membership.conditionError !== errMsg) {
-        await db
-          .update(flowMemberships)
-          .set({ conditionError: errMsg })
-          .where(eq(flowMemberships.id, membership.id));
+        await storeFor(db).workerAdvanceMembership.setConditionError({
+          membershipId: membership.id,
+          conditionError: errMsg,
+        });
       }
       result.skipped = true;
       return result;
     }
 
     if (ecResult.outcome === "pass") {
-      await db
-        .update(flowMemberships)
-        .set({
-          status: "exited",
-          exitedAt: now,
-          exitReason: "condition_met",
-          ...(membership.conditionError !== null ? { conditionError: null } : {}),
-        })
-        .where(
-          and(
-            eq(flowMemberships.id, membership.id),
-            eq(flowMemberships.status, "active"),
-          ),
-        );
+      await storeFor(db).workerAdvanceMembership.exitMembership({
+        membershipId: membership.id,
+        now,
+        exitReason: "condition_met",
+        clearConditionError: membership.conditionError !== null,
+      });
       result.exited = true;
       return result;
     }
@@ -247,20 +190,11 @@ export async function handleAdvanceMembership(
   const currentStepDef = steps.find((s) => s.order === membership.currentStep);
   if (!currentStepDef) {
     // Plan was recompiled with fewer steps - complete the membership
-    await db
-      .update(flowMemberships)
-      .set({
-        status: "completed",
-        completedAt: now,
-        exitReason: "completed",
-        ...(membership.conditionError !== null ? { conditionError: null } : {}),
-      })
-      .where(
-        and(
-          eq(flowMemberships.id, membership.id),
-          eq(flowMemberships.status, "active"),
-        ),
-      );
+    await storeFor(db).workerAdvanceMembership.completeMembership({
+      membershipId: membership.id,
+      now,
+      clearConditionError: membership.conditionError !== null,
+    });
     result.completed = true;
     return result;
   }
@@ -270,20 +204,12 @@ export async function handleAdvanceMembership(
   if (membership.currentStep === 1) {
     referenceTime = membership.enteredAt;
   } else {
-    const prevMessage = await db
-      .select({ createdAt: lifecycleMessages.createdAt })
-      .from(lifecycleMessages)
-      .where(
-        and(
-          eq(lifecycleMessages.membershipId, membership.id),
-          eq(lifecycleMessages.flowStepOrder, membership.currentStep - 1),
-        ),
-      )
-      .limit(1);
+    const prevCreatedAt = await storeFor(db).workerAdvanceMembership.getStepMessageCreatedAt({
+      membershipId: membership.id,
+      stepOrder: membership.currentStep - 1,
+    });
 
-    referenceTime = prevMessage.length > 0 && prevMessage[0]!.createdAt
-      ? prevMessage[0]!.createdAt
-      : membership.enteredAt;
+    referenceTime = prevCreatedAt ?? membership.enteredAt;
   }
 
   // Parse delay and check if elapsed
@@ -298,10 +224,10 @@ export async function handleAdvanceMembership(
   if (elapsed < delayMs) {
     // Delay not yet elapsed - clear condition_error if set
     if (membership.conditionError !== null) {
-      await db
-        .update(flowMemberships)
-        .set({ conditionError: null })
-        .where(eq(flowMemberships.id, membership.id));
+      await storeFor(db).workerAdvanceMembership.setConditionError({
+        membershipId: membership.id,
+        conditionError: null,
+      });
     }
     result.skipped = true;
     return result;
@@ -322,30 +248,22 @@ export async function handleAdvanceMembership(
         exitResult.message,
       );
       if (membership.conditionError !== errMsg) {
-        await db
-          .update(flowMemberships)
-          .set({ conditionError: errMsg })
-          .where(eq(flowMemberships.id, membership.id));
+        await storeFor(db).workerAdvanceMembership.setConditionError({
+          membershipId: membership.id,
+          conditionError: errMsg,
+        });
       }
       result.skipped = true;
       return result;
     }
 
     if (exitResult.outcome === "pass") {
-      await db
-        .update(flowMemberships)
-        .set({
-          status: "exited",
-          exitedAt: now,
-          exitReason: "condition_met",
-          ...(membership.conditionError !== null ? { conditionError: null } : {}),
-        })
-        .where(
-          and(
-            eq(flowMemberships.id, membership.id),
-            eq(flowMemberships.status, "active"),
-          ),
-        );
+      await storeFor(db).workerAdvanceMembership.exitMembership({
+        membershipId: membership.id,
+        now,
+        exitReason: "condition_met",
+        clearConditionError: membership.conditionError !== null,
+      });
       result.exited = true;
       return result;
     }
@@ -366,10 +284,10 @@ export async function handleAdvanceMembership(
         condResult.message,
       );
       if (membership.conditionError !== errMsg) {
-        await db
-          .update(flowMemberships)
-          .set({ conditionError: errMsg })
-          .where(eq(flowMemberships.id, membership.id));
+        await storeFor(db).workerAdvanceMembership.setConditionError({
+          membershipId: membership.id,
+          conditionError: errMsg,
+        });
       }
       result.skipped = true;
       return result;
@@ -381,37 +299,19 @@ export async function handleAdvanceMembership(
       const isLastStep = membership.currentStep >= totalSteps;
 
       if (isLastStep) {
-        await db
-          .update(flowMemberships)
-          .set({
-            status: "completed",
-            completedAt: now,
-            exitReason: "completed",
-            currentStep: membership.currentStep,
-            ...(membership.conditionError !== null ? { conditionError: null } : {}),
-          })
-          .where(
-            and(
-              eq(flowMemberships.id, membership.id),
-              eq(flowMemberships.status, "active"),
-              eq(flowMemberships.currentStep, membership.currentStep),
-            ),
-          );
+        await storeFor(db).workerAdvanceMembership.completeMembershipAtStep({
+          membershipId: membership.id,
+          step: membership.currentStep,
+          now,
+          clearConditionError: membership.conditionError !== null,
+        });
         result.completed = true;
       } else {
-        await db
-          .update(flowMemberships)
-          .set({
-            currentStep: membership.currentStep + 1,
-            ...(membership.conditionError !== null ? { conditionError: null } : {}),
-          })
-          .where(
-            and(
-              eq(flowMemberships.id, membership.id),
-              eq(flowMemberships.status, "active"),
-              eq(flowMemberships.currentStep, membership.currentStep),
-            ),
-          );
+        await storeFor(db).workerAdvanceMembership.advanceMembershipStep({
+          membershipId: membership.id,
+          fromStep: membership.currentStep,
+          clearConditionError: membership.conditionError !== null,
+        });
         result.advanced = true;
       }
       return result;
@@ -419,25 +319,18 @@ export async function handleAdvanceMembership(
   }
 
   // All conditions passed: create message and advance step
-  const clearError = membership.conditionError !== null ? { conditionError: null } : {};
+  const insertedId = await storeFor(db).workerAdvanceMembership.createStepMessage({
+    tenantId,
+    contactId: membership.contactId,
+    flowId: membership.flowId,
+    membershipId: membership.id,
+    stepOrder: membership.currentStep,
+    actionType: currentStepDef.action_type,
+  });
 
-  const inserted = await db
-    .insert(lifecycleMessages)
-    .values({
-      tenantId,
-      contactId: membership.contactId,
-      flowId: membership.flowId,
-      membershipId: membership.id,
-      flowStepOrder: membership.currentStep,
-      status: "pending_generation",
-      brainActionType: currentStepDef.action_type,
-    })
-    .onConflictDoNothing()
-    .returning({ id: lifecycleMessages.id });
-
-  if (inserted.length > 0) {
+  if (insertedId !== null) {
     result.messageCreated = true;
-    result.messageId = inserted[0]!.id;
+    result.messageId = insertedId;
   }
 
   // Advance step (or complete)
@@ -445,40 +338,21 @@ export async function handleAdvanceMembership(
   const isLastStep = membership.currentStep >= totalSteps;
 
   if (isLastStep) {
-    await db
-      .update(flowMemberships)
-      .set({
-        status: "completed",
-        completedAt: now,
-        exitReason: "completed",
-        currentStep: membership.currentStep,
-        ...clearError,
-      })
-      .where(
-        and(
-          eq(flowMemberships.id, membership.id),
-          eq(flowMemberships.status, "active"),
-          eq(flowMemberships.currentStep, membership.currentStep),
-        ),
-      );
+    await storeFor(db).workerAdvanceMembership.completeMembershipAtStep({
+      membershipId: membership.id,
+      step: membership.currentStep,
+      now,
+      clearConditionError: membership.conditionError !== null,
+    });
     result.completed = true;
   } else {
-    const updated = await db
-      .update(flowMemberships)
-      .set({
-        currentStep: membership.currentStep + 1,
-        ...clearError,
-      })
-      .where(
-        and(
-          eq(flowMemberships.id, membership.id),
-          eq(flowMemberships.status, "active"),
-          eq(flowMemberships.currentStep, membership.currentStep),
-        ),
-      )
-      .returning({ id: flowMemberships.id });
+    const advanced = await storeFor(db).workerAdvanceMembership.advanceMembershipStep({
+      membershipId: membership.id,
+      fromStep: membership.currentStep,
+      clearConditionError: membership.conditionError !== null,
+    });
 
-    if (updated.length > 0) {
+    if (advanced) {
       result.advanced = true;
     }
   }

@@ -22,7 +22,7 @@
  * scale where ILIKE is slow, a pg_trgm GIN index on recipient_address would
  * fix it without schema changes. Not added now (premature).
  */
-import { sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter } from "../http/router.js";
 
@@ -120,109 +120,47 @@ export default function sentLogRoutes() {
         : Math.min(rawLimit, MAX_PAGE_SIZE);
     const fetchLimit = limit + 1;
 
-    // Build WHERE conditions
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`m.tenant_id = ${tenantId}`,
-    ];
-
     // Status filter: default shows all sent-log statuses
     const statusParam = query.status;
-    if (statusParam && SENT_LOG_STATUSES.includes(statusParam)) {
-      conditions.push(sql`m.status = ${statusParam}`);
-    } else {
-      conditions.push(
-        sql`m.status IN ('sending', 'sent', 'failed', 'suppressed')`
-      );
-    }
+    const status = statusParam && SENT_LOG_STATUSES.includes(statusParam) ? statusParam : null;
 
     // Flow filter
-    if (query.flow_id && isUuid(query.flow_id)) {
-      conditions.push(sql`m.flow_id = ${query.flow_id}::uuid`);
-    }
+    const flowId = query.flow_id && isUuid(query.flow_id) ? query.flow_id : null;
 
     // Recipient search (ILIKE on address, contact email, or contact name)
-    if (query.recipient && query.recipient.trim().length > 0) {
-      const pattern = `%${query.recipient.trim()}%`;
-      conditions.push(
-        sql`(
-          m.recipient_address ILIKE ${pattern}
-          OR c.email ILIKE ${pattern}
-          OR c.name ILIKE ${pattern}
-        )`
-      );
-    }
+    const recipient =
+      query.recipient && query.recipient.trim().length > 0 ? query.recipient.trim() : null;
 
-    // Date range on sent_at
-    if (query.from) {
-      conditions.push(sql`m.sent_at >= ${query.from}::timestamptz`);
-    }
-    if (query.to) {
-      conditions.push(sql`m.sent_at <= ${query.to}::timestamptz`);
-    }
-
-    // Feedback filter
+    // Feedback filter (opened means opened-or-better, includes clicked)
     const feedbackParam = query.feedback;
-    if (
+    const feedback =
       feedbackParam &&
       ["opened", "clicked", "bounced", "complained"].includes(feedbackParam)
-    ) {
-      if (feedbackParam === "opened") {
-        // opened-or-better (includes clicked)
-        conditions.push(sql`m.feedback IN ('opened', 'clicked')`);
-      } else {
-        conditions.push(sql`m.feedback = ${feedbackParam}`);
-      }
-    }
+        ? feedbackParam
+        : null;
 
     // Cursor
     let cursor: CursorPayload | null = null;
     if (query.after) {
       cursor = decodeCursor(query.after);
     }
-    if (cursor) {
-      // DESC order: next page has OLDER messages
-      conditions.push(
-        sql`ROW(date_trunc('milliseconds', m.sent_at), m.id) < ROW(${cursor.sent_at}::timestamptz, ${cursor.id}::uuid)`
-      );
-    }
 
-    const whereClause = sql.join(conditions, sql` AND `);
+    const rows = await storeFor(db).apiSentLog.listSentMessages({
+      tenantId,
+      filter: {
+        status,
+        flowId,
+        recipient,
+        // Date range on sent_at
+        from: query.from || null,
+        to: query.to || null,
+        // DESC order: next page has OLDER messages
+        before: cursor ? { sentAt: cursor.sent_at, id: cursor.id } : null,
+        feedback,
+      },
+      limit: fetchLimit,
+    });
 
-    type SentLogRow = {
-      id: string;
-      tenant_id: string;
-      contact_id: string;
-      flow_id: string;
-      flow_name: string | null;
-      status: string;
-      feedback: string | null;
-      subject: string | null;
-      recipient_address: string | null;
-      sent_at: string | null;
-      created_at: string | null;
-      contact_email: string | null;
-      contact_name: string | null;
-      contact_external_id: string | null;
-    };
-
-    const result = await db.execute<SentLogRow>(sql`
-      SELECT m.id, m.tenant_id, m.contact_id, m.flow_id,
-             f.name AS flow_name,
-             m.status, m.feedback, m.subject, m.recipient_address,
-             m.sent_at, m.created_at,
-             c.email AS contact_email, c.name AS contact_name,
-             c.external_id AS contact_external_id
-      FROM lifecycle_messages m
-      LEFT JOIN contacts c
-        ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
-      LEFT JOIN flows f
-        ON f.id = m.flow_id AND f.tenant_id = m.tenant_id
-      WHERE ${whereClause}
-      ORDER BY m.sent_at DESC NULLS LAST, m.id DESC
-      LIMIT ${fetchLimit}
-    `);
-
-    const rows = result.rows;
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
 
@@ -269,77 +207,14 @@ export default function sentLogRoutes() {
       return c.json({ error: "Message not found." }, 404);
     }
 
-    type DetailRow = {
-      id: string;
-      tenant_id: string;
-      contact_id: string;
-      flow_id: string;
-      flow_name: string | null;
-      membership_id: string;
-      flow_step_order: number | null;
-      status: string;
-      feedback: string | null;
-      subject: string | null;
-      body_html: string | null;
-      body_text: string | null;
-      brain_reasoning: string | null;
-      brain_action_type: string | null;
-      scheduled_send_at: string | null;
-      approved_at: string | null;
-      sent_at: string | null;
-      created_at: string | null;
-      updated_at: string | null;
-      retry_count: number;
-      provider_message_id: string | null;
-      recipient_address: string | null;
-      contact_email: string | null;
-      contact_name: string | null;
-      contact_external_id: string | null;
-    };
+    const msg = await storeFor(db).apiSentLog.getSentMessage({ tenantId, messageId });
 
-    const msgResult = await db.execute<DetailRow>(sql`
-      SELECT m.id, m.tenant_id, m.contact_id, m.flow_id,
-             f.name AS flow_name,
-             m.membership_id, m.flow_step_order,
-             m.status, m.feedback, m.subject, m.body_html, m.body_text,
-             m.brain_reasoning, m.brain_action_type,
-             m.scheduled_send_at, m.approved_at, m.sent_at,
-             m.created_at, m.updated_at, m.retry_count,
-             m.provider_message_id, m.recipient_address,
-             c.email AS contact_email, c.name AS contact_name,
-             c.external_id AS contact_external_id
-      FROM lifecycle_messages m
-      LEFT JOIN contacts c
-        ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
-      LEFT JOIN flows f
-        ON f.id = m.flow_id AND f.tenant_id = m.tenant_id
-      WHERE m.id = ${messageId}::uuid
-        AND m.tenant_id = ${tenantId}
-    `);
-
-    if (msgResult.rows.length === 0) {
+    if (msg === null) {
       return c.json({ error: "Message not found." }, 404);
     }
 
-    const msg = msgResult.rows[0]!;
-
     // Fetch event timeline (all events, ordered chronologically)
-    type EventRow = {
-      id: string;
-      event_type: string;
-      occurred_at: string;
-      metadata: unknown;
-      created_at: string;
-    };
-
-    const eventsResult = await db.execute<EventRow>(sql`
-      SELECT id, event_type, occurred_at, metadata, created_at
-      FROM message_events
-      WHERE message_id = ${messageId}::uuid
-        AND tenant_id = ${tenantId}
-      ORDER BY occurred_at ASC
-      LIMIT 100
-    `);
+    const events = await storeFor(db).apiSentLog.listMessageEvents({ tenantId, messageId });
 
     return c.json({
       message: {
@@ -370,7 +245,7 @@ export default function sentLogRoutes() {
           external_id: msg.contact_external_id,
         },
       },
-      events: eventsResult.rows.map((e) => ({
+      events: events.map((e) => ({
         id: e.id,
         event_type: e.event_type,
         occurred_at: e.occurred_at,

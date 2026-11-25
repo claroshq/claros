@@ -55,10 +55,15 @@
 import { RoleRouter } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
-import { eq, and, sql } from "drizzle-orm";
-import { kbEntries } from "@claros/db/schema";
+import { storeFor, type ApiKbQueries } from "@claros/store";
 import { QUEUE } from "@claros/core";
 import type { Db } from "../plugins/db.js";
+
+/** A kb_entries row as the store returns it. */
+type KbEntryRow = NonNullable<Awaited<ReturnType<ApiKbQueries["findEntry"]>>>;
+
+/** Fields a PATCH may set on an entry. */
+type KbEntryPatch = Parameters<ApiKbQueries["updateEntry"]>[0]["patch"];
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -272,23 +277,20 @@ export default function kbRoutes() {
     const tenantId = c.var.tenant!.id;
     const enqueue = c.var.enqueue;
 
-    const [inserted] = await db
-      .insert(kbEntries)
-      .values({
-        tenantId,
-        title: body.title,
-        content: body.content,
-        contentType: body.content_type ?? "markdown",
-        source: body.source ?? "manual",
-        sourceUrl: body.source_url ?? null,
-        tags: body.tags ?? null,
-        // Set embedding_status = 'pending' when we have an enqueue function,
-        // so a crash after INSERT but before boss.send leaves a detectable orphan.
-        // When enqueue is absent (tests), status stays null = "never enqueued".
-        ...(enqueue ? { embeddingStatus: "pending" } : {}),
-        isActive: body.is_active ?? true,
-      } as any)
-      .returning();
+    const inserted = await storeFor(db).apiKb.createEntry({
+      tenantId,
+      title: body.title,
+      content: body.content,
+      contentType: body.content_type ?? "markdown",
+      source: body.source ?? "manual",
+      sourceUrl: body.source_url ?? null,
+      tags: body.tags ?? null,
+      // Set embedding_status = 'pending' when we have an enqueue function,
+      // so a crash after INSERT but before boss.send leaves a detectable orphan.
+      // When enqueue is absent (tests), status stays null = "never enqueued".
+      ...(enqueue ? { embeddingStatus: "pending" as const } : {}),
+      isActive: body.is_active ?? true,
+    });
 
     if (enqueue && inserted) {
       await enqueue(
@@ -349,62 +351,16 @@ export default function kbRoutes() {
       // not construct cursors manually; this is defensive, not a security issue.
     }
 
-    // Build WHERE conditions. Cursor uses (created_at, id) keyset ordering:
-    //   (created_at > cursor.created_at)
-    //   OR (created_at = cursor.created_at AND id > cursor.id)
-    // This is correct for the ORDER BY (created_at ASC, id ASC) clause below.
-    const tenantCondition = eq(kbEntries.tenantId, tenantId);
-    const activeCondition = eq(kbEntries.isActive, true);
-
     // Fetch limit+1 to determine if there is a next page.
     const fetchLimit = limit + 1;
 
-    let rows: (typeof kbEntries.$inferSelect)[];
-
-    if (cursor) {
-      const cursorCreatedAt = cursor.created_at; // ISO string (millisecond precision)
-      const cursorId = cursor.id;               // UUID string
-
-      // Cursor condition: (date_trunc('milliseconds', created_at), id) > (cursor_ts, cursor_id)
-      //
-      // JavaScript Date.toISOString() has millisecond precision; Postgres timestamptz
-      // stores microseconds. Truncating the DB column to milliseconds before the
-      // comparison ensures both sides of the ROW comparison have the same precision.
-      // The ORDER BY clause below uses the same truncation expression so the ordering
-      // the cursor was derived from and the cursor condition stay consistent.
-      const cursorCondition = sql`
-        ROW(date_trunc('milliseconds', ${kbEntries.createdAt}), ${kbEntries.id}) >
-        ROW(${cursorCreatedAt}::timestamptz, ${cursorId}::uuid)
-      `;
-
-      rows = includeInactive
-        ? await db
-            .select()
-            .from(kbEntries)
-            .where(and(tenantCondition, cursorCondition))
-            .orderBy(sql`date_trunc('milliseconds', ${kbEntries.createdAt}) ASC`, kbEntries.id)
-            .limit(fetchLimit)
-        : await db
-            .select()
-            .from(kbEntries)
-            .where(and(tenantCondition, activeCondition, cursorCondition))
-            .orderBy(sql`date_trunc('milliseconds', ${kbEntries.createdAt}) ASC`, kbEntries.id)
-            .limit(fetchLimit);
-    } else {
-      rows = includeInactive
-        ? await db
-            .select()
-            .from(kbEntries)
-            .where(tenantCondition)
-            .orderBy(sql`date_trunc('milliseconds', ${kbEntries.createdAt}) ASC`, kbEntries.id)
-            .limit(fetchLimit)
-        : await db
-            .select()
-            .from(kbEntries)
-            .where(and(tenantCondition, activeCondition))
-            .orderBy(sql`date_trunc('milliseconds', ${kbEntries.createdAt}) ASC`, kbEntries.id)
-            .limit(fetchLimit);
-    }
+    // Keyset pagination on (created_at, id); see ApiKbQueries.listEntries.
+    const rows = await storeFor(db).apiKb.listEntries({
+      tenantId,
+      includeInactive,
+      cursor: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+      limit: fetchLimit,
+    });
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
@@ -430,19 +386,13 @@ export default function kbRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select()
-      .from(kbEntries)
-      .where(
-        and(eq(kbEntries.id, c.req.param("id")!), eq(kbEntries.tenantId, tenantId)),
-      )
-      .limit(1);
+    const row = await storeFor(db).apiKb.findEntry({ tenantId, id: c.req.param("id")! });
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ error: "Knowledge base entry not found." }, 404);
     }
 
-    return c.json(serializeEntry(rows[0]!));
+    return c.json(serializeEntry(row));
   });
 
   /**
@@ -472,20 +422,14 @@ export default function kbRoutes() {
       const id = c.req.param("id")!;
 
       // Verify ownership
-      const rows = await db
-        .select()
-        .from(kbEntries)
-        .where(
-          and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
-        )
-        .limit(1);
+      const existing = await storeFor(db).apiKb.findEntry({ tenantId, id });
 
-      if (rows.length === 0) {
+      if (!existing) {
         return c.json({ error: "Knowledge base entry not found." }, 404);
       }
 
       // Build SET clause from only the supplied fields
-      const setClauses: Record<string, unknown> = {
+      const setClauses: KbEntryPatch = {
         updatedAt: new Date(),
       };
 
@@ -507,13 +451,7 @@ export default function kbRoutes() {
         setClauses.embeddingError = null;
       }
 
-      const [updated] = await db
-        .update(kbEntries)
-        .set(setClauses as any)
-        .where(
-          and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
-        )
-        .returning();
+      const updated = await storeFor(db).apiKb.updateEntry({ tenantId, id, patch: setClauses });
 
       // Enqueue re-embedding only when content changed.
       if (contentChanged && enqueue && updated) {
@@ -548,25 +486,15 @@ export default function kbRoutes() {
     const tenantId = c.var.tenant!.id;
     const id = c.req.param("id")!;
 
-    const rows = await db
-      .select()
-      .from(kbEntries)
-      .where(
-        and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
-      )
-      .limit(1);
+    const row = await storeFor(db).apiKb.findEntry({ tenantId, id });
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ error: "Knowledge base entry not found." }, 404);
     }
 
-    await db
-      .delete(kbEntries)
-      .where(
-        and(eq(kbEntries.id, id), eq(kbEntries.tenantId, tenantId)),
-      );
+    await storeFor(db).apiKb.deleteEntry({ tenantId, id });
 
-    return c.json(serializeEntry(rows[0]!));
+    return c.json(serializeEntry(row));
   });
 
   /**
@@ -624,23 +552,10 @@ export default function kbRoutes() {
     // is assumed. An expireInMinutes:10 job cannot remain active past 10 minutes, so
     // anything still pending at 15 minutes has either orphaned or will self-expire.
     // See RE_EMBED_ORPHAN_THRESHOLD_MINUTES for the full rationale and failure modes.
-    const orphanThreshold = `now() - interval '${RE_EMBED_ORPHAN_THRESHOLD_MINUTES} minutes'`;
-
-    const allQualifying = await db
-      .select({ id: kbEntries.id })
-      .from(kbEntries)
-      .where(
-        and(
-          eq(kbEntries.tenantId, tenantId),
-          sql`${kbEntries.embedding} IS NULL`,
-          sql`(
-            ${kbEntries.embeddingStatus as any} IS NULL
-            OR ${kbEntries.embeddingStatus as any} = 'failed'
-            OR (${kbEntries.embeddingStatus as any} = 'pending'
-                AND ${kbEntries.updatedAt} < ${sql.raw(orphanThreshold)})
-          )`,
-        ),
-      );
+    const allQualifying = await storeFor(db).apiKb.listReEmbedCandidateIds({
+      tenantId,
+      orphanThresholdMinutes: RE_EMBED_ORPHAN_THRESHOLD_MINUTES,
+    });
 
     const totalQualifying = allQualifying.length;
 
@@ -651,27 +566,15 @@ export default function kbRoutes() {
     // Apply the per-call cap.
     const batch = allQualifying.slice(0, RE_EMBED_BATCH_CAP);
     const remaining = totalQualifying - batch.length;
-    const ids = batch.map((r) => r.id);
+    const ids = batch;
 
     // Reset embedding_status to 'pending' and clear embedding_error for this batch.
-    await db
-      .update(kbEntries)
-      .set({
-        embeddingStatus: "pending",
-        embeddingError: null,
-        updatedAt: new Date(),
-      } as any)
-      .where(
-        and(
-          eq(kbEntries.tenantId, tenantId),
-          sql`id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])`,
-        ),
-      );
+    await storeFor(db).apiKb.markEntriesPendingEmbedding({ tenantId, ids, now: new Date() });
 
     // Enqueue a job for each entry in the batch.
     // Failures are logged but do not abort the remaining enqueues.
     let enqueued = 0;
-    for (const { id } of batch) {
+    for (const id of batch) {
       try {
         await enqueue(
           QUEUE.KB_EMBED,
@@ -717,7 +620,7 @@ export default function kbRoutes() {
  * embedding_status and embedding_error are included so operators can determine
  * which entries are pending, failed, or never enqueued.
  */
-function serializeEntry(row: typeof kbEntries.$inferSelect) {
+function serializeEntry(row: KbEntryRow) {
   return {
     id: row.id,
     tenant_id: row.tenantId,
@@ -740,7 +643,7 @@ function serializeEntry(row: typeof kbEntries.$inferSelect) {
  * Returns content_preview (first 300 characters) instead of full content.
  * Used only by the paginated GET /v1/kb list endpoint.
  */
-function serializeEntryPreview(row: typeof kbEntries.$inferSelect) {
+function serializeEntryPreview(row: KbEntryRow) {
   return {
     id: row.id,
     tenant_id: row.tenantId,

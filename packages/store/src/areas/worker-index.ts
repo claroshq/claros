@@ -6,5 +6,7 @@
  * ../d1/worker-index.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface WorkerIndexQueries {}
+export interface WorkerIndexQueries {
+  /** Settings of one (arbitrary, first returned) tenant, or null when no tenant exists. */
+  getAnyTenantSettings(): Promise<{ settings: unknown } | null>;
+}

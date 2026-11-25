@@ -53,8 +53,8 @@
  * API calls entirely. See docs/BACKLOG.md "KB query vector cache" for the
  * tracking item. No cache is built here.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 import {
   resolveEmbeddingProvider,
   callEmbedding,
@@ -222,18 +222,8 @@ async function fetchByTitle(
   tenantId: string,
   title: string,
 ): Promise<KbEntry | undefined> {
-  const rows = await db.execute<{ id: string; title: string; content: string }>(sql`
-    SELECT id, title, content
-    FROM kb_entries
-    WHERE tenant_id = ${tenantId}::uuid
-      AND title = ${title}
-      AND is_active = true
-      AND embedding IS NOT NULL
-    LIMIT 1
-  `);
-
-  if (rows.rows.length === 0) return undefined;
-  return rows.rows[0]!;
+  const entry = await storeFor(db).workerContextKb.findEmbeddedEntryByTitle({ tenantId, title });
+  return entry ?? undefined;
 }
 
 /**
@@ -257,31 +247,23 @@ async function runSimilaritySearch(
   floor: number,
   excludeId: string | null,
 ): Promise<KbEntry[]> {
-  // Format the query vector as a pgvector literal: '[f1,f2,...]'
-  const vectorLiteral = `[${queryVector.join(",")}]`;
-
   // Fetch top candidates + a few more for logging rejected ones.
   // We fetch (limit + 3) to be able to log the next few below the floor.
   const fetchLimit = limit + 3;
 
-  type Row = { id: string; title: string; content: string; similarity: string };
-
-  const rows = await db.execute<Row>(sql`
-    SELECT id, title, content,
-           (1 - (embedding <=> ${vectorLiteral}::vector)) AS similarity
-    FROM kb_entries
-    WHERE tenant_id = ${tenantId}::uuid
-      AND is_active = true
-      AND embedding IS NOT NULL
-      ${excludeId ? sql`AND id != ${excludeId}::uuid` : sql``}
-    ORDER BY embedding <=> ${vectorLiteral}::vector
-    LIMIT ${fetchLimit}
-  `);
+  // pgvector cosine search (1 - distance), tenant-scoped, active and
+  // embedded entries only, closest first.
+  const rows = await storeFor(db).workerContextKb.searchSimilarEntries({
+    tenantId,
+    queryVector,
+    limit: fetchLimit,
+    excludeId,
+  });
 
   const accepted: KbEntry[] = [];
   const rejected: Array<{ title: string; similarity: number }> = [];
 
-  for (const row of rows.rows) {
+  for (const row of rows) {
     const similarity = parseFloat(row.similarity);
     if (similarity >= floor) {
       if (accepted.length < limit) {

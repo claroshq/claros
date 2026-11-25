@@ -29,9 +29,9 @@
  *   - Decryption fails (wrong key, corrupted envelope):
  *       Returns null with a logged operator error. Same safe fallback.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { resolveTransportAdapter } from "@claros/adapters";
+import { storeFor } from "@claros/store";
 import type { TransportAdapter, TransportResolver } from "./transport.js";
 
 // ---------------------------------------------------------------------------
@@ -39,14 +39,6 @@ import type { TransportAdapter, TransportResolver } from "./transport.js";
 // ---------------------------------------------------------------------------
 
 type Db = NodePgDatabase<Record<string, never>>;
-
-/** A transport_configs row (raw SQL result). */
-interface TransportConfigRow extends Record<string, unknown> {
-  provider: string;
-  config: string;
-  from_email: string;
-  from_name: string | null;
-}
 
 // ---------------------------------------------------------------------------
 // buildTenantTransportResolver
@@ -62,20 +54,12 @@ interface TransportConfigRow extends Record<string, unknown> {
 export function buildTenantTransportResolver(db: Db): TransportResolver {
   return async (tenantId: string): Promise<TransportAdapter | null> => {
     // Step 1: Read the active transport config for this tenant.
-    const rows = await db.execute<TransportConfigRow>(sql`
-      SELECT provider, config::text AS config, from_email, from_name
-      FROM transport_configs
-      WHERE tenant_id = ${tenantId}::uuid
-        AND is_active = true
-      LIMIT 1
-    `);
+    const row = await storeFor(db).workerTransportResolver.getActiveTransportConfig(tenantId);
 
-    if (rows.rows.length === 0) {
+    if (row === null) {
       // No active transport configured. Messages stay at 'approved'.
       return null;
     }
-
-    const row = rows.rows[0]!;
 
     // Step 2: Resolve adapter via the shared function in @claros/adapters.
     const result = resolveTransportAdapter(row.provider, row.config);

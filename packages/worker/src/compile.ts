@@ -14,9 +14,8 @@
  * If the prompt changed while the job was in flight (status reset to null by
  * the API), the write returns 0 rows and the stale result is discarded.
  */
-import { eq, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { flows, templates, kbEntries } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   compile,
   type CompilePromptContext,
@@ -41,18 +40,13 @@ export async function handleCompileJob(
   const { flow_id, tenant_id } = data;
 
   // 1. Read the flow row
-  const flowRows = await db
-    .select()
-    .from(flows)
-    .where(and(eq(flows.id, flow_id), eq(flows.tenantId, tenant_id)))
-    .limit(1);
+  const flow = await storeFor(db).workerCompile.getFlow(tenant_id, flow_id);
 
-  if (flowRows.length === 0) {
+  if (flow === null) {
     console.warn(`[compile] flow ${flow_id} not found for tenant ${tenant_id}, skipping`);
     return;
   }
 
-  const flow = flowRows[0]!;
 
   // 2. CAS guard: only proceed if compile_status is still 'pending'
   if (flow.compileStatus !== "pending") {
@@ -75,23 +69,17 @@ export async function handleCompileJob(
   const { provider } = providerResult;
 
   // 5. Resolve available templates and KB entries for the prompt context
-  const [templateRows, kbRows] = await Promise.all([
-    db
-      .select({ slug: templates.slug })
-      .from(templates)
-      .where(and(eq(templates.tenantId, tenant_id), eq(templates.isActive, true))),
-    db
-      .select({ title: kbEntries.title })
-      .from(kbEntries)
-      .where(and(eq(kbEntries.tenantId, tenant_id), eq(kbEntries.isActive, true))),
+  const [templateSlugs, kbTitles] = await Promise.all([
+    storeFor(db).workerCompile.listActiveTemplateSlugs(tenant_id),
+    storeFor(db).workerCompile.listActiveKbTitles(tenant_id),
   ]);
 
   const ctx: CompilePromptContext = {
     promptSource: flow.promptSource,
     triggerType: flow.triggerType,
     triggerConfig: flow.triggerConfig as Record<string, unknown>,
-    availableTemplates: templateRows.map((r) => r.slug),
-    availableKbEntries: kbRows.map((r) => r.title),
+    availableTemplates: templateSlugs,
+    availableKbEntries: kbTitles,
   };
 
   // 6. Call compile
@@ -99,33 +87,18 @@ export async function handleCompileJob(
 
   // 7. Write result with CAS (only if still pending)
   if (result.ok) {
-    const updated = await db
-      .update(flows)
-      .set({
-        compiledPlan: result.plan,
-        compiledAt: new Date(),
-        compileStatus: "ready",
-        compileError: null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(flows.id, flow_id), eq(flows.compileStatus, "pending")))
-      .returning({ id: flows.id });
+    const won = await storeFor(db).workerCompile.markCompileReady(flow_id, result.plan);
 
-    if (updated.length === 0) {
+    if (!won) {
       console.warn(`[compile] flow ${flow_id} CAS failed on success write (status changed), discarding result`);
     }
   } else {
-    const updated = await db
-      .update(flows)
-      .set({
-        compileStatus: "failed",
-        compileError: result.error.slice(0, 2000), // truncate to reasonable length
-        updatedAt: new Date(),
-      })
-      .where(and(eq(flows.id, flow_id), eq(flows.compileStatus, "pending")))
-      .returning({ id: flows.id });
+    const won = await storeFor(db).workerCompile.markCompileFailed(
+      flow_id,
+      result.error.slice(0, 2000), // truncate to reasonable length
+    );
 
-    if (updated.length === 0) {
+    if (!won) {
       console.warn(`[compile] flow ${flow_id} CAS failed on error write (status changed), discarding`);
     }
   }
@@ -140,12 +113,5 @@ export async function handleCompileJob(
  * Also uses CAS on compile_status = 'pending'.
  */
 async function markFailed(db: Db, flowId: string, error: string): Promise<void> {
-  await db
-    .update(flows)
-    .set({
-      compileStatus: "failed",
-      compileError: error.slice(0, 2000),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(flows.id, flowId), eq(flows.compileStatus, "pending")));
+  await storeFor(db).workerCompile.markCompileFailed(flowId, error.slice(0, 2000));
 }

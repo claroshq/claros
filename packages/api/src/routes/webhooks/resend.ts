@@ -70,8 +70,7 @@
  */
 import { createRouter, parseBody } from "../../http/router.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
-import { lifecycleMessages, suppressions, messageEvents } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import type { Db } from "../../plugins/db.js";
 
@@ -131,11 +130,6 @@ interface TransportCredentials {
   webhookSecret?: string;
 }
 
-/** A transport_configs row for webhook secret resolution. */
-interface TransportConfigSecretRow extends Record<string, unknown> {
-  config: string;
-}
-
 /**
  * Load the webhook signing secret for the given tenant from their active
  * Resend transport configuration.
@@ -166,31 +160,22 @@ async function loadTenantWebhookSecret(
     return null;
   }
 
-  let rows: { rows: TransportConfigSecretRow[] };
+  let config: string | null;
   try {
-    rows = await db.execute<TransportConfigSecretRow>(sql`
-      SELECT config::text AS config
-      FROM transport_configs
-      WHERE tenant_id = ${tenantId}::uuid
-        AND provider = 'resend'
-        AND is_active = true
-      LIMIT 1
-    `);
+    config = await storeFor(db).apiResendWebhook.findActiveResendConfig(tenantId);
   } catch {
     // UUID cast will throw if tenantId is not a valid UUID format.
     // Treat the same as "not found" - same 400 response.
     return null;
   }
 
-  if (rows.rows.length === 0) {
+  if (config === null) {
     return null;
   }
 
-  const row = rows.rows[0]!;
-
   let credentials: TransportCredentials;
   try {
-    const decrypted = decrypt(row.config, key);
+    const decrypted = decrypt(config, key);
     credentials = JSON.parse(decrypted) as TransportCredentials;
   } catch {
     return null;
@@ -310,14 +295,7 @@ export async function advanceFeedback(
 
   if (isTerminal) {
     // Terminal states override anything except another terminal.
-    // Guard: WHERE feedback NOT IN ('bounced', 'complained') OR feedback IS NULL
-    const result = await db.execute(sql`
-      UPDATE lifecycle_messages
-      SET feedback = ${newFeedback}, updated_at = NOW()
-      WHERE id = ${messageId}::uuid
-        AND (feedback IS NULL OR feedback NOT IN ('bounced', 'complained'))
-    `);
-    return (result.rowCount ?? 0) > 0;
+    return storeFor(db).apiResendWebhook.setTerminalFeedback({ messageId, feedback: newFeedback });
   }
 
   // Non-terminal: advance-only via predecessors
@@ -326,30 +304,12 @@ export async function advanceFeedback(
     return false; // Unknown feedback value
   }
 
-  // Build WHERE clause: feedback IS NULL OR feedback IN (predecessors excluding null)
-  const nonNullPredecessors = predecessors.filter((p) => p !== null) as string[];
-  const includesNull = predecessors.includes(null);
-
-  let whereClause: ReturnType<typeof sql>;
-  if (includesNull && nonNullPredecessors.length > 0) {
-    // feedback IS NULL OR feedback IN (...)
-    const inList = nonNullPredecessors.map((p) => `'${p}'`).join(", ");
-    whereClause = sql`(feedback IS NULL OR feedback IN (${sql.raw(inList)}))`;
-  } else if (includesNull) {
-    whereClause = sql`feedback IS NULL`;
-  } else {
-    const inList = nonNullPredecessors.map((p) => `'${p}'`).join(", ");
-    whereClause = sql`feedback IN (${sql.raw(inList)})`;
-  }
-
-  const result = await db.execute(sql`
-    UPDATE lifecycle_messages
-    SET feedback = ${newFeedback}, updated_at = NOW()
-    WHERE id = ${messageId}::uuid
-      AND ${whereClause}
-  `);
-
-  return (result.rowCount ?? 0) > 0;
+  // CAS: feedback IS NULL OR feedback IN (predecessors excluding null)
+  return storeFor(db).apiResendWebhook.advanceFeedback({
+    messageId,
+    feedback: newFeedback,
+    predecessors,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -369,11 +329,7 @@ async function writeSuppression(
   reason: "hard_bounce" | "complaint",
 ): Promise<void> {
   const normalizedEmail = email.toLowerCase();
-  await db.execute(sql`
-    INSERT INTO suppressions (tenant_id, email, reason, source)
-    VALUES (${tenantId}::uuid, ${normalizedEmail}, ${reason}, 'webhook')
-    ON CONFLICT (tenant_id, lower(email)) DO NOTHING
-  `);
+  await storeFor(db).apiResendWebhook.insertSuppression({ tenantId, email: normalizedEmail, reason });
 }
 
 // ---------------------------------------------------------------------------
@@ -493,30 +449,18 @@ export async function processResendWebhookEvent(
   // Resolve the internal message by provider_message_id, scoped to the
   // path tenant. This prevents a valid signature from one tenant from
   // touching another tenant's messages via a known provider_message_id.
-  const messageRows = await db
-    .select({
-      id: lifecycleMessages.id,
-      tenantId: lifecycleMessages.tenantId,
-      recipientAddress: lifecycleMessages.recipientAddress,
-    })
-    .from(lifecycleMessages)
-    .where(
-      and(
-        eq(lifecycleMessages.providerMessageId, emailId),
-        eq(lifecycleMessages.tenantId, tenantId),
-      ),
-    )
-    .limit(1);
+  const message = await storeFor(db).apiResendWebhook.findMessageByProviderId({
+    tenantId,
+    providerMessageId: emailId,
+  });
 
-  if (messageRows.length === 0) {
+  if (!message) {
     // Unknown provider message ID for this tenant - acknowledge without error.
     // This can happen for emails sent before Claros was integrated,
     // for messages that were purged, or for events belonging to another tenant.
     // Do not return an error status because that would cause Resend to retry.
     return { action: "ignored_unknown_message" };
   }
-
-  const message = messageRows[0]!;
 
   // Advance feedback (only for engagement/terminal events, not delivery)
   if (feedback) {
@@ -566,31 +510,20 @@ async function writeMessageEvent(
   metadata: Record<string, unknown> | null,
 ): Promise<void> {
   // Enforce per-message cap to bound growth from repeated opens/clicks.
-  const countResult = await db.execute<{ cnt: number }>(sql`
-    SELECT count(*)::int AS cnt
-    FROM message_events
-    WHERE message_id = ${messageId}::uuid
-  `);
-  const currentCount = countResult.rows[0]?.cnt ?? 0;
+  const currentCount = await storeFor(db).apiResendWebhook.countMessageEvents(messageId);
   if (currentCount >= MAX_EVENTS_PER_MESSAGE) {
     return; // Silently drop - cap reached
   }
 
   const metadataJson = metadata ? JSON.stringify(metadata) : null;
-  await db.execute(sql`
-    INSERT INTO message_events (tenant_id, message_id, event_type, occurred_at, provider_event_id, metadata)
-    VALUES (
-      ${tenantId}::uuid,
-      ${messageId}::uuid,
-      ${eventType},
-      ${occurredAt}::timestamptz,
-      ${providerEventId},
-      ${metadataJson}::jsonb
-    )
-    ON CONFLICT (tenant_id, provider_event_id)
-      WHERE provider_event_id IS NOT NULL
-    DO NOTHING
-  `);
+  await storeFor(db).apiResendWebhook.insertMessageEvent({
+    tenantId,
+    messageId,
+    eventType,
+    occurredAt,
+    providerEventId,
+    metadataJson,
+  });
 }
 
 // ---------------------------------------------------------------------------

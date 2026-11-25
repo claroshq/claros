@@ -28,8 +28,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { RoleRouter } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { apiKeys, contacts, events } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 
 // ---------------------------------------------------------------------------
@@ -110,17 +109,6 @@ function serializeKey(row: KeyRow) {
   };
 }
 
-const KEY_COLUMNS = {
-  id: apiKeys.id,
-  kind: apiKeys.kind,
-  prefix: apiKeys.prefix,
-  label: apiKeys.label,
-  allowedOrigins: apiKeys.allowedOrigins,
-  lastUsedAt: apiKeys.lastUsedAt,
-  createdAt: apiKeys.createdAt,
-  revokedAt: apiKeys.revokedAt,
-} as const;
-
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
@@ -135,11 +123,7 @@ export default function ingestionRoutes() {
   r.get("/keys", "member", async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
-    const rows = await db
-      .select(KEY_COLUMNS)
-      .from(apiKeys)
-      .where(eq(apiKeys.tenantId, tenantId))
-      .orderBy(apiKeys.createdAt);
+    const rows = await storeFor(db).apiIngestion.listKeys(tenantId);
     return c.json({ keys: rows.map(serializeKey) });
   });
 
@@ -166,17 +150,14 @@ export default function ingestionRoutes() {
       randomBytes(32).toString("base64url");
     const keyHash = createHash("sha256").update(raw).digest("hex");
 
-    const [row] = await db
-      .insert(apiKeys)
-      .values({
-        tenantId,
-        keyHash,
-        prefix: raw.slice(0, 8),
-        label: label ?? null,
-        kind,
-        allowedOrigins: kind === "publishable" ? (allowed_origins ?? null) : null,
-      })
-      .returning(KEY_COLUMNS);
+    const row = await storeFor(db).apiIngestion.createKey({
+      tenantId,
+      keyHash,
+      prefix: raw.slice(0, 8),
+      label: label ?? null,
+      kind,
+      allowedOrigins: kind === "publishable" ? (allowed_origins ?? null) : null,
+    });
 
     return c.json({ key: raw, ...serializeKey(row!) }, 201);
   });
@@ -196,21 +177,17 @@ export default function ingestionRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const existing = await db
-      .select({ id: apiKeys.id, kind: apiKeys.kind })
-      .from(apiKeys)
-      .where(and(eq(apiKeys.id, params.id), eq(apiKeys.tenantId, tenantId)))
-      .limit(1);
-    if (existing.length === 0) {
+    const existing = await storeFor(db).apiIngestion.findKeyKind(tenantId, params.id);
+    if (!existing) {
       return c.json({ error: "Key not found." }, 404);
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: { label?: string | null; allowedOrigins?: string[] } = {};
     if ("label" in parsed.data) {
       updates.label = parsed.data.label;
     }
     if ("allowed_origins" in parsed.data) {
-      if (existing[0]!.kind !== "publishable") {
+      if (existing.kind !== "publishable") {
         return c.json({ error: "allowed_origins applies to publishable keys only." }, 400);
       }
       updates.allowedOrigins = parsed.data.allowed_origins;
@@ -219,11 +196,7 @@ export default function ingestionRoutes() {
       return c.json({ error: "Nothing to update." }, 400);
     }
 
-    const [row] = await db
-      .update(apiKeys)
-      .set(updates)
-      .where(eq(apiKeys.id, params.id))
-      .returning(KEY_COLUMNS);
+    const row = await storeFor(db).apiIngestion.updateKey(params.id, updates);
     return c.json(serializeKey(row!));
   });
 
@@ -236,20 +209,13 @@ export default function ingestionRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const existing = await db
-      .select({ id: apiKeys.id, revokedAt: apiKeys.revokedAt })
-      .from(apiKeys)
-      .where(and(eq(apiKeys.id, params.id), eq(apiKeys.tenantId, tenantId)))
-      .limit(1);
-    if (existing.length === 0) {
+    const existing = await storeFor(db).apiIngestion.findKeyRevocation(tenantId, params.id);
+    if (!existing) {
       return c.json({ error: "Key not found." }, 404);
     }
 
-    if (existing[0]!.revokedAt === null) {
-      await db
-        .update(apiKeys)
-        .set({ revokedAt: new Date() })
-        .where(eq(apiKeys.id, params.id));
+    if (existing.revokedAt === null) {
+      await storeFor(db).apiIngestion.revokeKey(params.id, new Date());
     }
     return c.json({ success: true });
   });
@@ -267,25 +233,9 @@ export default function ingestionRoutes() {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const lastRows = await db
-      .select({
-        type: events.type,
-        eventName: events.eventName,
-        receivedAt: events.receivedAt,
-        externalId: contacts.externalId,
-      })
-      .from(events)
-      .innerJoin(contacts, eq(events.contactId, contacts.id))
-      .where(and(eq(events.tenantId, tenantId), gte(events.receivedAt, sevenDaysAgo)))
-      .orderBy(desc(events.receivedAt))
-      .limit(1);
+    const last = await storeFor(db).apiIngestion.findLastEventSince(tenantId, sevenDaysAgo);
+    const eventsLast24h = await storeFor(db).apiIngestion.countEventsSince(tenantId, oneDayAgo);
 
-    const countRows = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(events)
-      .where(and(eq(events.tenantId, tenantId), gte(events.receivedAt, oneDayAgo)));
-
-    const last = lastRows[0];
     return c.json({
       last_event: last
         ? {
@@ -295,7 +245,7 @@ export default function ingestionRoutes() {
             received_at: last.receivedAt.toISOString(),
           }
         : null,
-      events_last_24h: countRows[0]?.count ?? 0,
+      events_last_24h: eventsLast24h ?? 0,
     });
   });
 

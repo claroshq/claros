@@ -24,17 +24,8 @@
  * Each batch updates the checkpoint. A stale checkpoint (older than 30 min) is
  * discarded with discard_count incremented and a warning logged.
  */
-import { eq, and, gt, sql, gte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import {
-  tenants,
-  contacts,
-  events,
-  flows,
-  flowMemberships,
-  lifecycleMessages,
-  scanCheckpoints,
-} from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { parseDelay, delayToMs, type CompiledStep, type PlanExitCondition } from "@claros/core";
 import {
   evaluateStepCondition,
@@ -114,10 +105,7 @@ export async function phaseStepAdvancement(
   if (tenantIds && tenantIds.length > 0) {
     tenantRows = tenantIds.map((id) => ({ id }));
   } else {
-    tenantRows = await db
-      .select({ id: tenants.id })
-      .from(tenants)
-      .orderBy(tenants.id);
+    tenantRows = (await storeFor(db).workerScanStepAdvancement.listTenantIds()).map((id) => ({ id }));
   }
 
   for (const tenant of tenantRows) {
@@ -188,36 +176,19 @@ async function processTenantStepAdvancement(
 
   // Resolve checkpoint
   let lastId: string | null = null;
-  const checkpoint = await db
-    .select()
-    .from(scanCheckpoints)
-    .where(
-      and(
-        eq(scanCheckpoints.scanPhase, PHASE_NAME),
-        eq(scanCheckpoints.tenantId, tenantId),
-      ),
-    )
-    .limit(1);
+  const cp = await storeFor(db).workerScanStepAdvancement.getCheckpoint({ phase: PHASE_NAME, tenantId });
 
-  if (checkpoint.length > 0) {
-    const cp = checkpoint[0]!;
+  if (cp !== null) {
     const age = now.getTime() - cp.startedAt.getTime();
     if (age > STALE_THRESHOLD_MS) {
       // Stale checkpoint - discard and start fresh
       const newCount = cp.discardCount + 1;
-      await db
-        .update(scanCheckpoints)
-        .set({
-          lastId: "00000000-0000-0000-0000-000000000000",
-          startedAt: now,
-          discardCount: newCount,
-        })
-        .where(
-          and(
-            eq(scanCheckpoints.scanPhase, PHASE_NAME),
-            eq(scanCheckpoints.tenantId, tenantId),
-          ),
-        );
+      await storeFor(db).workerScanStepAdvancement.resetCheckpoint({
+        phase: PHASE_NAME,
+        tenantId,
+        now,
+        discardCount: newCount,
+      });
       console.warn(
         `[scan] step-advancement: stale checkpoint discarded for tenant ${tenantId} ` +
           `(started ${age}ms ago, threshold ${STALE_THRESHOLD_MS}ms). ` +
@@ -230,13 +201,7 @@ async function processTenantStepAdvancement(
     }
   } else {
     // No checkpoint - create one to track this pass
-    await db.insert(scanCheckpoints).values({
-      scanPhase: PHASE_NAME,
-      tenantId,
-      lastId: "00000000-0000-0000-0000-000000000000",
-      startedAt: now,
-      discardCount: 0,
-    }).onConflictDoNothing();
+    await storeFor(db).workerScanStepAdvancement.createCheckpoint({ phase: PHASE_NAME, tenantId, now });
   }
 
   const startTime = Date.now();
@@ -251,27 +216,11 @@ async function processTenantStepAdvancement(
   // eslint-disable-next-line no-constant-condition
   while (true) {
     // Keyset pagination on active memberships for this tenant
-    const whereConditions = [
-      eq(flowMemberships.tenantId, tenantId),
-      eq(flowMemberships.status, "active"),
-    ];
-    if (lastId !== null) {
-      whereConditions.push(gt(flowMemberships.id, lastId));
-    }
-
-    const batch = await db
-      .select({
-        id: flowMemberships.id,
-        contactId: flowMemberships.contactId,
-        flowId: flowMemberships.flowId,
-        currentStep: flowMemberships.currentStep,
-        enteredAt: flowMemberships.enteredAt,
-        conditionError: flowMemberships.conditionError,
-      })
-      .from(flowMemberships)
-      .where(and(...whereConditions))
-      .orderBy(flowMemberships.id)
-      .limit(BATCH_SIZE);
+    const batch = await storeFor(db).workerScanStepAdvancement.listActiveMembershipsPage({
+      tenantId,
+      afterId: lastId,
+      limit: BATCH_SIZE,
+    });
 
     if (batch.length === 0) break;
 
@@ -281,20 +230,13 @@ async function processTenantStepAdvancement(
       // Get flow plan (cached)
       let flowInfo = flowPlanCache.get(membership.flowId);
       if (!flowInfo) {
-        const flowRow = await db
-          .select({
-            status: flows.status,
-            compiledPlan: flows.compiledPlan,
-          })
-          .from(flows)
-          .where(eq(flows.id, membership.flowId))
-          .limit(1);
+        const flowRow = await storeFor(db).workerScanStepAdvancement.getFlowPlan(membership.flowId);
 
-        if (flowRow.length === 0) {
+        if (flowRow === null) {
           // Flow deleted - should not happen with FK, but defensive. Skip.
           flowInfo = { status: "archived", plan: null, exitConditions: null };
         } else {
-          const raw = flowRow[0]!;
+          const raw = flowRow;
           const plan = extractSteps(raw.compiledPlan);
           const exitConditions = extractExitConditions(raw.compiledPlan);
           flowInfo = { status: raw.status ?? "draft", plan, exitConditions };
@@ -304,19 +246,12 @@ async function processTenantStepAdvancement(
 
       // Handle archived flow: exit the membership
       if (flowInfo.status === "archived") {
-        await db
-          .update(flowMemberships)
-          .set({
-            status: "exited",
-            exitedAt: now,
-            exitReason: "flow_archived",
-          })
-          .where(
-            and(
-              eq(flowMemberships.id, membership.id),
-              eq(flowMemberships.status, "active"),
-            ),
-          );
+        await storeFor(db).workerScanStepAdvancement.exitMembership({
+          membershipId: membership.id,
+          now,
+          exitReason: "flow_archived",
+          clearConditionError: false,
+        });
         stats.membershipsExitedArchived++;
         continue;
       }
@@ -331,35 +266,24 @@ async function processTenantStepAdvancement(
       // Condition evaluation: build contact state and event checker
       // -----------------------------------------------------------------------
 
-      const contactRow = await db
-        .select({ lifecycleState: contacts.lifecycleState })
-        .from(contacts)
-        .where(eq(contacts.id, membership.contactId))
-        .limit(1);
+      const lifecycleState = await storeFor(db).workerScanStepAdvancement.getContactLifecycleState(membership.contactId);
 
-      if (contactRow.length === 0) {
+      if (lifecycleState === null) {
         // Contact deleted mid-scan. Skip.
         continue;
       }
 
       const contactState: ContactState = {
-        lifecycleState: contactRow[0]!.lifecycleState,
+        lifecycleState,
       };
 
       const eventChecker: EventChecker = {
         async hasEventSince(eventName: string, since: Date): Promise<boolean> {
-          const found = await db
-            .select({ id: events.id })
-            .from(events)
-            .where(
-              and(
-                eq(events.contactId, membership.contactId),
-                eq(events.eventName, eventName),
-                gte(events.timestamp, since),
-              ),
-            )
-            .limit(1);
-          return found.length > 0;
+          return storeFor(db).workerScanStepAdvancement.hasEventSince({
+            contactId: membership.contactId,
+            eventName,
+            since,
+          });
         },
       };
 
@@ -397,10 +321,10 @@ async function processTenantStepAdvancement(
         if (conditionErrorMsg !== null) {
           // Record the error only if it differs from what is already stored
           if (membership.conditionError !== conditionErrorMsg) {
-            await db
-              .update(flowMemberships)
-              .set({ conditionError: conditionErrorMsg })
-              .where(eq(flowMemberships.id, membership.id));
+            await storeFor(db).workerScanStepAdvancement.setConditionError({
+              membershipId: membership.id,
+              conditionError: conditionErrorMsg,
+            });
           }
           stats.membershipsStuckConditionError++;
           continue;
@@ -408,23 +332,12 @@ async function processTenantStepAdvancement(
 
         if (exitFired) {
           // Clear condition_error if present (the plan is now valid)
-          const setClause: Record<string, unknown> = {
-            status: "exited",
-            exitedAt: now,
+          await storeFor(db).workerScanStepAdvancement.exitMembership({
+            membershipId: membership.id,
+            now,
             exitReason: "condition_met",
-          };
-          if (membership.conditionError !== null) {
-            setClause.conditionError = null;
-          }
-          await db
-            .update(flowMemberships)
-            .set(setClause)
-            .where(
-              and(
-                eq(flowMemberships.id, membership.id),
-                eq(flowMemberships.status, "active"),
-              ),
-            );
+            clearConditionError: membership.conditionError !== null,
+          });
           stats.membershipsExitedCondition++;
           continue;
         }
@@ -439,20 +352,11 @@ async function processTenantStepAdvancement(
       if (!currentStepDef) {
         // Step not found in plan - plan may have been re-compiled with fewer steps.
         // Complete the membership (no more work to do).
-        await db
-          .update(flowMemberships)
-          .set({
-            status: "completed",
-            completedAt: now,
-            exitReason: "completed",
-            ...(membership.conditionError !== null ? { conditionError: null } : {}),
-          })
-          .where(
-            and(
-              eq(flowMemberships.id, membership.id),
-              eq(flowMemberships.status, "active"),
-            ),
-          );
+        await storeFor(db).workerScanStepAdvancement.completeMembership({
+          membershipId: membership.id,
+          now,
+          clearConditionError: membership.conditionError !== null,
+        });
         stats.membershipsCompleted++;
         continue;
       }
@@ -465,23 +369,17 @@ async function processTenantStepAdvancement(
         referenceTime = membership.enteredAt;
       } else {
         // Find the most recent message for a prior step (may have been skipped)
-        const prevMessage = await db
-          .select({ createdAt: lifecycleMessages.createdAt })
-          .from(lifecycleMessages)
-          .where(
-            and(
-              eq(lifecycleMessages.membershipId, membership.id),
-              eq(lifecycleMessages.flowStepOrder, membership.currentStep - 1),
-            ),
-          )
-          .limit(1);
+        const prevCreatedAt = await storeFor(db).workerScanStepAdvancement.getStepMessageCreatedAt({
+          membershipId: membership.id,
+          stepOrder: membership.currentStep - 1,
+        });
 
-        if (prevMessage.length === 0 || !prevMessage[0]!.createdAt) {
+        if (prevCreatedAt === null) {
           // No previous message found - the previous step was skipped by condition.
           // Use entered_at as fallback (the delay will have elapsed).
           referenceTime = membership.enteredAt;
         } else {
-          referenceTime = prevMessage[0]!.createdAt;
+          referenceTime = prevCreatedAt;
         }
       }
 
@@ -499,10 +397,10 @@ async function processTenantStepAdvancement(
         // Delay not yet elapsed - skip. Clear condition_error if it was set
         // (we got past exit conditions successfully, so plan is valid now).
         if (membership.conditionError !== null) {
-          await db
-            .update(flowMemberships)
-            .set({ conditionError: null })
-            .where(eq(flowMemberships.id, membership.id));
+          await storeFor(db).workerScanStepAdvancement.setConditionError({
+            membershipId: membership.id,
+            conditionError: null,
+          });
         }
         continue;
       }
@@ -525,10 +423,10 @@ async function processTenantStepAdvancement(
             exitResult.message,
           );
           if (membership.conditionError !== errMsg) {
-            await db
-              .update(flowMemberships)
-              .set({ conditionError: errMsg })
-              .where(eq(flowMemberships.id, membership.id));
+            await storeFor(db).workerScanStepAdvancement.setConditionError({
+              membershipId: membership.id,
+              conditionError: errMsg,
+            });
           }
           stats.membershipsStuckConditionError++;
           continue;
@@ -536,20 +434,12 @@ async function processTenantStepAdvancement(
 
         if (exitResult.outcome === "pass") {
           // Exit condition fired - exit the membership
-          await db
-            .update(flowMemberships)
-            .set({
-              status: "exited",
-              exitedAt: now,
-              exitReason: "condition_met",
-              ...(membership.conditionError !== null ? { conditionError: null } : {}),
-            })
-            .where(
-              and(
-                eq(flowMemberships.id, membership.id),
-                eq(flowMemberships.status, "active"),
-              ),
-            );
+          await storeFor(db).workerScanStepAdvancement.exitMembership({
+            membershipId: membership.id,
+            now,
+            exitReason: "condition_met",
+            clearConditionError: membership.conditionError !== null,
+          });
           stats.membershipsExitedCondition++;
           continue;
         }
@@ -574,10 +464,10 @@ async function processTenantStepAdvancement(
             condResult.message,
           );
           if (membership.conditionError !== errMsg) {
-            await db
-              .update(flowMemberships)
-              .set({ conditionError: errMsg })
-              .where(eq(flowMemberships.id, membership.id));
+            await storeFor(db).workerScanStepAdvancement.setConditionError({
+              membershipId: membership.id,
+              conditionError: errMsg,
+            });
           }
           stats.membershipsStuckConditionError++;
           continue;
@@ -589,37 +479,19 @@ async function processTenantStepAdvancement(
           const isLastStep = membership.currentStep >= totalSteps;
 
           if (isLastStep) {
-            await db
-              .update(flowMemberships)
-              .set({
-                status: "completed",
-                completedAt: now,
-                exitReason: "completed",
-                currentStep: membership.currentStep,
-                ...(membership.conditionError !== null ? { conditionError: null } : {}),
-              })
-              .where(
-                and(
-                  eq(flowMemberships.id, membership.id),
-                  eq(flowMemberships.status, "active"),
-                  eq(flowMemberships.currentStep, membership.currentStep),
-                ),
-              );
+            await storeFor(db).workerScanStepAdvancement.completeMembershipAtStep({
+              membershipId: membership.id,
+              step: membership.currentStep,
+              now,
+              clearConditionError: membership.conditionError !== null,
+            });
             stats.membershipsCompleted++;
           } else {
-            await db
-              .update(flowMemberships)
-              .set({
-                currentStep: membership.currentStep + 1,
-                ...(membership.conditionError !== null ? { conditionError: null } : {}),
-              })
-              .where(
-                and(
-                  eq(flowMemberships.id, membership.id),
-                  eq(flowMemberships.status, "active"),
-                  eq(flowMemberships.currentStep, membership.currentStep),
-                ),
-              );
+            await storeFor(db).workerScanStepAdvancement.advanceMembershipStep({
+              membershipId: membership.id,
+              fromStep: membership.currentStep,
+              clearConditionError: membership.conditionError !== null,
+            });
             stats.stepsSkippedCondition++;
           }
           continue;
@@ -632,24 +504,17 @@ async function processTenantStepAdvancement(
       // -----------------------------------------------------------------------
 
       // Clear condition_error if it was set (conditions now evaluated successfully)
-      const clearError = membership.conditionError !== null ? { conditionError: null } : {};
-
       // Use INSERT ... ON CONFLICT DO NOTHING for crash-safe idempotency.
-      const inserted = await db
-        .insert(lifecycleMessages)
-        .values({
-          tenantId,
-          contactId: membership.contactId,
-          flowId: membership.flowId,
-          membershipId: membership.id,
-          flowStepOrder: membership.currentStep,
-          status: "pending_generation",
-          brainActionType: currentStepDef.action_type,
-        })
-        .onConflictDoNothing()
-        .returning({ id: lifecycleMessages.id });
+      const insertedId = await storeFor(db).workerScanStepAdvancement.createStepMessage({
+        tenantId,
+        contactId: membership.contactId,
+        flowId: membership.flowId,
+        membershipId: membership.id,
+        stepOrder: membership.currentStep,
+        actionType: currentStepDef.action_type,
+      });
 
-      if (inserted.length > 0) {
+      if (insertedId !== null) {
         stats.messagesCreated++;
       }
       // Whether or not we just inserted (vs. conflict = already existed from prior crash),
@@ -660,45 +525,25 @@ async function processTenantStepAdvancement(
 
       if (isLastStep) {
         // Complete the membership
-        const updated = await db
-          .update(flowMemberships)
-          .set({
-            status: "completed",
-            completedAt: now,
-            exitReason: "completed",
-            currentStep: membership.currentStep,
-            ...clearError,
-          })
-          .where(
-            and(
-              eq(flowMemberships.id, membership.id),
-              eq(flowMemberships.status, "active"),
-              eq(flowMemberships.currentStep, membership.currentStep),
-            ),
-          )
-          .returning({ id: flowMemberships.id });
+        const completed = await storeFor(db).workerScanStepAdvancement.completeMembershipAtStep({
+          membershipId: membership.id,
+          step: membership.currentStep,
+          now,
+          clearConditionError: membership.conditionError !== null,
+        });
 
-        if (updated.length > 0) {
+        if (completed) {
           stats.membershipsCompleted++;
         }
       } else {
         // Advance to next step (CAS on current_step to prevent double-advance)
-        const updated = await db
-          .update(flowMemberships)
-          .set({
-            currentStep: membership.currentStep + 1,
-            ...clearError,
-          })
-          .where(
-            and(
-              eq(flowMemberships.id, membership.id),
-              eq(flowMemberships.status, "active"),
-              eq(flowMemberships.currentStep, membership.currentStep),
-            ),
-          )
-          .returning({ id: flowMemberships.id });
+        const advanced = await storeFor(db).workerScanStepAdvancement.advanceMembershipStep({
+          membershipId: membership.id,
+          fromStep: membership.currentStep,
+          clearConditionError: membership.conditionError !== null,
+        });
 
-        if (updated.length > 0) {
+        if (advanced) {
           stats.stepsAdvanced++;
         }
       }
@@ -706,29 +551,14 @@ async function processTenantStepAdvancement(
 
     // Update checkpoint after each batch
     lastId = batch[batch.length - 1]!.id;
-    await db
-      .update(scanCheckpoints)
-      .set({ lastId })
-      .where(
-        and(
-          eq(scanCheckpoints.scanPhase, PHASE_NAME),
-          eq(scanCheckpoints.tenantId, tenantId),
-        ),
-      );
+    await storeFor(db).workerScanStepAdvancement.saveCheckpointCursor({ phase: PHASE_NAME, tenantId, lastId });
 
     // If batch was smaller than BATCH_SIZE, we've exhausted this tenant
     if (batch.length < BATCH_SIZE) break;
   }
 
   // Full pass completed - delete the checkpoint row (start fresh next run)
-  await db
-    .delete(scanCheckpoints)
-    .where(
-      and(
-        eq(scanCheckpoints.scanPhase, PHASE_NAME),
-        eq(scanCheckpoints.tenantId, tenantId),
-      ),
-    );
+  await storeFor(db).workerScanStepAdvancement.deleteCheckpoint({ phase: PHASE_NAME, tenantId });
 
   const duration = Date.now() - startTime;
   if (stats.membershipsEvaluated > 0) {
