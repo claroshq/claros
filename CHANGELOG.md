@@ -8,6 +8,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Added
 
+- Flow editor redesign. A flow reads as a timeline (trigger, each email with its wait, early exits); selecting an email opens it beside the timeline with its real content: fixed copy with subject, preview text, body, variable and named-link insert buttons and a preview with a sample contact, or the AI instruction with examples and the links, knowledge base entry and context sources it may use. Delivery settings (review, topic, class, priority, re-entry) are explained choices on their own tab. One draft and one save bar replace the separate Save plan, Save steps and Save changes buttons. New flows start from an example (welcome, onboarding, trial ending, payment failed, win back, at-risk), a description, or blank. Flows applied from a config document say that the next `claros apply` replaces dashboard edits. `/flows/:id/edit?template=<slug>` opens the email that uses the template. See [Editing flows in the dashboard](docs/guide/FLOWS.md#editing-flows-in-the-dashboard).
+- `GET /v1/flows/editor-context` (member): named links, context source names, date traits, whether an LLM is configured, and the product's templates with the flows that use them.
+- `PUT /v1/email-templates/by-slug/:slug` (member): create a template, or update the subject and body of an existing one, by slug.
+- `GET /v1/flows` and `GET /v1/flows/:id` return the flow's config slug (`slug`, null for flows created in the dashboard).
 - `GET /v1/messages` returns `preview_html` for each message: the body in the product's branded shell (logo or name, accent bar, step eyebrow and preheader, footer with postal address), rendered as the drain renders it at send time. Only the unsubscribe link is a placeholder. The Approvals preview shows it, so a draft looks the way the recipient will see it instead of as an unstyled fragment.
 - Person page actions: **Delete person** (owners; type the person's email or user id to confirm) erases the person as `DELETE /v1/contacts/:id` does, and **Exclude from mail** (any member) suppresses the address and cancels unsent messages as the Approvals action does. Before, both were API only.
 - Notes on a person: the team writes free-text notes on the person's page, shown newest first with author and time. API: `GET`/`POST /v1/contacts/:id/notes`, `DELETE /v1/contacts/:id/notes/:noteId` (member session). New table `contact_notes` (Postgres migration `0032`, D1 migration `0012`). Notes are erased with the person and are never read by the engine or sent to the LLM.
@@ -24,6 +28,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 - Settings, Branding no longer has the narrow or wide layout choice; the Templates page replaces it. `brand.layout` keeps working in the API and config documents and decides the template while `brand.template` is unset.
 
 ### Fixed
+
+- Flow editor: a flow applied from a config document showed "No steps yet" for person-written flows and an empty prompt for AI flows, and Save plan replaced its templates with new `flow-<id>-step-<n>` copies. The editor now loads and saves the stored steps and their templates.
+- Flow editor: the variable buttons offered `{{contact.name}}` and `{{contact.company}}`, which the renderer does not know, so an email that used them failed to render.
+- Select fields narrowed with a width class kept their chevron at the far edge of the row (the flow topic picker).
 
 - Email font in Outlook desktop and clients that drop the `<body>` style: the font stack is now also inline on every header, content and footer cell, and Outlook gets an Arial fallback in an mso-only style block. Before, Outlook could render the body in Times New Roman. Both layouts change; this is the only difference in the sent HTML.
 

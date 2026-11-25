@@ -140,4 +140,12 @@ A product without an LLM configuration cannot use choose steps: the config apply
 
 ## Editing flows in the dashboard
 
-The flow editor edits every trigger type (with `where`), the flow class, and the plan: steps with the fields above, choose candidates, context sources, `kb_select`, `expires_after`, conditions with `all` / `any` / `not` (or as JSON), and plan exits. It saves through `PUT /v1/flows/:id/steps` (a member session, or an admin key with the `config` scope), which validates the steps like a config document and stores them as the compiled plan.
+The flow editor shows a flow as a timeline: what starts it, each email with the wait before it, and what ends it early. Selecting an email opens it beside the timeline:
+
+- **Who writes it.** "I write it" is fixed copy (a template, `template_ref`): subject, preview text (`preheader`), an HTML body with insert buttons for variables and the product's named links, and a preview with a sample contact. "AI drafts it per contact" is a `brain_instruction`, with example instructions and the links, knowledge base entry (`kb_select`) and context sources the AI may use. Choose steps show their candidates.
+- **When** (`delay`, `window_policy`), **Skip this email unless** (`condition`) and, under Sender and advanced, `from_name`, `reply_to`, `eyebrow`, `expires_after`, `exit_condition` and the internal name (`action_type`).
+- The editor flags variables the renderer does not know (an email that uses one fails to render) and personal variables without a fallback.
+
+Review, topic, flow class, priority and re-entry are on the Delivery settings tab. Every change goes into one draft; **Save changes** writes the flow (`PATCH /v1/flows/:id`), each changed fixed copy (`PUT /v1/email-templates/by-slug/:slug`, which creates or updates a template by slug) and the steps (`PUT /v1/flows/:id/steps`, a member session or an admin key with the `config` scope, which validates the steps like a config document and stores them as the compiled plan). An active flow keeps running on the saved version until then. The menu offers the steps and exits as JSON.
+
+A new flow starts from an example (welcome, onboarding series, trial ending, payment failed, win back, at-risk check-in), from a description that Claros compiles, or blank. A flow applied from a config document carries its slug, and the editor says that the next `claros apply` of that document replaces edits made in the dashboard. `GET /v1/flows/editor-context` returns what the editor offers in its pickers: named links, context source names (never their secrets), date traits, whether an LLM is configured, and the product's templates with the flows that use each one.
