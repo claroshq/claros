@@ -1,6 +1,6 @@
 /**
  * Email shell layouts: the narrow layout (the default) renders byte for
- * byte as before brand.layout existed, and the wide layout has the
+ * byte as pinned (fixtures regenerated deliberately when the shell changes), and the wide layout has the
  * full-width card, the paragraph measure, the .pad media query and no
  * Outlook ghost table.
  */
@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { wrapInShell, applyWideBodyLayout, TEXT_MEASURE, clarosConfigSchema, planConfig, type BrandSettings, type ConfigState } from "../src/index.js";
+import { wrapInShell, applyWideBodyLayout, FONT_STACK, TEXT_MEASURE, clarosConfigSchema, planConfig, type BrandSettings, type ConfigState } from "../src/index.js";
 import { NARROW_CASES } from "./fixtures/email-shell/cases.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures/email-shell");
@@ -25,6 +25,21 @@ describe("narrow layout (default) is unchanged", () => {
       expect(wrapInShell({ ...input, brand: { ...input.brand, layout: "narrow" } })).toBe(pinned);
       const unknown = { ...input.brand, layout: "full" } as unknown as BrandSettings;
       expect(wrapInShell({ ...input, brand: unknown })).toBe(pinned);
+    });
+  }
+});
+
+describe("font", () => {
+  for (const layout of ["narrow", "wide"] as const) {
+    const html = wrapInShell({ ...NARROW_CASES.full!, brand: { ...NARROW_CASES.full!.brand, layout } });
+    it(`${layout}: every content cell carries the font stack (Outlook does not inherit it from <body>)`, () => {
+      const cells = [...html.matchAll(/<td class="email-container[^"]*"[^>]*>/g)];
+      expect(cells).toHaveLength(3);
+      for (const m of cells) expect(m[0]).toContain(`font-family:${FONT_STACK};`);
+      expect(html).toContain(`<body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:${FONT_STACK};">`);
+    });
+    it(`${layout}: Outlook gets an Arial fallback in an mso-only style block`, () => {
+      expect(html).toMatch(/<!--\[if mso\]>\n<style>\nbody, table, td, p, a, li, h1, h2, h3, span \{ font-family: Arial, sans-serif !important; \}\n<\/style>\n<!\[endif\]-->/);
     });
   }
 });

@@ -17,7 +17,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
+import { FONT_STACK } from "@claros/core";
 import { buildApp } from "../src/index.js";
 import {
   tenants,
@@ -501,6 +502,38 @@ describe("GET /v1/messages (list pending approval)", () => {
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].status).toBe("pending_approval");
     expect(body.next_cursor).toBeNull();
+
+    await app.close();
+  });
+
+  it("returns preview_html: the body in the branded shell with the step's eyebrow", async () => {
+    if (!dbAvailable) return;
+    const app = await buildApp({ logger: false, db, baseUrl: TEST_BASE_URL });
+
+    const contactId = await insertContact(tenantAId, "preview-contact");
+    const flowId = await insertFlow(tenantAId, "preview-flow");
+    await db
+      .update(flows)
+      .set({
+        compiledPlan: {
+          trigger: { type: "lifecycle_transition", condition: { from: "engaged", to: "at_risk" } },
+          steps: [{ order: 1, action_type: "nurture_value", delay: "0d", window_policy: "immediate", eyebrow: "Welcome", preheader: "Start here" }],
+        },
+      })
+      .where(eq(flows.id, flowId));
+    const membershipId = await insertMembership(tenantAId, contactId, flowId);
+    await insertPendingApprovalMessage(tenantAId, contactId, flowId, membershipId);
+
+    const res = await app.inject({ method: "GET", url: "/v1/messages", headers: { cookie: cookieA } });
+    expect(res.statusCode).toBe(200);
+    const msg = JSON.parse(res.body).messages[0];
+    expect(msg.body_html).toBe("<p>Draft body</p>");
+    expect(msg.preview_html).toMatch(/^<!DOCTYPE html>/);
+    expect(msg.preview_html).toContain("<p>Draft body</p>");
+    expect(msg.preview_html).toContain(`font-family:${FONT_STACK};`);
+    expect(msg.preview_html).toContain('class="email-eyebrow"');
+    expect(msg.preview_html).toContain(">Welcome</p>");
+    expect(msg.preview_html).toContain("Start here");
 
     await app.close();
   });

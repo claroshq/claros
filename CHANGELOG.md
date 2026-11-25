@@ -6,6 +6,14 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- `GET /v1/messages` returns `preview_html` for each message: the body in the product's branded shell (logo or name, accent bar, step eyebrow and preheader, footer with postal address), rendered as the drain renders it at send time. Only the unsubscribe link is a placeholder. The Approvals preview shows it, so a draft looks the way the recipient will see it instead of as an unstyled fragment.
+
+### Fixed
+
+- Email font in Outlook desktop and clients that drop the `<body>` style: the font stack is now also inline on every header, content and footer cell, and Outlook gets an Arial fallback in an mso-only style block. Before, Outlook could render the body in Times New Roman. Both layouts change; this is the only difference in the sent HTML.
+
 ## [0.8.7] - 2026-11-25
 
 ### Added

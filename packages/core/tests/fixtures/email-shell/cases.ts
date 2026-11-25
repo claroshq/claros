@@ -1,8 +1,8 @@
 /**
  * Inputs for the pinned narrow-layout email shell output. The .html files
- * next to this file were rendered by wrapInShell before brand.layout
- * existed; email-shell.test.ts checks that the narrow layout (the default)
- * still renders them byte for byte.
+ * next to this file are wrapInShell output, regenerated only on a deliberate
+ * shell change (last: the font stack on every cell); email-shell.test.ts
+ * checks that the narrow layout (the default) renders them byte for byte.
  */
 import type { EmailShellInput } from "../../../src/index.js";
 

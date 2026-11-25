@@ -382,6 +382,8 @@ export interface Message {
   status: string;
   subject: string | null;
   body_html: string | null;
+  /** The body in the product's branded email shell, as the recipient sees it. */
+  preview_html?: string | null;
   body_text: string | null;
   brain_reasoning: string | null;
   brain_action_type: string | null;
