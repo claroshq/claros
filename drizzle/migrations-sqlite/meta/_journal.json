@@ -22,6 +22,13 @@
       "when": 1795565491393,
       "tag": "0002_instance_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795565491394,
+      "tag": "0003_suppressions_lower_email",
+      "breakpoints": true
     }
   ]
 }

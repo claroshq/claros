@@ -1,9 +1,9 @@
 /**
  * SQLite / Cloudflare D1 implementation of the queries in ../areas/api-suppressions.ts.
  *
- * - The SQLite schema has no (tenant_id, lower(email)) unique index, so
- *   ON CONFLICT DO NOTHING becomes INSERT ... SELECT ... WHERE NOT EXISTS
- *   (one statement, atomic on SQLite; D1 serialises writes). SQLite lower()
+ * - Inserts are INSERT ... SELECT ... WHERE NOT EXISTS (one statement, atomic
+ *   on SQLite; D1 serialises writes); the unique index
+ *   uq_suppressions_tenant_email_lower (migration 0003) also enforces it. SQLite lower()
  *   folds ASCII only, Postgres lower() folds all of Unicode.
  * - importSuppressions: within-batch case-insensitive duplicates are dropped
  *   in JS (first occurrence wins, as with Postgres ON CONFLICT), the rest is

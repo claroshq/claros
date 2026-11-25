@@ -7,8 +7,8 @@
  *   stored config text is returned as is (a JSON string literal is unwrapped).
  * - Feedback CAS updates are single UPDATE ... WHERE <guard> RETURNING id
  *   statements (atomic on SQLite); NOW() is bound from JS.
- * - insertSuppression: no (tenant_id, lower(email)) unique index on SQLite, so
- *   INSERT ... SELECT ... WHERE NOT EXISTS (one statement).
+ * - insertSuppression: INSERT ... SELECT ... WHERE NOT EXISTS (one statement),
+ *   backed by the unique index uq_suppressions_tenant_email_lower.
  * - insertMessageEvent: ON CONFLICT on the partial unique index
  *   uq_message_events_provider_dedup, same as Postgres.
  */
