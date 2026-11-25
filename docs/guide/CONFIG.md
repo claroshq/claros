@@ -54,6 +54,7 @@ The response lists each change:
     "brain": { "guidelines": "Short, plain sentences. One call to action.", "text_rules": ["Never promise discounts."] },
     "date_traits": ["trial_ends_at", "first_paid_at"],
     "activation_events": ["project_created"],
+    "lifecycle": { "activation_events": ["project_created"], "engagement_events": ["project_created", "report_viewed"] },
     "analytics": { "sink": "statsraven", "endpoint": "https://stats.acme.example", "secret": "INGEST_TOKEN" }
   },
   "topics": [
@@ -180,7 +181,7 @@ An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true
 | `date_traits` | Identify traits that hold dates (`["trial_ends_at", "first_paid_at"]`), indexed for date triggers. Changing the list re-indexes the product's contacts |
 | `activation_events` | Stored for the features that read them |
 | `analytics` | The [analytics sink](WEBHOOKS.md#analytics-sink): `sink` (`statsraven`, `webhook`), `endpoint`, `site_key`, `secret`; `null` removes it |
-| `lifecycle` | Lifecycle thresholds: `activation_events`, `activation_window_days`, `natural_frequency_days`, `at_risk_missed_intervals`, `dormant_days`, `churned_days` (greater than `dormant_days`), `engagement_depth_window_days`, `power_user_percentile` (0 to 1). Unset keys keep their defaults |
+| `lifecycle` | Lifecycle thresholds: `activation_events`, `activation_window_days`, `natural_frequency_days`, `at_risk_missed_intervals`, `dormant_days`, `churned_days` (greater than `dormant_days`), `engagement_depth_window_days`, `power_user_percentile` (0 to 1), and `engagement_events` (v0.8.4): the `track` event names that count as activity. Unset or empty, every `track` and `identify` counts; set, only the listed `track` events update last seen, count toward engagement depth and move contacts back to `engaged` (or `churned` to `resurrected`), and `identify` does not count. Every event is still stored and still triggers flows and activation (see [Activity](CONCEPTS.md#activity-and-lifecycle-states)). Unset keys keep their defaults |
 | `llm_daily_token_budget` | LLM tokens the product may use per UTC day; over it, drafts wait (`status_reason = llm_budget`, see [Approvals](APPROVALS.md#value-gate-and-llm-budget-v08)). `null` removes the budget |
 | `approvals` | `{"daily_digest": true}`: one mail a day to the product's owners with the drafts waiting for approval (see [Approvals](APPROVALS.md#reaching-reviewers-v08)) |
 

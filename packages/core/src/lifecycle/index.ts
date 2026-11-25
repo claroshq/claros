@@ -17,6 +17,7 @@ export {
   evaluateTimeTransition,
   checkActivationSatisfied,
   isActivationRelevantEvent,
+  isEngagementEvent,
   type Transition,
   type EventTransitionInput,
   type TimeTransitionInput,

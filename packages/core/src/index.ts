@@ -68,6 +68,7 @@ export {
   evaluateTimeTransition,
   checkActivationSatisfied,
   isActivationRelevantEvent,
+  isEngagementEvent,
   LIFECYCLE_DEFAULTS,
   resolveLifecycleConfig,
   computeMinCohortSize,

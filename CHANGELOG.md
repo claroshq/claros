@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-25
+
+### Added
+
+- `settings.lifecycle.engagement_events`: the `track` event names that count as activity. When set, only those events update a contact's last seen time, count toward engagement depth and move contacts back to `engaged` (or `churned` to `resurrected`), and `identify` no longer counts as activity. Events outside the list are still stored, still trigger flows, still count for `activation_events` and still feed conditions and history. Unset or empty keeps the previous behaviour: every `track` and `identify` counts. Set it in the config document (`claros apply`, `PUT /v1/config`); the config schema and `GET /v1/capabilities` (feature `engagement_events`) include it. Same behaviour on Postgres and D1. See [Activity and lifecycle states](docs/guide/CONCEPTS.md#activity-and-lifecycle-states).
+
 ## [0.8.3] - 2026-11-25
 
 ### Changed
@@ -189,7 +195,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/claroshq/claros/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/claroshq/claros/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/claroshq/claros/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/claroshq/claros/compare/v0.8.0...v0.8.1

@@ -86,6 +86,18 @@ AI-drafted flows default to `approval_mode: require`: every generated message wa
 
 You can mix approaches across flows, and reference your own templates (`@template:name`) and knowledge base entries (`@kb:name`) inside prompts.
 
+## Activity and lifecycle states
+
+The engine moves each contact through the lifecycle states from their activity. An event that counts as activity sets the contact's last seen time, counts toward their engagement depth, and moves `activated`, `at_risk` and `dormant` contacts to `engaged` and `churned` contacts to `resurrected`. The 15-minute scan moves contacts down when there has been no activity for long enough (`engaged` to `at_risk` to `dormant` to `churned`). `signed_up` becomes `activated` when the contact has sent every event in `activation_events`. The thresholds are the `lifecycle` settings in [CONFIG.md](./CONFIG.md#settings).
+
+By default every `track` and `identify` call counts as activity. When some of your events are not real usage (a background sync, an event your backend sends on the user's behalf), list the ones that are in `settings.lifecycle.engagement_events` (v0.8.4):
+
+```json
+{ "settings": { "lifecycle": { "engagement_events": ["project_created", "report_viewed"] } } }
+```
+
+With the list set, only `track` events whose name is in it count as activity, and `identify` never does (traits still update). Events outside the list are still stored, still trigger event flows, still count for `activation_events` and still feed conditions and history. A contact first created by an event outside the list starts with its last seen time at that first event. An empty list, or removing the key, restores the default.
+
 ## Flow mechanics
 
 **Triggers.** Four types, three of which enroll today:

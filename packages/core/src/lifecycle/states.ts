@@ -162,6 +162,12 @@ export function assertValidTransition(
 export interface LifecycleConfig {
   /** Events that must ALL occur for signed_up -> activated. Empty = no auto-activation. */
   activation_events: string[];
+  /**
+   * Track event names that count as activity (bump last_seen_at and the
+   * engagement counters, drive the activity-based transitions). Empty = every
+   * track and identify counts. When set, identify never counts.
+   */
+  engagement_events: string[];
   /** Days from first_seen_at within which activation must happen (informational). */
   activation_window_days: number;
   /** Expected activity interval in days. */

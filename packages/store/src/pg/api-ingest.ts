@@ -13,6 +13,7 @@ import {
   evaluateEventTransition,
   isActivationRelevantEvent,
   checkActivationSatisfied,
+  isEngagementEvent,
   resolveLifecycleConfig,
   dedupLockKey,
   type LifecycleState,
@@ -57,8 +58,13 @@ async function attemptDedupInsert(
 
 /**
  * Minimal contact upsert for track events: find-or-create by (tenant_id, external_id).
- * Sets last_seen_at on every call. New contacts get lifecycle_state = 'signed_up'.
+ * New contacts get lifecycle_state = 'signed_up' and first_seen_at = last_seen_at = now.
  * Returns the contact ID and current lifecycle_state.
+ *
+ * `activity` (isEngagementEvent): when true, last_seen_at is set to now and the
+ * event counter incremented. When false (settings.lifecycle.engagement_events
+ * is set and the event is not in it), an existing contact is not touched and a
+ * new one starts with a zero counter.
  *
  * Track events do NOT process traits - they only ensure the contact exists.
  */
@@ -67,6 +73,7 @@ async function ensureContact(
   tenantId: string,
   externalId: string,
   now: Date,
+  activity: boolean,
 ): Promise<{ id: string; lifecycleState: LifecycleState }> {
   // Try to find existing contact first (most common path)
   const existing = await db
@@ -77,6 +84,9 @@ async function ensureContact(
 
   if (existing.length > 0) {
     const contact = existing[0]!;
+    if (!activity) {
+      return { id: contact.id, lifecycleState: contact.lifecycleState as LifecycleState };
+    }
     // Update last_seen_at and increment event counter
     await db
       .update(contacts)
@@ -99,14 +109,17 @@ async function ensureContact(
       lifecycleState: "signed_up",
       firstSeenAt: now,
       lastSeenAt: now,
-      eventCountBucketCurrent: 1,
+      eventCountBucketCurrent: activity ? 1 : 0,
     })
     .onConflictDoUpdate({
       target: [contacts.tenantId, contacts.externalId],
-      set: {
-        lastSeenAt: now,
-        eventCountBucketCurrent: sql<number>`COALESCE("contacts"."event_count_bucket_current", 0) + 1`,
-      },
+      // Not activity: a no-op update, so the row is still returned.
+      set: activity
+        ? {
+            lastSeenAt: now,
+            eventCountBucketCurrent: sql<number>`COALESCE("contacts"."event_count_bucket_current", 0) + 1`,
+          }
+        : { lastSeenAt: sql`"contacts"."last_seen_at"` },
     })
     .returning({ id: contacts.id, lifecycleState: contacts.lifecycleState });
 
@@ -149,11 +162,12 @@ async function upsertContactWithTraits(
   externalId: string,
   traitPlan: IngestTraitPlan | null,
   now: Date,
+  activity: boolean,
 ): Promise<IdentifyResult> {
   // If no traits, fall back to minimal upsert (same as track).
   // The caller passes a null plan when traits are absent or empty.
   if (!traitPlan) {
-    const { id: contactId, lifecycleState } = await ensureContact(db, tenantId, externalId, now);
+    const { id: contactId, lifecycleState } = await ensureContact(db, tenantId, externalId, now, activity);
     return { contactId, lifecycleState, conflicts: [] };
   }
 
@@ -162,7 +176,7 @@ async function upsertContactWithTraits(
   const conflicts = [...traitPlan.conflicts];
 
   // First, ensure the contact exists (may already exist from a prior track/identify)
-  const { id: contactId, lifecycleState } = await ensureContact(db, tenantId, externalId, now);
+  const { id: contactId, lifecycleState } = await ensureContact(db, tenantId, externalId, now, activity);
 
   // Now apply trait updates. We separate email handling because it can conflict.
   const hasEmail = "email" in columnUpdates;
@@ -390,6 +404,7 @@ async function evaluateAndApplyTransition(
   eventName: string | null,
   eventId: string,
   now: Date,
+  config: LifecycleConfig,
 ): Promise<TransitionResult | null> {
   // Fast path: states that never transition on events
   if (currentState === "engaged" || currentState === "resurrected") {
@@ -399,12 +414,6 @@ async function evaluateAndApplyTransition(
   // For signed_up: need to check activation
   let activationSatisfied = false;
   if (currentState === "signed_up") {
-    // Load lifecycle config from tenant settings (only query in this path).
-    // This query fires only for signed_up contacts where the event MIGHT be
-    // an activation event. A contact hits this path at most once in their lifetime
-    // (after activation, they leave signed_up permanently).
-    const config = await loadLifecycleConfig(db, tenantId);
-
     // Short-circuit: no activation_events configured means no auto-activation
     if (config.activation_events.length === 0) {
       return null;
@@ -452,6 +461,7 @@ async function evaluateAndApplyTransition(
     currentState,
     eventName,
     activationSatisfied,
+    countsAsActivity: isEngagementEvent(eventName, config.engagement_events),
   });
 
   if (transition === null) {
@@ -531,8 +541,10 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
             return { deduplicated: true as const };
           }
 
-          // Contact upsert (includes event counter increment)
-          const { id: contactId, lifecycleState } = await ensureContact(tx, tenantId, userId, now);
+          // Contact upsert (includes event counter increment when the event counts as activity)
+          const config = await loadLifecycleConfig(tx, tenantId);
+          const activity = isEngagementEvent(eventName, config.engagement_events);
+          const { id: contactId, lifecycleState } = await ensureContact(tx, tenantId, userId, now, activity);
 
           // Insert event
           const [insertedEvent] = await tx.insert(events).values({
@@ -555,6 +567,7 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
             eventName,
             insertedEvent!.id,
             now,
+            config,
           );
 
           return { deduplicated: false as const, contactId };
@@ -564,7 +577,9 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
       }
 
       // No messageId - original path (no dedup, no transaction wrapper)
-      const { id: contactId, lifecycleState } = await ensureContact(db, tenantId, userId, now);
+      const config = await loadLifecycleConfig(db, tenantId);
+      const activity = isEngagementEvent(eventName, config.engagement_events);
+      const { id: contactId, lifecycleState } = await ensureContact(db, tenantId, userId, now, activity);
 
       // Insert event (returning ID for transition audit log)
       const [insertedEvent] = await db.insert(events).values({
@@ -587,6 +602,7 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
         eventName,
         insertedEvent!.id,
         now,
+        config,
       );
 
       return { deduplicated: false, contactId };
@@ -603,13 +619,17 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
             return { deduplicated: true as const };
           }
 
-          // Upsert contact with trait processing (includes event counter increment)
+          // Upsert contact with trait processing (includes event counter increment
+          // unless settings.lifecycle.engagement_events is set)
+          const config = await loadLifecycleConfig(tx, tenantId);
+          const activity = isEngagementEvent(null, config.engagement_events);
           const { contactId, lifecycleState, conflicts } = await upsertContactWithTraits(
             tx,
             tenantId,
             userId,
             traitPlan,
             now,
+            activity,
           );
 
           // Insert identify event
@@ -641,6 +661,7 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
             null,
             insertedEvent!.id,
             now,
+            config,
           );
 
           return { deduplicated: false as const };
@@ -652,12 +673,15 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
       // No messageId - original path (no dedup, no transaction wrapper)
 
       // Upsert contact with trait processing
+      const config = await loadLifecycleConfig(db, tenantId);
+      const activity = isEngagementEvent(null, config.engagement_events);
       const { contactId, lifecycleState, conflicts } = await upsertContactWithTraits(
         db,
         tenantId,
         userId,
         traitPlan,
         now,
+        activity,
       );
 
       // Insert identify event. Traits are stored in properties column.
@@ -687,8 +711,9 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
       }
 
       // Evaluate lifecycle transition (identify events have no event name -
-      // they still count as "activity" for at_risk/dormant/churned recovery,
-      // but cannot satisfy activation_events since those require named track events)
+      // they count as "activity" for at_risk/dormant/churned recovery unless
+      // settings.lifecycle.engagement_events is set, and cannot satisfy
+      // activation_events since those require named track events)
       await evaluateAndApplyTransition(
         db,
         tenantId,
@@ -697,6 +722,7 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
         null, // identify events have no event name
         insertedEvent!.id,
         now,
+        config,
       );
 
       return { deduplicated: false };

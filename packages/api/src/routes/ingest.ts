@@ -47,10 +47,11 @@
  *   to verify all activation_events are satisfied. Short-circuits: no query
  *   when contact is not signed_up, when tenant has no activation_events,
  *   or when the event name is not in the activation_events list.
- * - Lifecycle config is loaded from tenants.settings.lifecycle ONLY when
- *   the contact is in signed_up state and the event is activation-relevant.
- *   Other event-driven transitions (at_risk/dormant/churned recovery) do not
- *   need config - they trigger on any activity.
+ * - Activity: by default every track and identify counts as activity
+ *   (last_seen_at, event counter, at_risk/dormant/churned recovery,
+ *   activated -> engaged). When tenants.settings.lifecycle.engagement_events
+ *   is set, only track events in that list count and identify does not
+ *   (v0.8.4). Activation, event storage and trigger-check are unaffected.
  * - engagement_depth is NOT touched by this task.
  */
 import { createRouter, parseBody } from "../http/router.js";

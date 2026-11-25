@@ -8,6 +8,7 @@ import type { LifecycleConfig } from "./states.js";
 
 export const LIFECYCLE_DEFAULTS: Readonly<LifecycleConfig> = {
   activation_events: [],
+  engagement_events: [],
   activation_window_days: 10,
   natural_frequency_days: 7,
   at_risk_missed_intervals: 2,
@@ -28,6 +29,8 @@ export function resolveLifecycleConfig(
   return {
     activation_events:
       overrides.activation_events ?? LIFECYCLE_DEFAULTS.activation_events,
+    engagement_events:
+      overrides.engagement_events ?? LIFECYCLE_DEFAULTS.engagement_events,
     activation_window_days:
       overrides.activation_window_days ?? LIFECYCLE_DEFAULTS.activation_window_days,
     natural_frequency_days:

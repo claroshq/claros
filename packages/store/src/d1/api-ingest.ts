@@ -9,7 +9,9 @@
  *    contact on an activation event, its distinct activation event names).
  *    The transition is decided in JS from these (../shared/api-ingest.ts).
  * 2. One write batch (a single SQLite transaction; D1 serialises writes):
- *    - contact upsert and event insert, each guarded by
+ *    - contact upsert (last_seen_at and the event counter only when the event
+ *      counts as activity, settings.lifecycle.engagement_events) and event
+ *      insert, each guarded by
  *      `NOT EXISTS (event with this messageId)`. The event id is generated
  *      here, so every later statement is guarded by "our event row exists":
  *      a duplicate (even one that raced past step 1) writes nothing at all.
@@ -41,6 +43,7 @@ import type { D1Db } from "./db.js";
 import type { ApiIngestQueries, IngestTraitPlan } from "../areas/api-ingest.js";
 import {
   activationEventsToRead,
+  countsAsActivity,
   lifecycleConfigFromSettings,
   planIngestTransition,
   type IngestTransitionPlan,
@@ -103,7 +106,7 @@ function jsonOrNull(value: unknown): string | null {
 async function planEvent(
   db: D1Db,
   input: IngestEventInput,
-): Promise<{ currentState: LifecycleState; transition: IngestTransitionPlan | null } | null> {
+): Promise<{ currentState: LifecycleState; transition: IngestTransitionPlan | null; activity: boolean } | null> {
   const { tenantId, userId, messageId } = input;
   const contactQuery = db
     .select({ id: contacts.id, lifecycleState: contacts.lifecycleState })
@@ -163,7 +166,7 @@ async function planEvent(
     config,
     priorEventNames,
   });
-  return { currentState, transition };
+  return { currentState, transition, activity: countsAsActivity(input.eventName, config) };
 }
 
 /** Properties merge expression with jsonb `(props - removed) || merged` semantics. */
@@ -197,6 +200,7 @@ async function writeEvent(
   db: D1Db,
   input: IngestEventInput,
   transition: IngestTransitionPlan | null,
+  activity: boolean,
 ): Promise<IngestResult> {
   const { tenantId, userId, messageId, now } = input;
   const nowMs = now.getTime();
@@ -214,11 +218,15 @@ async function writeEvent(
       id, tenant_id, external_id, lifecycle_state, first_seen_at, last_seen_at,
       event_count_bucket_current, created_at
     )
-    SELECT ${crypto.randomUUID()}, ${tenantId}, ${userId}, 'signed_up', ${nowMs}, ${nowMs}, 1, ${nowMs}
+    SELECT ${crypto.randomUUID()}, ${tenantId}, ${userId}, 'signed_up', ${nowMs}, ${nowMs}, ${activity ? 1 : 0}, ${nowMs}
     WHERE ${notYetStored}
-    ON CONFLICT (tenant_id, external_id) DO UPDATE SET
-      last_seen_at = excluded.last_seen_at,
-      event_count_bucket_current = COALESCE(contacts.event_count_bucket_current, 0) + 1
+    ON CONFLICT (tenant_id, external_id) DO UPDATE SET ${
+      activity
+        ? sql`last_seen_at = excluded.last_seen_at,
+      event_count_bucket_current = COALESCE(contacts.event_count_bucket_current, 0) + 1`
+        : // Not activity: a no-op update, so RETURNING still yields the row.
+          sql`last_seen_at = contacts.last_seen_at`
+    }
     RETURNING id, lifecycle_state
   `;
 
@@ -303,7 +311,7 @@ async function writeEvent(
 async function recordEvent(db: D1Db, input: IngestEventInput): Promise<IngestResult> {
   const planned = await planEvent(db, input);
   if (planned === null) return { deduplicated: true };
-  return writeEvent(db, input, planned.transition);
+  return writeEvent(db, input, planned.transition, planned.activity);
 }
 
 export function d1ApiIngest(db: D1Db): ApiIngestQueries {

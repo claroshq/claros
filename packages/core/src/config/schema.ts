@@ -228,6 +228,8 @@ const LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 export const configLifecycleSchema = z
   .object({
     activation_events: z.array(z.string().min(1).max(200)).max(50).optional(),
+    /** Track events that count as activity; unset or empty = every track and identify. */
+    engagement_events: z.array(z.string().min(1).max(200)).max(50).optional(),
     activation_window_days: z.number().int().min(1).max(365).optional(),
     natural_frequency_days: z.number().int().min(1).max(365).optional(),
     at_risk_missed_intervals: z.number().int().min(1).max(52).optional(),
