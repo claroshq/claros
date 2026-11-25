@@ -42,7 +42,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bundle-assets": "node scripts/bundle-assets.mjs",
-    "prepack": "node scripts/bundle-assets.mjs"
+    "prepack": "npm run build --prefix ../.. && node scripts/bundle-assets.mjs"
   },
   "dependencies": {
     "wrangler": "^4.168.0"
