@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-11-25
+
 ### Changed
 
 - Flow editor: the "Managed in config as code" notice can be dismissed. It stays dismissed in that browser, and a quiet **config as code** badge next to the flow status links to Settings, Config as code instead.
@@ -272,7 +274,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.8...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.9...HEAD
+[0.8.9]: https://github.com/claroshq/claros/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/claroshq/claros/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/claroshq/claros/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/claroshq/claros/compare/v0.8.5...v0.8.6
