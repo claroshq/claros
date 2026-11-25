@@ -70,6 +70,8 @@ export type SentLogDetailRow = {
   contact_email: string | null;
   contact_name: string | null;
   contact_external_id: string | null;
+  /** The flow's compiled plan (parsed JSON), or null. */
+  flow_compiled_plan: unknown;
 };
 
 /** One event in a message's timeline. */

@@ -102,7 +102,7 @@ export function d1ApiSentLog(db: D1Db): ApiSentLogQueries {
     async getSentMessage({ tenantId, messageId }) {
       const rows = await db.all<Record<string, unknown>>(sql`
         SELECT m.id, m.tenant_id, m.contact_id, m.flow_id,
-               f.name AS flow_name,
+               f.name AS flow_name, f.compiled_plan AS flow_compiled_plan,
                m.membership_id, m.flow_step_order,
                m.status, m.feedback, m.subject, m.body_html, m.body_text,
                m.brain_reasoning, m.brain_action_type,
@@ -121,13 +121,15 @@ export function d1ApiSentLog(db: D1Db): ApiSentLogQueries {
       `);
       const row = rows[0];
       if (!row) return null;
-      return withDates<SentLogDetailRow>(row, [
+      const out = withDates<SentLogDetailRow>(row, [
         "scheduled_send_at",
         "approved_at",
         "sent_at",
         "created_at",
         "updated_at",
       ]);
+      out.flow_compiled_plan = parseJson(row.flow_compiled_plan);
+      return out;
     },
 
     async listMessageEvents({ tenantId, messageId }) {

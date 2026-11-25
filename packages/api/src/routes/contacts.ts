@@ -9,6 +9,12 @@
  *   GET /v1/contacts              list contacts (cursor-paginated; search + filters)
  *   GET /v1/contacts/:id          one contact: profile, flow memberships, suppression
  *   GET /v1/contacts/:id/timeline merged event/transition/message timeline (cursor-paginated)
+ *   GET /v1/contacts/:id/notes    the team's notes about the contact, newest first
+ *   POST /v1/contacts/:id/notes   add a note { "body": "..." }
+ *   DELETE /v1/contacts/:id/notes/:noteId  delete a note
+ *
+ * Notes are for the team only: the engine never reads them and they never
+ * reach the LLM. Session only (no admin key scope).
  *
  * Tenant isolation: enforced in every WHERE clause. A contact that exists but
  * belongs to another tenant returns 404 (not 403), matching flows/kb.
@@ -44,7 +50,9 @@ import {
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import type { AppContext } from "../http/env.js";
-import { RoleRouter, allowAdminKey } from "../http/router.js";
+import { RoleRouter, allowAdminKey, validatedBody } from "../http/router.js";
+import { validateBody } from "../http/validate.js";
+import type { ContactNoteRow } from "@claros/store";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -386,5 +394,63 @@ export default function contactsRoutes() {
     return c.json({ id: contact.id, external_id: contact.externalId, suppressed: out.suppressed, cancelled: out.cancelled });
   });
 
+  /** GET /v1/contacts/:id/notes - the team's notes about the contact, newest first. */
+  router.get("/:id/notes", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const contactId = c.req.param("id")!;
+    if (!isUuid(contactId) || !(await storeFor(db).apiContacts.contactExists({ tenantId, contactId }))) {
+      return c.json({ error: "Contact not found." }, 404);
+    }
+    const notes = await storeFor(db).apiContacts.listContactNotes({ tenantId, contactId });
+    return c.json({ items: notes.map(noteJson) });
+  });
+
+  /** POST /v1/contacts/:id/notes - add a note { "body": "..." }. */
+  router.post("/:id/notes", "member", validatedBody(noteBodySchema), async (c) => {
+    const db: Db = c.var.db;
+    const tenant = c.var.tenant!;
+    const v = validateBody(c, noteBodySchema);
+    if (!v.ok) return v.response;
+    const body = v.value.body.trim();
+    if (body.length === 0) return c.json({ error: "A note needs some text." }, 400);
+    const note = await storeFor(db).apiContacts.addContactNote({
+      tenantId: tenant.id,
+      contactId: c.req.param("id")!,
+      authorUserId: tenant.userId || null,
+      body,
+      now: new Date(),
+    });
+    if (!note) return c.json({ error: "Contact not found." }, 404);
+    return c.json(noteJson(note), 201);
+  });
+
+  /** DELETE /v1/contacts/:id/notes/:noteId - delete a note. */
+  router.delete("/:id/notes/:noteId", "member", async (c) => {
+    const db: Db = c.var.db;
+    const deleted = await storeFor(db).apiContacts.deleteContactNote({
+      tenantId: c.var.tenant!.id,
+      contactId: c.req.param("id")!,
+      noteId: c.req.param("noteId")!,
+    });
+    if (!deleted) return c.json({ error: "Note not found." }, 404);
+    return c.json({ deleted: true });
+  });
+
   return router.app;
+}
+
+const NOTE_MAX_LENGTH = 5000;
+
+const noteBodySchema = z.object({
+  body: z.string().max(NOTE_MAX_LENGTH, `A note is at most ${NOTE_MAX_LENGTH} characters.`),
+});
+
+function noteJson(n: ContactNoteRow) {
+  return {
+    id: n.id,
+    body: n.body,
+    created_at: n.createdAt.toISOString(),
+    author: n.authorUserId ? { id: n.authorUserId, name: n.authorName, email: n.authorEmail } : null,
+  };
 }

@@ -9,6 +9,14 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Added
 
 - `GET /v1/messages` returns `preview_html` for each message: the body in the product's branded shell (logo or name, accent bar, step eyebrow and preheader, footer with postal address), rendered as the drain renders it at send time. Only the unsubscribe link is a placeholder. The Approvals preview shows it, so a draft looks the way the recipient will see it instead of as an unstyled fragment.
+- Person page actions: **Delete person** (owners; type the person's email or user id to confirm) erases the person as `DELETE /v1/contacts/:id` does, and **Exclude from mail** (any member) suppresses the address and cancels unsent messages as the Approvals action does. Before, both were API only.
+- Notes on a person: the team writes free-text notes on the person's page, shown newest first with author and time. API: `GET`/`POST /v1/contacts/:id/notes`, `DELETE /v1/contacts/:id/notes/:noteId` (member session). New table `contact_notes` (Postgres migration `0032`, D1 migration `0012`). Notes are erased with the person and are never read by the engine or sent to the LLM.
+- Sent Mail detail, **Made from**: links to the flow step and, when the step renders a template, to that template in the flow editor (`/flows/:id/edit?template=<slug>` opens it). `GET /v1/sent-log/:id` returns `template_ref` (the step's template in the current plan, the picked candidate's for a choose step, `null` for AI-drafted steps).
+
+### Changed
+
+- Person timeline: a message's subject is now the visible link, to the mail as it was sent (Sent Mail detail); the flow name is plain text. Before, the flow name looked like the link and opened the flow editor. Opened from a person, Sent Mail detail links back to that person, and its Contact field links to the person.
+- The person page shows the plan (`payment_status`) under Profile and says that profile fields come from identify calls.
 
 ### Fixed
 

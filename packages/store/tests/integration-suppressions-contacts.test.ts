@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { testBackends, type Backend } from "./support/backends.js";
 import { insertContact, insertFlow, insertMembership, insertMessage, insertEvent } from "./support/worker-fixtures.js";
 import { insertEndpoint, outboxOf } from "./support/outbox-fixtures.js";
+import { addUser, uniqueEmail } from "./support/identity.js";
 
 const NOW = new Date("2026-11-20T10:00:00Z");
 
@@ -124,8 +125,13 @@ for (const factory of testBackends()) {
         { tenantId: t, endpointId: ep, event: "message.sent", payload: { contact_id: keep }, nextAttemptAt: NOW, createdAt: NOW },
       ]);
 
+      await b.store.apiContacts.addContactNote({ tenantId: t, contactId: c, authorUserId: null, body: "gone", now: NOW });
+      await b.store.apiContacts.addContactNote({ tenantId: t, contactId: keep, authorUserId: null, body: "stays", now: NOW });
+
       expect(await b.store.apiContacts.eraseContact({ tenantId: t, contactId: c })).toBe(true);
       expect(await b.store.apiContacts.eraseContact({ tenantId: t, contactId: c })).toBe(false);
+      expect(await b.store.apiContacts.listContactNotes({ tenantId: t, contactId: c })).toEqual([]);
+      expect((await b.store.apiContacts.listContactNotes({ tenantId: t, contactId: keep })).map((n: any) => n.body)).toEqual(["stays"]);
       const contactsLeft = await b.db.select({ id: b.schema.contacts.id }).from(b.schema.contacts).where(eq(b.schema.contacts.tenantId, t));
       expect(contactsLeft.map((r: any) => r.id)).toEqual([keep]);
       const ev = await b.db.select().from(b.schema.events).where(eq(b.schema.events.tenantId, t));
@@ -135,6 +141,30 @@ for (const factory of testBackends()) {
       expect(await b.db.select().from(b.schema.flowMemberships).where(eq(b.schema.flowMemberships.tenantId, t))).toEqual([]);
       expect((await b.db.select().from(b.schema.suppressions).where(eq(b.schema.suppressions.tenantId, t))).length).toBe(1);
       expect((await outboxOf(b, t)).map((r) => r.payload)).toEqual([{ contact_id: keep }]);
+    });
+
+    it("contact notes: add (only to a contact of the tenant), list newest first with author, delete", async () => {
+      const t = await b.newTenant();
+      const other = await b.newTenant();
+      const c = await insertContact(b, t);
+      const email = uniqueEmail("writer");
+      const u = await addUser(b, t, { email, name: "Writer" });
+      const first = await b.store.apiContacts.addContactNote({ tenantId: t, contactId: c, authorUserId: u, body: "first", now: NOW });
+      expect(first).toMatchObject({ body: "first", authorUserId: u, authorName: "Writer", authorEmail: email });
+      expect(first!.createdAt.getTime()).toBe(NOW.getTime());
+      const later = new Date(NOW.getTime() + 60_000);
+      const second = await b.store.apiContacts.addContactNote({ tenantId: t, contactId: c, authorUserId: null, body: "second", now: later });
+      expect(second).toMatchObject({ body: "second", authorUserId: null, authorName: null });
+
+      // Another tenant cannot write to, read or delete this contact's notes.
+      expect(await b.store.apiContacts.addContactNote({ tenantId: other, contactId: c, authorUserId: null, body: "x", now: NOW })).toBeNull();
+      expect(await b.store.apiContacts.listContactNotes({ tenantId: other, contactId: c })).toEqual([]);
+      expect(await b.store.apiContacts.deleteContactNote({ tenantId: other, contactId: c, noteId: first!.id })).toBe(false);
+
+      expect((await b.store.apiContacts.listContactNotes({ tenantId: t, contactId: c })).map((n: any) => n.body)).toEqual(["second", "first"]);
+      expect(await b.store.apiContacts.deleteContactNote({ tenantId: t, contactId: c, noteId: first!.id })).toBe(true);
+      expect(await b.store.apiContacts.deleteContactNote({ tenantId: t, contactId: c, noteId: first!.id })).toBe(false);
+      expect((await b.store.apiContacts.listContactNotes({ tenantId: t, contactId: c })).map((n: any) => n.body)).toEqual(["second"]);
     });
 
     it("excludeContact suppresses and cancels not-yet-sent messages atomically; leaves sent and sending", async () => {

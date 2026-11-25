@@ -75,7 +75,7 @@ for (const factory of testBackends()) {
       ]);
       flowIds = [randomUUID(), randomUUID()];
       await b.db.insert(s.flows).values([
-        { id: flowIds[0], tenantId, name: "Welcome", triggerType: "manual", triggerConfig: {}, steps: [] },
+        { id: flowIds[0], tenantId, name: "Welcome", triggerType: "manual", triggerConfig: {}, steps: [], compiledPlan: { steps: [{ order: 1, template_ref: "welcome" }] } },
         { id: flowIds[1], tenantId, name: "Winback", triggerType: "manual", triggerConfig: {}, steps: [] },
       ]);
       const memberships = MSGS.map(() => randomUUID());
@@ -204,6 +204,7 @@ for (const factory of testBackends()) {
         created_at: now - 20 * D + 1 * H, updated_at: now - 1 * D, retry_count: 0,
         provider_message_id: null, recipient_address: "bo@corp.test",
         contact_email: "bo@corp.test", contact_name: "Bo Zhang", contact_external_id: "c1",
+        flow_compiled_plan: { steps: [{ order: 1, template_ref: "welcome" }] },
       });
       const other = await b.newTenant();
       expect(await b.store.apiSentLog.getSentMessage({ tenantId: other, messageId: msgIds[1]! })).toBeNull();

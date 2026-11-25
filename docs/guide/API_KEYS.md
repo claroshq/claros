@@ -83,7 +83,7 @@ curl -X POST https://claros.example.com/v1/ingestion/keys \
 
 ### Erasing a person in every product
 
-`DELETE /v1/instance/people/:email` erases every contact with this email (ignoring case) in every product, as `DELETE /v1/contacts/:external_id` does in one product: events, flow memberships, messages and topic statuses go, suppressions stay. Instance admin session or an instance key with `people:erase`.
+`DELETE /v1/instance/people/:email` erases every contact with this email (ignoring case) in every product, as `DELETE /v1/contacts/:external_id` does in one product: events, flow memberships, messages, topic statuses and notes go, suppressions stay. Instance admin session or an instance key with `people:erase`.
 
 ```json
 { "erased": [{ "product": "acme", "contact_id": "...", "external_id": "u_42" }], "count": 1 }
@@ -112,6 +112,8 @@ curl -X POST https://claros.example.com/v1/ingestion/keys \
 | `POST /v1/suppressions` `{"emails": [...], "reason": "manual"}` | Suppress up to 1000 addresses. `reason`: `manual` (default), `unsubscribe`, `hard_bounce`, `complaint`, `imported`. Answers `{added, skipped, invalid}`. The single-address form `{"email": "..."}` is unchanged. |
 | `DELETE /v1/suppressions/:email` | Remove one suppression. `complaint` and `hard_bounce` suppressions are removed only with `?force=1` (otherwise `409` with the reason). |
 | `GET /v1/suppressions?since=<ISO-8601>` | Suppressions created at or after `since`, paginated as before (`limit`, `after`). |
-| `DELETE /v1/contacts/:external_id` | Erase a contact of the product: its events, flow memberships, messages and topic statuses. Suppressions stay, so the address is not mailed again. Owner session or `contacts:delete`. |
+| `DELETE /v1/contacts/:external_id` | Erase a contact of the product: its events, flow memberships, messages, topic statuses and notes. Suppressions stay, so the address is not mailed again. Owner session or `contacts:delete`. Owners can also do this from the person's page (**Delete person**). |
+
+Notes on a person (`GET` and `POST /v1/contacts/:id/notes` `{"body": "..."}`, `DELETE /v1/contacts/:id/notes/:noteId`) take a member session only; no admin key scope reaches them. Notes are for the team: the engine does not read them and they are never sent to the LLM.
 
 Adding and removing suppressions sends the `contact.suppressed` and `contact.resubscribed` [webhooks](WEBHOOKS.md).

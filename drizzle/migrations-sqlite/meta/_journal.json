@@ -85,6 +85,13 @@
       "when": 1795606054545,
       "tag": "0011_embedding_configs",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795613847808,
+      "tag": "0012_contact_notes",
+      "breakpoints": true
     }
   ]
 }

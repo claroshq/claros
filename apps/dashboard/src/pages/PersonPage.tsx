@@ -6,14 +6,29 @@
  * flow memberships. The timeline keeps the three kinds distinct: an event
  * shows its name, the client context it arrived with (browser, OS, ip),
  * and on demand its payload; a transition shows the state change and what
- * caused it; a message shows the draft and where it came from. Flows link
- * to the flow editor.
+ * caused it; a message links to the mail as it was sent (Sent Mail detail,
+ * which links on to the flow step and its template).
+ *
+ * The rail also holds the team's notes about the person and the actions:
+ * exclude from lifecycle mail (any member) and delete the person (owners
+ * only, confirmed by typing the person's email or user id).
  */
-import React, { useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Zap, RefreshCw, Mail } from "lucide-react";
-import { useContact, useContactTimeline } from "../contacts.js";
+import React, { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Zap, RefreshCw, Mail, X } from "lucide-react";
+import {
+  useContact,
+  useContactTimeline,
+  useContactNotes,
+  useAddContactNote,
+  useDeleteContactNote,
+  useDeleteContact,
+} from "../contacts.js";
+import { useExcludeContact } from "../messages.js";
+import { useMe } from "../auth.js";
 import type { ContactDetail, TimelineItem } from "../api.js";
+import { Textarea } from "../components/ui/textarea.js";
+import { Input } from "../components/ui/input.js";
 import { Badge, type BadgeVariant } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
@@ -130,7 +145,7 @@ function StateChip({ state }: { state: string }) {
 // Timeline items
 // ---------------------------------------------------------------------------
 
-function TimelineRow({ item, last }: { item: TimelineItem; last: boolean }) {
+function TimelineRow({ item, last, contactId }: { item: TimelineItem; last: boolean; contactId: string }) {
   const Icon = KIND_ICON[item.kind];
   return (
     <li className="relative flex gap-4 pb-5 last:pb-0">
@@ -191,7 +206,8 @@ function TimelineRow({ item, last }: { item: TimelineItem; last: boolean }) {
             <p className="text-[14px] text-foreground">
               <Link
                 to={`/sent/${item.id}`}
-                className="hover:underline underline-offset-4"
+                state={{ fromPerson: contactId }}
+                className="text-accent-text underline underline-offset-4"
               >
                 {item.subject ?? "(no subject)"}
               </Link>
@@ -201,12 +217,7 @@ function TimelineRow({ item, last }: { item: TimelineItem; last: boolean }) {
               {item.feedback && (
                 <span className="font-mono">{item.feedback}</span>
               )}
-              <Link
-                to={`/flows/${item.flow_id}/edit`}
-                className="text-accent-text underline underline-offset-4"
-              >
-                {item.flow_name}
-              </Link>
+              <span>{item.flow_name}</span>
               {item.flow_step_order !== null && <span>step {item.flow_step_order}</span>}
             </p>
           </div>
@@ -403,6 +414,7 @@ export default function PersonPage() {
                     key={`${item.kind}-${item.id}`}
                     item={item}
                     last={i === items.length - 1}
+                    contactId={contact.id}
                   />
                 ))}
               </ol>
@@ -424,16 +436,23 @@ export default function PersonPage() {
 
         {/* Right rail */}
         <div className="w-full shrink-0 space-y-6 lg:w-72">
+          <NotesCard contactId={contact.id} />
+
           <RailCard title="Profile">
             <dl>
               <Fact label="Email" value={contact.email ?? "-"} />
               <Fact label="User id" value={contact.external_id} />
               {contact.company && <Fact label="Company" value={contact.company} mono={false} />}
+              <Fact label="Plan" value={contact.payment_status ?? "-"} />
               <Fact label="First seen" value={formatDate(contact.first_seen_at)} />
               <Fact label="Last seen" value={formatDate(contact.last_seen_at)} />
               <Fact label="Activated" value={formatDate(contact.activated_at)} />
               <Fact label="Recorded" value={formatDate(contact.created_at)} />
             </dl>
+            <p className="mt-2 text-[12px] text-subtle-foreground">
+              Plan and profile come from your app's identify calls
+              (the <code className="font-mono">plan</code> trait), so they are not edited here.
+            </p>
           </RailCard>
 
           <RailCard title="Properties">
@@ -518,8 +537,217 @@ export default function PersonPage() {
               </ul>
             )}
           </RailCard>
+
+          <ActionsCard
+            contactId={contact.id}
+            label={displayName}
+            confirmValue={contact.email ?? contact.external_id}
+            suppressed={Boolean(suppression)}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+function NotesCard({ contactId }: { contactId: string }) {
+  const notes = useContactNotes(contactId);
+  const add = useAddContactNote(contactId);
+  const remove = useDeleteContactNote(contactId);
+  const [draft, setDraft] = useState("");
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const body = draft.trim();
+    if (!body) return;
+    add.mutate(body, { onSuccess: () => setDraft("") });
+  };
+
+  const items = notes.data?.items ?? [];
+
+  return (
+    <RailCard title="Notes">
+      <form onSubmit={submit} className="space-y-2">
+        <Textarea
+          aria-label="New note"
+          placeholder="Add a note for your team"
+          value={draft}
+          maxLength={5000}
+          onChange={(e) => setDraft(e.target.value)}
+          className="min-h-16 text-[14px]"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[12px] text-subtle-foreground">Only your team sees notes.</span>
+          <Button type="submit" size="sm" variant="secondary" disabled={!draft.trim() || add.isPending}>
+            {add.isPending ? "Saving..." : "Add note"}
+          </Button>
+        </div>
+        {add.isError && (
+          <p className="text-[13px] text-danger" role="alert">
+            {add.error instanceof Error ? add.error.message : "Saving the note failed."}
+          </p>
+        )}
+      </form>
+
+      {notes.isError && (
+        <p className="mt-3 text-[13px] text-danger" role="alert">Failed to load notes.</p>
+      )}
+      {items.length > 0 && (
+        <ul className="mt-4 space-y-3">
+          {items.map((n) => (
+            <li key={n.id} className="group rounded-md bg-sunken px-3 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 whitespace-pre-wrap break-words text-[14px] text-foreground">{n.body}</p>
+                <button
+                  type="button"
+                  aria-label="Delete note"
+                  title="Delete note"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm("Delete this note?")) remove.mutate(n.id);
+                  }}
+                  className="shrink-0 rounded p-0.5 text-subtle-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
+                >
+                  <X size={14} strokeWidth={1.5} />
+                </button>
+              </div>
+              <p className="mt-1 text-[12px] text-subtle-foreground">
+                {n.author ? (n.author.name ?? n.author.email ?? "Removed member") : "Unknown"}
+                {" · "}
+                <span className="font-mono">{formatDateTime(n.created_at)}</span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </RailCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Actions: exclude, delete
+// ---------------------------------------------------------------------------
+
+function ActionsCard({
+  contactId,
+  label,
+  confirmValue,
+  suppressed,
+}: {
+  contactId: string;
+  label: string;
+  confirmValue: string;
+  suppressed: boolean;
+}) {
+  const navigate = useNavigate();
+  const me = useMe();
+  const isOwner = me.data?.user.role === "owner";
+  const exclude = useExcludeContact();
+  const erase = useDeleteContact();
+  const [confirming, setConfirming] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [excludeResult, setExcludeResult] = useState<string | null>(null);
+
+  const onExclude = () => {
+    if (!window.confirm(`Exclude ${label} from lifecycle mail? Their address is suppressed and every message not sent yet is cancelled. Undo by removing the suppression under Sent Mail.`)) return;
+    exclude.mutate(contactId, {
+      onSuccess: (r) => {
+        setExcludeResult(
+          `${r.suppressed ? "Suppressed. " : ""}${r.cancelled.length} unsent ${r.cancelled.length === 1 ? "message" : "messages"} cancelled.`,
+        );
+      },
+    });
+  };
+
+  const onDelete = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (typed.trim().toLowerCase() !== confirmValue.toLowerCase()) return;
+    erase.mutate(contactId, { onSuccess: () => navigate("/people", { replace: true }) });
+  };
+
+  return (
+    <RailCard title="Actions">
+      <div className="space-y-4">
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={suppressed || exclude.isPending}
+            onClick={onExclude}
+          >
+            {exclude.isPending ? "Excluding..." : "Exclude from mail"}
+          </Button>
+          <p className="mt-1.5 text-[12px] text-subtle-foreground">
+            {suppressed
+              ? "This address is already suppressed."
+              : "Stops lifecycle mail to this person and keeps their history."}
+          </p>
+          {excludeResult && <p className="mt-1.5 text-[13px] text-foreground">{excludeResult}</p>}
+          {exclude.isError && (
+            <p className="mt-1.5 text-[13px] text-danger" role="alert">
+              {exclude.error instanceof Error ? exclude.error.message : "Exclude failed."}
+            </p>
+          )}
+        </div>
+
+        {isOwner && (
+          <div>
+            {!confirming ? (
+              <Button variant="outline" size="sm" className="text-danger" onClick={() => setConfirming(true)}>
+                Delete person
+              </Button>
+            ) : (
+              <form onSubmit={onDelete} className="space-y-2 rounded-md border border-danger bg-danger-soft p-3">
+                <p className="text-[13px] text-foreground">
+                  This erases {label} from this product: events, flow memberships,
+                  messages, notes and topic choices. Suppressions stay, so the address
+                  is not mailed again. It cannot be undone. If your app sends this
+                  person again, they come back as a new contact.
+                </p>
+                <label className="block text-[13px] text-foreground">
+                  Type <code className="font-mono">{confirmValue}</code> to confirm
+                  <Input
+                    autoFocus
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    className="mt-1 h-8 text-[14px]"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="destructive"
+                    disabled={typed.trim().toLowerCase() !== confirmValue.toLowerCase() || erase.isPending}
+                  >
+                    {erase.isPending ? "Deleting..." : "Delete"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setConfirming(false);
+                      setTyped("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                {erase.isError && (
+                  <p className="text-[13px] text-danger" role="alert">
+                    {erase.error instanceof Error ? erase.error.message : "Delete failed."}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
+        )}
+      </div>
+    </RailCard>
   );
 }

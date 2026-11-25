@@ -41,6 +41,16 @@ export type ContactListRow = {
   created_at: string;
 };
 
+/** A note a team member wrote about a contact, with the author when the user row exists. */
+export type ContactNoteRow = {
+  id: string;
+  body: string;
+  createdAt: Date;
+  authorUserId: string | null;
+  authorName: string | null;
+  authorEmail: string | null;
+};
+
 export interface ApiContactsQueries {
   /** The tenant's settings JSON (null when unset or the tenant does not exist). */
   getTenantSettings(input: { tenantId: string }): Promise<unknown>;
@@ -70,7 +80,7 @@ export interface ApiContactsQueries {
   findContactByRef(input: { tenantId: string; ref: string }): Promise<{ id: string; externalId: string; email: string | null } | null>;
   /**
    * Erase a contact of the tenant (G12): its events, transitions, conflicts,
-   * topic statuses, memberships, messages and their message events, pending
+   * topic statuses, notes, memberships, messages and their message events, pending
    * outbox rows about it, and the contact row, in one atomic unit.
    * Suppressions stay (they keep the address from being mailed again).
    * Returns false when the contact does not exist.
@@ -86,4 +96,10 @@ export interface ApiContactsQueries {
    * when a suppression was added. Returns what changed.
    */
   excludeContact(input: { tenantId: string; contactId: string; email: string | null; now: Date }): Promise<{ suppressed: boolean; cancelled: string[] }>;
+  /** The contact's notes, newest first. */
+  listContactNotes(input: { tenantId: string; contactId: string }): Promise<ContactNoteRow[]>;
+  /** Add a note to a contact of the tenant. Null when the contact does not exist. */
+  addContactNote(input: { tenantId: string; contactId: string; authorUserId: string | null; body: string; now: Date }): Promise<ContactNoteRow | null>;
+  /** Delete one note of the contact. False when there is no such note. */
+  deleteContactNote(input: { tenantId: string; contactId: string; noteId: string }): Promise<boolean>;
 }

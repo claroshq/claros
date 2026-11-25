@@ -14,7 +14,7 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { lifecycleMessages, suppressions } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
-import type { ApiContactsQueries, ContactListRow } from "../areas/api-contacts.js";
+import type { ApiContactsQueries, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { rawBatch } from "./raw-batch.js";
 import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
@@ -25,6 +25,33 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const NOT_SENT = ["pending_generation", "generating", "awaiting_content", "pending_approval", "approved"];
 
 const DAY_MS = 86_400_000;
+
+type NoteRaw = {
+  id: string;
+  body: string;
+  created_at: number;
+  author_user_id: string | null;
+  author_name: string | null;
+  author_email: string | null;
+};
+
+function toNote(r: NoteRaw): ContactNoteRow {
+  return {
+    id: r.id,
+    body: r.body,
+    createdAt: new Date(Number(r.created_at)),
+    authorUserId: r.author_user_id,
+    authorName: r.author_name,
+    authorEmail: r.author_email,
+  };
+}
+
+const NOTE_SELECT = sql`
+  SELECT n.id, n.body, n.created_at, n.author_user_id,
+         u.name AS author_name, u.email AS author_email
+  FROM contact_notes n
+  LEFT JOIN users u ON u.id = n.author_user_id
+`;
 
 /** Parse a timestamptz literal like Postgres with session TimeZone UTC; ms since epoch. */
 function tsMs(value: string): number {
@@ -248,13 +275,14 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
         sql`DELETE FROM flow_memberships WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM contact_topics WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM contact_dates WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM contact_notes WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM contact_conflicts WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM lifecycle_transitions WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM events WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
         sql`DELETE FROM webhook_outbox WHERE tenant_id = ${tenantId} AND status = 'pending' AND json_extract(payload, '$.contact_id') = ${contactId}`,
         sql`DELETE FROM contacts WHERE tenant_id = ${tenantId} AND id = ${contactId} RETURNING id`,
       ]);
-      return (results[9] ?? []).length > 0;
+      return (results[results.length - 1] ?? []).length > 0;
     },
 
     async excludeContact({ tenantId, contactId, email, now }) {
@@ -285,5 +313,38 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
         cancelled: (results[cancelIndex] ?? []).map((r) => (r as { id: string }).id),
       };
     },
-};
+
+    async listContactNotes({ tenantId, contactId }) {
+      const rows = await db.all<NoteRaw>(sql`
+        ${NOTE_SELECT}
+        WHERE n.tenant_id = ${tenantId} AND n.contact_id = ${contactId.toLowerCase()}
+        ORDER BY n.created_at DESC, n.id DESC
+      `);
+      return rows.map(toNote);
+    },
+
+    async addContactNote({ tenantId, contactId, authorUserId, body, now }) {
+      // One guarded statement: the note is written only when the contact exists.
+      const id = crypto.randomUUID();
+      const inserted = await db.all<{ id: string }>(sql`
+        INSERT INTO contact_notes (id, tenant_id, contact_id, author_user_id, body, created_at)
+        SELECT ${id}, c.tenant_id, c.id, ${authorUserId}, ${body}, ${now.getTime()}
+        FROM contacts c
+        WHERE c.tenant_id = ${tenantId} AND c.id = ${contactId.toLowerCase()}
+        RETURNING id
+      `);
+      if (inserted.length === 0) return null;
+      const rows = await db.all<NoteRaw>(sql`${NOTE_SELECT} WHERE n.tenant_id = ${tenantId} AND n.id = ${id}`);
+      return rows[0] ? toNote(rows[0]) : null;
+    },
+
+    async deleteContactNote({ tenantId, contactId, noteId }) {
+      const rows = await db.all<{ id: string }>(sql`
+        DELETE FROM contact_notes
+        WHERE tenant_id = ${tenantId} AND contact_id = ${contactId.toLowerCase()} AND id = ${noteId.toLowerCase()}
+        RETURNING id
+      `);
+      return rows.length > 0;
+    },
+  };
 }

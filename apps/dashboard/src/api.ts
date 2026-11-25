@@ -1336,6 +1336,50 @@ export async function fetchContact(id: string): Promise<ContactResponse> {
   return res.json() as Promise<ContactResponse>;
 }
 
+/** DELETE /v1/contacts/:id - erase the person (owner only). */
+export async function deleteContact(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/contacts/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Delete failed (${res.status})`);
+  }
+}
+
+/** A note a team member wrote about a person. */
+export interface ContactNote {
+  id: string;
+  body: string;
+  created_at: string;
+  author: { id: string; name: string | null; email: string | null } | null;
+}
+
+/** GET /v1/contacts/:id/notes - newest first. */
+export async function fetchContactNotes(id: string): Promise<{ items: ContactNote[] }> {
+  const res = await apiFetch(`/v1/contacts/${id}/notes`);
+  if (!res.ok) throw new Error(`/v1/contacts/${id}/notes returned ${res.status}`);
+  return res.json() as Promise<{ items: ContactNote[] }>;
+}
+
+/** POST /v1/contacts/:id/notes */
+export async function addContactNote(id: string, body: string): Promise<ContactNote> {
+  const res = await apiFetch(`/v1/contacts/${id}/notes`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(err?.error ?? `Saving the note failed (${res.status})`);
+  }
+  return res.json() as Promise<ContactNote>;
+}
+
+/** DELETE /v1/contacts/:id/notes/:noteId */
+export async function deleteContactNote(id: string, noteId: string): Promise<void> {
+  const res = await apiFetch(`/v1/contacts/${id}/notes/${noteId}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 404) throw new Error(`Deleting the note failed (${res.status})`);
+}
+
 export type TimelineItem =
   | {
       kind: "event";
@@ -1768,6 +1812,8 @@ export interface SentLogDetailResponse {
     retry_count: number;
     provider_message_id: string | null;
     recipient_address: string | null;
+    /** The template the step renders from (current plan), null for AI-drafted steps. */
+    template_ref: string | null;
     contact: {
       email: string | null;
       name: string | null;

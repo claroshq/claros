@@ -23,6 +23,7 @@
  * fix it without schema changes. Not added now (premature).
  */
 import { storeFor } from "@claros/store";
+import { compiledPlanSchema, planStepFor } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter } from "../http/router.js";
 
@@ -239,6 +240,7 @@ export default function sentLogRoutes() {
         retry_count: msg.retry_count,
         provider_message_id: msg.provider_message_id,
         recipient_address: msg.recipient_address,
+        template_ref: messageTemplateRef(msg.flow_compiled_plan, msg.flow_step_order, msg.brain_action_type),
         contact: {
           email: msg.contact_email,
           name: msg.contact_name,
@@ -254,4 +256,24 @@ export default function sentLogRoutes() {
     });
   });
   return router.app;
+}
+
+/**
+ * The template the message's step renders from, read from the flow's current
+ * plan: the step's template_ref, or for a choose step the template of the
+ * candidate it picked (matched by action type). Null for AI-drafted steps and
+ * plans that no longer parse. The template may have been edited since the
+ * message was sent; the message body is what was sent.
+ */
+function messageTemplateRef(plan: unknown, stepOrder: number | null, actionType: string | null): string | null {
+  if (stepOrder === null || plan === null || plan === undefined) return null;
+  const parsed = compiledPlanSchema.safeParse(plan);
+  if (!parsed.success) return null;
+  const step = planStepFor(parsed.data, stepOrder);
+  if (!step) return null;
+  if (step.type === "choose") {
+    const cand = step.candidates?.find((c) => c.action_type === actionType);
+    return cand?.template_ref ?? null;
+  }
+  return step.template_ref ?? null;
 }

@@ -7,12 +7,18 @@
  */
 import {
   useInfiniteQuery,
+  useMutation,
   useQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
 import {
   fetchContacts,
   fetchContact,
   fetchContactTimeline,
+  fetchContactNotes,
+  addContactNote,
+  deleteContactNote,
+  deleteContact,
   type ContactFilters,
 } from "./api.js";
 
@@ -51,5 +57,45 @@ export function useContactTimeline(id: string) {
     queryFn: ({ pageParam }) => fetchContactTimeline(id, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  });
+}
+
+export function contactNotesQueryKey(id: string) {
+  return ["contacts", id, "notes"] as const;
+}
+
+/** The team's notes about one person, newest first. */
+export function useContactNotes(id: string) {
+  return useQuery({
+    queryKey: contactNotesQueryKey(id),
+    queryFn: () => fetchContactNotes(id),
+  });
+}
+
+export function useAddContactNote(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => addContactNote(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contactNotesQueryKey(id) }),
+  });
+}
+
+export function useDeleteContactNote(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => deleteContactNote(id, noteId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contactNotesQueryKey(id) }),
+  });
+}
+
+/** Erase the person; the People list refetches. */
+export function useDeleteContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteContact(id),
+    onSuccess: (_d, id) => {
+      qc.removeQueries({ queryKey: contactQueryKey(id) });
+      void qc.invalidateQueries({ queryKey: CONTACTS_QUERY_KEY });
+    },
   });
 }

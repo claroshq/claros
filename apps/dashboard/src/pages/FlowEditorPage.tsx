@@ -807,7 +807,13 @@ export default function FlowEditorPage() {
   const [compileError, setCompileError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
   const [initialised, setInitialised] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  // ?template=<slug> (from a sent message's "Made from") opens that template.
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(() => searchParams.get("template"));
+  const templateEditorRef = useRef<HTMLDivElement | null>(null);
+  const flowLoaded = Boolean(flowQuery.data);
+  useEffect(() => {
+    if (editingTemplate && flowLoaded) templateEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editingTemplate, flowLoaded]);
   const [editingTrigger, setEditingTrigger] = useState(false);
   const [planEditorOpen, setPlanEditorOpen] = useState(false);
 
@@ -1144,7 +1150,7 @@ export default function FlowEditorPage() {
 
             {/* Inline template editor */}
             {editingTemplate && (
-              <div className="mt-6 rounded-lg border border-border bg-card p-6">
+              <div ref={templateEditorRef} className="mt-6 rounded-lg border border-border bg-card p-6">
                 <TemplateEditorBySlug
                   slug={editingTemplate}
                   onClose={() => setEditingTemplate(null)}
@@ -1471,7 +1477,7 @@ export default function FlowEditorPage() {
 
       {/* Inline template editor (for plans that reference templates) */}
       {editingTemplate && (
-        <div className="mt-6 rounded-lg border border-border bg-card p-6">
+        <div ref={templateEditorRef} className="mt-6 rounded-lg border border-border bg-card p-6">
           <TemplateEditorBySlug
             slug={editingTemplate}
             onClose={() => setEditingTemplate(null)}

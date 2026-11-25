@@ -9,12 +9,18 @@
  * dashboard DOM. The referrerPolicy is set to no-referrer to avoid leaking
  * the dashboard URL to image hosts or link targets.
  *
+ * Below the content, "Made from" links to the flow step and, when the step
+ * renders a template, to that template in the flow editor. The template is
+ * its current version and may differ from what was sent; the preview above
+ * is the sent mail. Opened from a person's timeline, the back link returns
+ * to that person.
+ *
  * The timeline uses the message_events table. For messages sent before the
  * event table existed, only the high-water feedback value is shown - we do
  * not fabricate a timeline from a single value.
  */
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   Send,
@@ -103,6 +109,11 @@ function eventVariant(type: string): BadgeVariant {
 export default function SentLogDetailPage() {
   const { id } = useParams<{ id: string }>();
   const detail = useSentLogDetail(id ?? "");
+  const location = useLocation();
+  const fromPerson = (location.state as { fromPerson?: string } | null)?.fromPerson ?? null;
+  const back = fromPerson
+    ? { to: `/people/${fromPerson}`, label: "Back to person" }
+    : { to: "/sent", label: "Back to Sent Mail" };
 
   if (detail.isLoading) {
     return (
@@ -120,10 +131,10 @@ export default function SentLogDetailPage() {
     return (
       <div className="mx-auto max-w-4xl">
         <Link
-          to="/sent"
+          to={back.to}
           className="mb-4 inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft size={14} /> Back to Sent Mail
+          <ArrowLeft size={14} /> {back.label}
         </Link>
         <div className="rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
           <p className="text-[15px] text-foreground">
@@ -140,10 +151,10 @@ export default function SentLogDetailPage() {
     <div className="mx-auto max-w-4xl">
       {/* Back link */}
       <Link
-        to="/sent"
+        to={back.to}
         className="mb-4 inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft size={14} /> Back to Sent Mail
+        <ArrowLeft size={14} /> {back.label}
       </Link>
 
       <PageHeader
@@ -154,7 +165,11 @@ export default function SentLogDetailPage() {
       {/* Envelope */}
       <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 rounded-lg border border-border bg-card p-5">
         <EnvelopeField label="To" value={msg.recipient_address ?? msg.contact.email ?? "-"} />
-        <EnvelopeField label="Contact" value={msg.contact.name ?? msg.contact.external_id ?? "-"} />
+        <EnvelopeField
+          label="Contact"
+          value={msg.contact.name ?? msg.contact.external_id ?? "-"}
+          link={msg.contact.external_id ? `/people/${msg.contact_id}` : undefined}
+        />
         <EnvelopeField label="Flow" value={msg.flow_name ?? "-"} link={`/flows/${msg.flow_id}/edit`} />
         <EnvelopeField label="Step" value={msg.flow_step_order !== null ? `#${msg.flow_step_order}` : "-"} />
         <EnvelopeField label="Sent" value={formatDateTime(msg.sent_at)} />
@@ -214,6 +229,49 @@ export default function SentLogDetailPage() {
         bodyHtml={msg.body_html}
         bodyText={msg.body_text}
       />
+
+      {/* Where the content came from */}
+      <section className="mt-6 rounded-lg border border-border bg-card p-5">
+        <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          Made from
+        </h2>
+        <dl className="space-y-2 text-[14px]">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <dt className="text-muted-foreground">Flow</dt>
+            <dd>
+              <Link
+                to={`/flows/${msg.flow_id}/edit`}
+                className="text-accent-text underline underline-offset-4"
+              >
+                {msg.flow_name ?? "Flow"}
+                {msg.flow_step_order !== null ? `, step ${msg.flow_step_order}` : ""}
+              </Link>
+            </dd>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <dt className="text-muted-foreground">Template</dt>
+            <dd>
+              {msg.template_ref ? (
+                <>
+                  <Link
+                    to={`/flows/${msg.flow_id}/edit?template=${encodeURIComponent(msg.template_ref)}`}
+                    className="font-mono text-[13px] text-accent-text underline underline-offset-4"
+                  >
+                    {msg.template_ref}
+                  </Link>
+                  <span className="ml-2 text-[13px] text-subtle-foreground">
+                    current version; the preview above is what was sent
+                  </span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  {msg.brain_action_type ? "None, drafted by AI for this person" : "None"}
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
+      </section>
 
       {/* Link to Approvals if message was pending */}
       {msg.status === "failed" && (
