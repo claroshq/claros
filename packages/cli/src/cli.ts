@@ -20,6 +20,7 @@ import { applyConfig } from "./apply.js";
 import { kbImport, importMessages } from "./import.js";
 
 export const USAGE = `Usage: claros <command> [options]
+       npx @claroshq/claros <command> [options]   (without a global install)
 
 Deploy and operate Claros on Cloudflare Workers + D1 (uses wrangler and your Cloudflare login).
 

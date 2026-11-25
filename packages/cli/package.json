@@ -1,7 +1,17 @@
 {
-  "name": "claros",
-  "version": "0.8.2",
+  "name": "@claroshq/claros",
+  "version": "0.8.3",
   "description": "Deploy and operate Claros on Cloudflare Workers + D1",
+  "keywords": [
+    "claros",
+    "lifecycle-email",
+    "email",
+    "cloudflare",
+    "cloudflare-workers",
+    "d1",
+    "self-hosted",
+    "cli"
+  ],
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -10,6 +20,9 @@
     "directory": "packages/cli"
   },
   "homepage": "https://github.com/claroshq/claros/blob/main/docs/install/cloudflare.md",
+  "bugs": {
+    "url": "https://github.com/claroshq/claros/issues"
+  },
   "bin": {
     "claros": "bin/claros.mjs"
   },
@@ -18,6 +31,9 @@
     "dist",
     "assets"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.0.0"
   },

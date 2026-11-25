@@ -7,8 +7,8 @@ When a product moves to Claros from another system, the mail that system already
 ```bash
 export CLAROS_URL=https://claros.example.com
 export CLAROS_ADMIN_KEY=clr_ak_...                 # admin key with the "messages" scope
-npx claros import messages history.jsonl --dry-run # resolves and counts, writes nothing
-npx claros import messages history.jsonl
+npx @claroshq/claros import messages history.jsonl --dry-run # resolves and counts, writes nothing
+npx @claroshq/claros import messages history.jsonl
 ```
 
 One message per line:
@@ -28,7 +28,7 @@ One message per line:
 | `kb_external_key` | The [knowledge base](KB.md) entry the message was about; `kb_select` never sends it to this contact again |
 | `id` | Optional idempotency key; without it a message is identified by contact, flow, step, action and `sent_at` |
 
-`POST /v1/import/messages` takes the same items (a JSON array, `{"messages": [...]}`, or JSONL as `text/plain`; up to 2,000 per request, the CLI splits larger files). Response: `{"dry_run": false, "imported": 2239, "duplicates": 2, "errors": [{"index": 17, "error": "contact not found (by external_id or email)"}]}`.
+`POST /v1/import/messages` takes the same items (a JSON array, `{"messages": [...]}`, or JSONL as `application/x-ndjson`, `application/jsonl`, `application/x-jsonlines` or `text/plain`; up to 2,000 per request, the CLI splits larger files). Response: `{"dry_run": false, "imported": 2239, "duplicates": 2, "errors": [{"index": 17, "error": "contact not found (by external_id or email)"}]}`.
 
 What an imported message is:
 

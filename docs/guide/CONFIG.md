@@ -7,8 +7,8 @@ A product's flows, templates, topics, transport routing, settings and webhooks c
 ```bash
 export CLAROS_URL=https://claros.example.com
 export CLAROS_ADMIN_KEY=clr_ak_...          # admin key with the "config" scope
-npx claros apply -f claros.config.json --dry-run   # list the changes
-npx claros apply -f claros.config.json             # apply them
+npx @claroshq/claros apply -f claros.config.json --dry-run   # list the changes
+npx @claroshq/claros apply -f claros.config.json             # apply them
 ```
 
 `claros apply` calls `PUT /v1/config` (`?dry_run=1` for `--dry-run`). Instead of `CLAROS_URL`, `--url` works, or `--name <instance>` for an instance deployed with `claros deploy`; instead of `CLAROS_ADMIN_KEY`, `--key`. The product is the admin key's product (see [API keys](API_KEYS.md)). An owner's dashboard session can call the endpoint too.

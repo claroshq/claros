@@ -4,7 +4,8 @@
  * and kb_select exclude_used treat it like mail Claros sent.
  *
  * Auth: an owner session or an admin key with the `messages` scope.
- * Body: a JSON array of items, {"messages": [...]}, or JSONL (text/plain):
+ * Body: a JSON array of items, {"messages": [...]}, or JSONL (text/plain,
+ * application/x-ndjson, application/jsonl or application/x-jsonlines):
  *   {id?, external_id? | email?, flow_slug, step_order?, action_type, subject?, sent_at, kb_external_key?}
  * Contacts resolve by external_id, else by email; flows by slug. Items are
  * idempotent by `id` when given, else by (contact, flow, step, action,
@@ -16,6 +17,7 @@ import { z } from "zod";
 import { storeFor, type HistoryImportItem } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter, allowAdminKey } from "../http/router.js";
+import { JSONL_PARSERS } from "../http/body.js";
 
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024;
 export const HISTORY_IMPORT_MAX_ITEMS = 2000;
@@ -52,11 +54,11 @@ function items(body: unknown): { items: unknown[] } | { error: string } {
     }
     return { items: out };
   }
-  return { error: 'Send a JSON array, {"messages": [...]}, or JSONL as text/plain.' };
+  return { error: 'Send a JSON array, {"messages": [...]}, or JSONL (text/plain or application/x-ndjson).' };
 }
 
 export default function importRoutes() {
-  const r = new RoleRouter({ limit: IMPORT_BODY_LIMIT });
+  const r = new RoleRouter({ limit: IMPORT_BODY_LIMIT, parsers: JSONL_PARSERS });
 
   r.post("/messages", "owner", allowAdminKey("messages"), async (c) => {
     const parsed = items(c.var.body);

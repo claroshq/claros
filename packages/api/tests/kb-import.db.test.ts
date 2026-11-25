@@ -50,6 +50,20 @@ describe("POST /v1/kb/import", () => {
     expect(facts).toMatchObject({ category: "facts", pinned: true, source: "import" });
   });
 
+  it.each(["application/x-ndjson", "application/jsonl", "application/x-jsonlines; charset=utf-8"])("accepts JSONL as %s", async (type) => {
+    const a = await app();
+    const jsonl = entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    const res = await a.inject({ method: "POST", url: "/v1/kb/import?dry_run=1", headers: { ...bearer(key), "content-type": type }, payload: jsonl });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ dry_run: true, errors: [] });
+  });
+
+  it("rejects other media types with 415", async () => {
+    const a = await app();
+    const res = await a.inject({ method: "POST", url: "/v1/kb/import?dry_run=1", headers: { ...bearer(key), "content-type": "text/csv" }, payload: "a,b" });
+    expect(res.statusCode).toBe(415);
+  });
+
   it("needs the kb scope", async () => {
     const other = await newKey(db, p.tenantId, "admin", ["config"]);
     const a = await app();

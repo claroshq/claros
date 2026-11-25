@@ -29,9 +29,9 @@ Two install options run the same HTTP API and engine. Pick one.
 
 | Docker + Postgres | Cloudflare Workers + D1 |
 |---|---|
-| `git clone https://github.com/claroshq/claros.git && cd claros`<br>`docker compose run --rm install`<br>`docker compose up` | `npx claros deploy --domain claros.example.com` |
+| `git clone https://github.com/claroshq/claros.git && cd claros`<br>`docker compose run --rm install`<br>`docker compose up` | `npx @claroshq/claros deploy --domain claros.example.com` |
 | Needs Docker; the compose stack bundles Postgres 16 + pgvector, or point it at your own Postgres | Needs a Cloudflare account; creates the D1 database, queues, secrets and Worker for you |
-| Upgrade: `git pull`, `docker compose build`, `docker compose up` (migrations run on boot) | Upgrade: `npx claros upgrade` |
+| Upgrade: `git pull`, `docker compose build`, `docker compose up` (migrations run on boot) | Upgrade: `npx @claroshq/claros upgrade` |
 | [Quickstart](docs/guide/QUICKSTART.md), [Installation](docs/guide/INSTALLATION.md) | [Install on Cloudflare Workers + D1](docs/install/cloudflare.md) |
 
 Either way, open the claim URL printed at the end, enter your email, and you are the owner. The **[Quickstart](docs/guide/QUICKSTART.md)** walks through the rest: connect a transport, activate the library flow, send a test event, and receive a real email - all from the browser. [Architecture](docs/architecture.md) lists the differences between the two backends.
@@ -57,7 +57,7 @@ The Cloudflare Workers + D1 install option, multi-product instances, topics and 
 - **Webhooks and analytics sink** - signed outbound webhooks (Standard Webhooks) and flow and email events to StatsRaven or your own endpoint. See [Webhooks](docs/guide/WEBHOOKS.md)
 - **Alerts and health** - dead jobs, send and webhook errors and missing configuration mailed to an instance admin, plus a Health page. See [Alerts](docs/guide/ALERTS.md)
 - **Dashboard** - React SPA: Flows, Approvals, People, Lifecycle, Analytics, Knowledge Base, Settings, Integrate. Light and dark themes
-- **Operator CLIs** - in the Docker image: guided setup, login links, transport/LLM configuration, user recovery, deployment diagnostics. `npx claros`: deploy, upgrade and diagnose a Cloudflare install, apply config, import knowledge base entries and send history
+- **Operator CLIs** - in the Docker image: guided setup, login links, transport/LLM configuration, user recovery, deployment diagnostics. `npx @claroshq/claros`: deploy, upgrade and diagnose a Cloudflare install, apply config, import knowledge base entries and send history
 
 ### Not yet built
 
@@ -74,7 +74,7 @@ The Cloudflare Workers + D1 install option, multi-product instances, topics and 
 | [Quickstart](docs/guide/QUICKSTART.md) | Three commands to a running install, then a real email via the browser |
 | [Architecture](docs/architecture.md) | Components, the two install options, capability differences between backends |
 | [Installation and Configuration](docs/guide/INSTALLATION.md) | Docker + Postgres: every run mode, every environment variable and setting, migrations, upgrading, backups |
-| [Install on Cloudflare Workers + D1](docs/install/cloudflare.md) | `npx claros deploy`, bindings, upgrades, product hosts, local trial with `wrangler dev` |
+| [Install on Cloudflare Workers + D1](docs/install/cloudflare.md) | `npx @claroshq/claros deploy`, bindings, upgrades, product hosts, local trial with `wrangler dev` |
 | [Deployment](docs/guide/DEPLOYMENT.md) | External Postgres, multiple instances, the role split, secrets that must match |
 | [Concepts and Guides](docs/guide/CONCEPTS.md) | The model: events, contacts, compilation, approvals, content modes. Task guides |
 | [Flow Prompt Library](docs/guide/FLOW-PROMPTS.md) | Working prompts to paste into the flow editor |

@@ -51,7 +51,7 @@ function target(ctx: Context, opts: ImportOptions, env: NodeJS.ProcessEnv): { ba
     if (state?.host) base = `https://${state.host}`;
   }
   if (!base) {
-    ctx.io.warn("No Claros URL: pass --url, set CLAROS_URL, or deploy an instance with `claros deploy` (--name).");
+    ctx.io.warn("No Claros URL: pass --url, set CLAROS_URL, or deploy an instance with `npx @claroshq/claros deploy` (--name).");
     return null;
   }
   return { base: base.replace(/\/+$/, ""), key };

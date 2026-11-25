@@ -9,10 +9,10 @@ This page describes how Claros is built and what each install option offers. It 
 | | Postgres + Node (Docker) | Cloudflare D1 + Workers |
 |---|---|---|
 | Available | Yes | Yes, since v0.8 |
-| Install | `docker compose up`, see [Installation](guide/INSTALLATION.md) | `npx claros deploy`, see [Install on Cloudflare Workers + D1](install/cloudflare.md) |
+| Install | `docker compose up`, see [Installation](guide/INSTALLATION.md) | `npx @claroshq/claros deploy`, see [Install on Cloudflare Workers + D1](install/cloudflare.md) |
 | Dependencies | Postgres 16 with pgvector | a Cloudflare account |
 | Job queue | pg-boss (inside Postgres) | Cloudflare Queues |
-| Upgrades | pull the new tag, migrations run on boot or via `scripts/migrate.sh` | `npx claros upgrade` |
+| Upgrades | pull the new tag, migrations run on boot or via `scripts/migrate.sh` | `npx @claroshq/claros upgrade` |
 
 Both options run the same HTTP API and the same engine behaviour. Postgres stays fully supported.
 
@@ -30,7 +30,7 @@ Both options run the same HTTP API and the same engine behaviour. Postgres stays
 | `apps/server` | Node entry point, operator CLI for Docker installs |
 | `apps/worker` | Cloudflare Workers entry point (D1, Queues, cron, Static Assets) |
 | `packages/store` | Every database query, with Postgres and SQLite / D1 implementations |
-| `packages/cli` | `npx claros deploy`: installs and upgrades Claros in a Cloudflare account |
+| `packages/cli` | `npx @claroshq/claros deploy`: installs and upgrades Claros in a Cloudflare account |
 | `apps/dashboard` | React dashboard |
 
 ## Tenancy

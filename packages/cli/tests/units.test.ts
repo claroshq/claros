@@ -219,7 +219,8 @@ describe("host names", () => {
 
 describe("command line", () => {
   it("help, version, usage errors", async () => {
-    const { main } = await import("../src/cli.js");
+    const { main, USAGE } = await import("../src/cli.js");
+    expect(USAGE).toContain("npx @claroshq/claros <command>");
     expect(await main(["--help"])).toBe(0);
     expect(await main([])).toBe(2);
     expect(await main(["bogus"])).toBe(2);

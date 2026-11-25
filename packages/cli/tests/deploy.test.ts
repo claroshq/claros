@@ -328,6 +328,7 @@ describe("claros upgrade", () => {
     const older = testEnv({ cf: env.cf, configDir: env.configDir, version: "0.8.0" });
     env.cf.resetCalls();
     await expect(upgrade(older.ctx, { nonInteractive: true })).rejects.toThrow(/Refusing to downgrade "default" from 0.8.1 to 0.8.0/);
+    await expect(upgrade(older.ctx, { nonInteractive: true })).rejects.toThrow("Use `npx @claroshq/claros@0.8.1 upgrade` or newer.");
     expect(env.cf.mutating()).toEqual([]);
     expect(env.cf.exports).toEqual([]);
   });
@@ -414,6 +415,8 @@ describe("claros claim-url", () => {
     const url = await claimUrlCommand(env.ctx, { nonInteractive: true });
     expect(url).toMatch(/^https:\/\/claros\.example\.com\/claim\?token=/);
     expect(env.cf.claimSql).toHaveLength(2);
+
+    expect(env.logs.join("\n")).toContain("npx @claroshq/claros claim-url");
 
     env.cf.anyUser = true;
     expect(await claimUrlCommand(env.ctx, { nonInteractive: true })).toBeNull();
