@@ -6,10 +6,13 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-11-25
+
 ### Added
 
 - Embedding provider, separate from the LLM provider: Settings, AI providers, Embeddings, or `GET/PUT/DELETE /v1/settings/embeddings` (owner session; new table `embedding_configs`). Providers: `openai` (default `text-embedding-3-small`) and `custom` (any OpenAI-compatible `/embeddings` endpoint). Saving verifies the endpoint with one embedding call that must return 1536 dimensions, and sends `dimensions: 1536` when the endpoint accepts it. Anthropic has no embeddings API, so a product that drafts with Anthropic can now embed with OpenAI. Saving or removing a provider with another endpoint, model or dimensions drops the stored vectors and starts re-embedding. See [Search and embeddings](docs/guide/KB.md#search-and-embeddings).
 - Knowledge base search without embeddings: when a product has no embedding provider (or the query embedding fails), `kb_context` finds entries by shared words instead of returning nothing. `kb_ref` finds its entry whether or not it is embedded.
+- Wide email layout, opt-in per product: `brand.layout` `"wide"` (Settings, Branding, `PATCH /v1/settings/tenant`, or `settings.brand.layout` in a config document). The card fills the reading pane, paragraphs stay at most 680 px wide, lists, buttons and the footer use the full width, and side padding drops from 40 px to 20 px under 760 px with full-width buttons. The default `"narrow"` is the current 600 px card; products that do not set `layout` send exactly the same HTML as before. See [Email layout](docs/guide/INSTALLATION.md#email-layout).
 - `embedding_status` value `skipped` (badge "not embedded"): no vector and no job queued, because there was no embedding provider or the vectors were dropped after a model change. `POST /v1/kb/re-embed` picks these entries up.
 
 ### Changed
@@ -233,7 +236,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.6...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.7...HEAD
+[0.8.7]: https://github.com/claroshq/claros/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/claroshq/claros/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/claroshq/claros/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/claroshq/claros/compare/v0.8.3...v0.8.4

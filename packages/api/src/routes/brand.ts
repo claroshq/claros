@@ -78,6 +78,7 @@ function brandView(settings: Record<string, unknown>) {
     accent_color: (brand.accent_color as string | undefined) ?? null,
     footer_text: (brand.footer_text as string | undefined) ?? null,
     reply_to: (brand.reply_to as string | undefined) ?? null,
+    layout: (brand.layout as string | undefined) ?? null,
   };
 }
 

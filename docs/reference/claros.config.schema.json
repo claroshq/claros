@@ -18,7 +18,16 @@
       "properties": {
         "brand": {
           "type": "object",
-          "additionalProperties": {}
+          "properties": {
+            "layout": {
+              "description": "Email layout: \"narrow\" (default) is a centered card at most 600px wide; \"wide\" fills the reading pane and keeps paragraphs at most 680px wide.",
+              "type": "string",
+              "enum": [
+                "narrow",
+                "wide"
+              ]
+            }
+          }
         },
         "throttle": {
           "type": "object",
