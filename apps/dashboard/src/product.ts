@@ -11,6 +11,12 @@
 
 export const PRODUCT_HEADER = "X-Claros-Product";
 const STORAGE_KEY = "claros-product";
+/**
+ * Set (sessionStorage, so per tab) once a product was chosen in this tab.
+ * A fresh tab or a new sign-in shows the product picker again on instances
+ * with several active products; in-app navigation and reloads do not.
+ */
+const PICKED_KEY = "claros-product-picked";
 
 function readStorage(): string | null {
   try {
@@ -27,6 +33,53 @@ function writeStorage(slug: string | null): void {
   } catch {
     // storage unavailable: the selection lasts for this page only
   }
+}
+
+function readPicked(): boolean {
+  try {
+    return sessionStorage.getItem(PICKED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writePicked(picked: boolean): void {
+  try {
+    if (picked) sessionStorage.setItem(PICKED_KEY, "1");
+    else sessionStorage.removeItem(PICKED_KEY);
+  } catch {
+    // storage unavailable: the picker shows again on the next load
+  }
+}
+
+/** True when a product was chosen in this tab (see PICKED_KEY). */
+export function pickedThisSession(): boolean {
+  return readPicked();
+}
+
+/** Forget the per-tab choice, so the next app open shows the picker again (sign-in, sign-out). */
+export function forgetPickedProduct(): void {
+  writePicked(false);
+}
+
+/** True when the page URL names a product (`?product=<slug>`): an explicit choice. */
+export function productInUrl(): boolean {
+  return Boolean(new URLSearchParams(window.location.search).get("product")?.trim());
+}
+
+/** The slug remembered in localStorage (the last product chosen), or null. */
+export function rememberedProductSlug(): string | null {
+  return readStorage();
+}
+
+/**
+ * Select a product for the following API calls and remember it, without
+ * navigating. Only safe while nothing product-scoped is cached (the entry
+ * gate, before the shell renders); everywhere else use switchProduct.
+ */
+export function selectProduct(slug: string, opts: { picked: boolean }): void {
+  writeStorage(slug);
+  if (opts.picked) writePicked(true);
 }
 
 /** The selected product slug, or null for the session's product. */
@@ -54,6 +107,7 @@ export function withProduct(init: RequestInit = {}): RequestInit {
  */
 export function switchProduct(slug: string | null): void {
   writeStorage(slug);
+  writePicked(true);
   window.location.assign("/home");
 }
 

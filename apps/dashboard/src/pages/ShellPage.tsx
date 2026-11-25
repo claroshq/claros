@@ -9,7 +9,8 @@
  * every comparable product puts identity.
  *
  * Multi-product instances: a product switcher sits under the lockup at the
- * top of the sidebar when the user can act on more than one product.
+ * top of the sidebar when the user can act on more than one product; its
+ * "All products" entry opens the full-screen picker (/products).
  *
  * On mobile (<lg) the sidebar becomes an overlay triggered by a hamburger
  * button in a slim top bar. Tapping a nav link or the backdrop closes it.
@@ -34,10 +35,10 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useLogout } from "../auth.js";
 import { BrandLockup } from "../components/brand-lockup.js";
 import { ThemeToggle } from "../components/theme-toggle.js";
 import { ProductSwitcher } from "../components/product-switcher.js";
+import { useSignOut } from "../components/use-sign-out.js";
 import type { MeResponse } from "../api.js";
 
 // ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ interface ShellPageProps {
 }
 
 export default function ShellPage({ me }: ShellPageProps) {
-  const logout = useLogout();
+  const signOut = useSignOut();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -105,15 +106,6 @@ export default function ShellPage({ me }: ShellPageProps) {
   }, [sidebarOpen]);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
-
-  function handleLogout() {
-    logout.mutate(undefined, {
-      onSuccess: () => {
-        // Hard reload clears React state and query cache entirely.
-        window.location.href = "/login";
-      },
-    });
-  }
 
   // Shared sidebar content rendered in both desktop and mobile wrappers.
   const sidebarContent = (
@@ -192,9 +184,9 @@ export default function ShellPage({ me }: ShellPageProps) {
           </span>
           <button
             type="button"
-            onClick={handleLogout}
-            disabled={logout.isPending}
-            title={logout.isPending ? "Signing out..." : "Sign out"}
+            onClick={signOut.run}
+            disabled={signOut.pending}
+            title={signOut.pending ? "Signing out..." : "Sign out"}
             aria-label="Sign out"
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-subtle-foreground"
           >

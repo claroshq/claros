@@ -280,6 +280,10 @@ describe("products routes", () => {
     const { product } = JSON.parse(res.payload);
     expect(product).toMatchObject({ name: "Renamed", locale: "pt-BR", public_host: host });
 
+    const listed = JSON.parse((await get("/v1/products", adminSession)).payload);
+    expect(listed.products.find((p: { slug: string }) => p.slug === createdSlug).public_host).toBe(host);
+    expect(listed.products.find((p: { slug: string }) => p.slug === slugC).public_host).toBeNull();
+
     const dup = await send("PATCH", `/v1/products/${slugC}`, adminSession, { public_host: host });
     expect(dup.statusCode).toBe(409);
     expect((await send("PATCH", `/v1/products/nope-${RUN}`, adminSession, { name: "Z" })).statusCode).toBe(404);

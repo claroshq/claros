@@ -5,51 +5,22 @@
  * switch to it. An archived product keeps its data readable; changes to it
  * are refused until it is unarchived.
  */
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMe } from "../../auth.js";
-import { createProduct, setProductArchived } from "../../api.js";
+import { setProductArchived } from "../../api.js";
 import { PRODUCTS_QUERY_KEY, useProducts } from "../../products.js";
 import { switchProduct } from "../../product.js";
+import { CreateProductForm } from "../../components/create-product-form.js";
 import { Badge } from "../../components/ui/badge.js";
 import { Button } from "../../components/ui/button.js";
-import { Input } from "../../components/ui/input.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { Section } from "./shared.js";
 import InstanceKeysSettings from "./InstanceKeysSettings.js";
-
-/** "Acme Billing" -> "acme-billing" (the server validates the final value). */
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 63);
-}
 
 export default function ProductsSettings() {
   const qc = useQueryClient();
   const { data: me } = useMe();
   const products = useProducts();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [slugEdited, setSlugEdited] = useState(false);
-  const [locale, setLocale] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: () => createProduct({ name: name.trim(), slug, locale: locale.trim() || null }),
-    onSuccess: () => {
-      setName("");
-      setSlug("");
-      setSlugEdited(false);
-      setLocale("");
-      setError(null);
-      qc.invalidateQueries({ queryKey: PRODUCTS_QUERY_KEY });
-    },
-    onError: (err) => setError(err instanceof Error ? err.message : "Could not create the product."),
-  });
 
   const archive = useMutation({
     mutationFn: ({ slug: s, archived }: { slug: string; archived: boolean }) => setProductArchived(s, archived),
@@ -128,51 +99,15 @@ export default function ProductsSettings() {
             </table>
           </div>
 
-          <form
-            className="mt-6"
-            onSubmit={(e) => {
-              e.preventDefault();
-              create.mutate();
-            }}
-          >
+          <div className="mt-6">
             <h3 className="text-[14px] font-medium text-foreground">Create a product</h3>
             <p className="mt-1 text-[13px] text-muted-foreground">
               You become its owner. Invite its team from Settings, Team after switching to it.
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Input
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (!slugEdited) setSlug(slugify(e.target.value));
-                }}
-                placeholder="Name"
-                aria-label="Product name"
-                className="max-w-[14rem]"
-              />
-              <Input
-                value={slug}
-                onChange={(e) => {
-                  setSlug(e.target.value);
-                  setSlugEdited(true);
-                }}
-                placeholder="slug"
-                aria-label="Product slug"
-                className="max-w-[12rem] font-mono"
-              />
-              <Input
-                value={locale}
-                onChange={(e) => setLocale(e.target.value)}
-                placeholder="Locale (optional, e.g. en)"
-                aria-label="Locale"
-                className="max-w-[13rem]"
-              />
-              <Button size="sm" type="submit" disabled={!name.trim() || !slug || create.isPending}>
-                {create.isPending ? "Creating..." : "Create product"}
-              </Button>
+            <div className="mt-3">
+              <CreateProductForm />
             </div>
-            {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
-          </form>
+          </div>
         </>
       )}
     </Section>
