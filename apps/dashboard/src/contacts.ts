@@ -20,6 +20,7 @@ import {
   deleteContactNote,
   deleteContact,
   type ContactFilters,
+  setContactTopics,
 } from "./api.js";
 
 export const CONTACTS_QUERY_KEY = ["contacts"] as const;
@@ -85,6 +86,15 @@ export function useDeleteContactNote(id: string) {
   return useMutation({
     mutationFn: (noteId: string) => deleteContactNote(id, noteId),
     onSuccess: () => qc.invalidateQueries({ queryKey: contactNotesQueryKey(id) }),
+  });
+}
+
+/** Set one or more topic subscriptions of the person (source "admin"). */
+export function useSetContactTopics(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (topics: Record<string, boolean>) => setContactTopics(id, topics),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contactQueryKey(id) }),
   });
 }
 

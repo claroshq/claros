@@ -22,11 +22,12 @@ import {
   useContactNotes,
   useAddContactNote,
   useDeleteContactNote,
+  useSetContactTopics,
   useDeleteContact,
 } from "../contacts.js";
 import { useExcludeContact } from "../messages.js";
 import { useMe } from "../auth.js";
-import type { ContactDetail, TimelineItem } from "../api.js";
+import type { ContactDetail, ContactTopicStatus, TimelineItem } from "../api.js";
 import { Textarea } from "../components/ui/textarea.js";
 import { Input } from "../components/ui/input.js";
 import { Badge, type BadgeVariant } from "../components/ui/badge.js";
@@ -478,24 +479,7 @@ export default function PersonPage() {
 
           {topicStatuses.length > 0 && (
             <RailCard title="Topics">
-              <ul className="space-y-2.5">
-                {topicStatuses.map((t) => (
-                  <li key={t.topic_id} className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate text-[14px] text-foreground">{t.name}</span>
-                    {t.kind === "transactional" ? (
-                      <Badge variant="muted">transactional</Badge>
-                    ) : (
-                      <Badge
-                        variant={t.status === "subscribed" ? "success" : "neutral"}
-                        title={t.default ? "Topic default (no choice recorded)" : t.source ? `Set via ${t.source}` : undefined}
-                      >
-                        {t.status}
-                        {t.default ? " (default)" : ""}
-                      </Badge>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <TopicToggles contactId={id!} topics={topicStatuses} />
             </RailCard>
           )}
 
@@ -749,5 +733,64 @@ function ActionsCard({
         )}
       </div>
     </RailCard>
+  );
+}
+
+/**
+ * The person's topic subscriptions with a switch per marketing or lifecycle
+ * topic. A change is recorded with source "admin" and fires the same
+ * contact.subscribed / contact.unsubscribed webhooks as the person's own
+ * choice. Transactional topics have no subscription; only the suppression
+ * list stops them.
+ */
+function TopicToggles({ contactId, topics }: { contactId: string; topics: ContactTopicStatus[] }) {
+  const set = useSetContactTopics(contactId);
+  const [error, setError] = React.useState<string | null>(null);
+  const pendingSlug = set.isPending ? Object.keys(set.variables ?? {})[0] : null;
+  return (
+    <div>
+      <ul className="space-y-2.5">
+        {topics.map((t) => {
+          const on = t.status === "subscribed";
+          const title = t.default ? "Topic default (no choice recorded)" : t.source ? `Set via ${t.source}` : undefined;
+          return (
+            <li key={t.topic_id} className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-[14px] text-foreground" title={title}>
+                {t.name}
+                {t.kind !== "transactional" && t.default && <span className="text-muted-foreground"> (default)</span>}
+              </span>
+              {t.kind === "transactional" ? (
+                <Badge variant="muted">transactional</Badge>
+              ) : (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  aria-label={`${on ? "Unsubscribe from" : "Subscribe to"} ${t.name}`}
+                  title={title}
+                  disabled={set.isPending}
+                  onClick={() => {
+                    setError(null);
+                    set.mutate({ [t.slug]: !on }, { onError: (e) => setError(e.message) });
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait ${
+                    on ? "bg-accent" : "bg-sunken border border-border-strong"
+                  } ${pendingSlug === t.slug ? "opacity-60" : ""}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-background transition-transform duration-(--dur-fast) ${on ? "translate-x-[18px]" : "translate-x-[3px]"}`}
+                  />
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="mt-2 text-[13px] text-danger" role="alert">{error}</p>}
+      <p className="mt-3 text-[12px] leading-[18px] text-muted-foreground">
+        Changes here are recorded as set by your team. To stop all mail, use Exclude from mail.
+      </p>
+    </div>
   );
 }

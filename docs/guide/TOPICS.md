@@ -67,6 +67,20 @@ Send the contact's choices with identify, keyed by topic slug:
 
 A contact's topic statuses appear on their page in the dashboard and in `GET /v1/contacts/:id` as `topics`: one entry per topic with `status` (`subscribed` or `unsubscribed`), `default` (`true` when no choice is recorded and the topic default applies), `source` and `updated_at`.
 
+## Setting consent from the dashboard
+
+On a person's page, the Topics card has a switch per marketing and lifecycle topic. Use it when someone asks your team to change their subscriptions. The change is recorded with source `admin` and, when the effective status changes, emits `contact.subscribed` or `contact.unsubscribed` (`scope: "topic"`, `source: "admin"`) like a change made through identify. Transactional topics have no switch: only the suppression list stops them (**Exclude from mail** on the same page).
+
+Over the API (member session):
+
+```bash
+curl -X PUT https://claros.example.com/v1/contacts/<contact id>/topics \
+  -H 'Content-Type: application/json' -H 'X-Claros-Product: acme' -b 'claros_session=...' \
+  -d '{"topics": {"product-news": false, "beta-program": true}}'
+```
+
+Keys are topic slugs and values booleans. An unknown or transactional topic answers `400` and nothing is changed. The answer is the contact's `topics` as `GET /v1/contacts/:id` returns them. A later identify call with `topics`, or the contact's own choice on the unsubscribe page, replaces a status set here.
+
 ## Unsubscribe links
 
 - Messages with a marketing or lifecycle topic carry RFC 8058 one-click headers (`List-Unsubscribe`, `List-Unsubscribe-Post`) whose link unsubscribes that topic only.

@@ -1377,6 +1377,20 @@ export async function addContactNote(id: string, body: string): Promise<ContactN
 }
 
 /** DELETE /v1/contacts/:id/notes/:noteId */
+/** PUT /v1/contacts/:id/topics - set topic subscriptions by slug. */
+export async function setContactTopics(id: string, topics: Record<string, boolean>): Promise<{ topics: ContactTopicStatus[] }> {
+  const res = await apiFetch(`/v1/contacts/${id}/topics`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ topics }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(err?.error ?? `Changing the subscription failed (${res.status})`);
+  }
+  return res.json() as Promise<{ topics: ContactTopicStatus[] }>;
+}
+
 export async function deleteContactNote(id: string, noteId: string): Promise<void> {
   const res = await apiFetch(`/v1/contacts/${id}/notes/${noteId}`, { method: "DELETE" });
   if (!res.ok && res.status !== 404) throw new Error(`Deleting the note failed (${res.status})`);

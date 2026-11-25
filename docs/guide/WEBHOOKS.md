@@ -25,8 +25,8 @@ Each event is written to an outbox in the same database transaction as the chang
 | `message.complained` | Spam complaint reported by the provider |
 | `message.failed` | The send failed permanently, the transport policy refused it, the recovery job gave up on a stuck message (`reason: "reap_sending"`, `"reap_generating"`, `"reap_awaiting_content"`), or content generation failed permanently (`reason: "generation_failed"`) |
 | `message.pending_approval` | Messages entered the approval queue. Batched: at most one per product and endpoint per window (the endpoint's `batch_interval_minutes`, default 15), delivered at the end of the window with `pending_count` |
-| `contact.subscribed` | An identify call's `topics` subscribed the contact to a topic they were not subscribed to (`scope: "topic"`, `topic`, `source: "identify"`) |
-| `contact.unsubscribed` | Unsubscribe from the product (`scope: "product"`) or from a topic (`scope: "topic"`, `topic`), including through an identify call's `topics` (`source: "identify"`) |
+| `contact.subscribed` | An identify call's `topics` subscribed the contact to a topic they were not subscribed to (`scope: "topic"`, `topic`, `source: "identify"`), or the team did on the person's page (`source: "admin"`) |
+| `contact.unsubscribed` | Unsubscribe from the product (`scope: "product"`) or from a topic (`scope: "topic"`, `topic`), including through an identify call's `topics` (`source: "identify"`) or the person's page in the dashboard (`source: "admin"`) |
 | `contact.resubscribed` | A suppression was removed, or the contact subscribed to a topic again on the unsubscribe page |
 | `contact.suppressed` | An address was suppressed (bounce, complaint, API, dashboard, exclusion, CSV import with `source: "csv_import"`) |
 | `flow.enrolled` | A contact entered a flow |
