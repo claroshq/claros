@@ -140,6 +140,19 @@ vi.mock("../src/content.js", () => ({
   })),
 }));
 
+// Mock the alerts module (heartbeats, ops events) to avoid DB calls in unit tests
+const recordDeadLetter = vi.fn(async () => undefined);
+vi.mock("../src/alerts.js", () => ({
+  recordJobFailure: vi.fn(async () => undefined),
+  recordDeadLetter: (...args: unknown[]) => recordDeadLetter(...(args as [])),
+  recordTickRun: vi.fn(async () => undefined),
+  recordDrainFaults: vi.fn(async () => undefined),
+  checkSendErrors: vi.fn(async () => undefined),
+  recordLlmCalls: vi.fn(async () => undefined),
+  runAlertTick: vi.fn(async () => ({ lateTicks: [], resolved: 0, mailed: 0, storm: false })),
+  runDigest: vi.fn(async () => ({ sent: false, deletedEvents: 0 })),
+}));
+
 // Mock transport module to avoid import issues in unit tests
 vi.mock("../src/transport.js", () => ({
   nullTransportResolver: vi.fn(async () => null),
@@ -241,6 +254,35 @@ describe("failure path", () => {
       registrations.push({ queue: name, handler });
     });
     await expect(startWorker(mockBoss as never, mockDb)).resolves.toBeUndefined();
+  });
+});
+
+describe("dead letters (pg-boss retries exhausted)", () => {
+  beforeEach(() => {
+    registrations.length = 0;
+    recordDeadLetter.mockClear();
+    mockBoss.work.mockImplementation(async (name: string, _opts: unknown, handler: never) => {
+      registrations.push({ queue: name, handler });
+      return `worker-id-${name}`;
+    });
+  });
+
+  it("registers handlers with job metadata", async () => {
+    await startWorker(mockBoss as never, mockDb);
+    const opts = mockBoss.work.mock.calls.map((c) => c[1] as { includeMetadata?: boolean });
+    expect(opts.every((o) => o.includeMetadata === true)).toBe(true);
+  });
+
+  it("records a dead letter when the last attempt fails, not before", async () => {
+    await startWorker(mockBoss as never, mockDb);
+    const reg = registrations.find((r) => r.queue === QUEUE.COMPILE)!;
+    const job = (retryCount: number) => ({ id: "j", name: QUEUE.COMPILE, data: { flow_id: "nope" }, retryCount, retryLimit: 2 });
+    // COMPILE without a real flow throws in the (unmocked) compile handler.
+    await expect(reg.handler([job(0)] as never)).rejects.toThrow();
+    expect(recordDeadLetter).not.toHaveBeenCalled();
+    await expect(reg.handler([job(2)] as never)).rejects.toThrow();
+    expect(recordDeadLetter).toHaveBeenCalledTimes(1);
+    expect(recordDeadLetter.mock.calls[0]).toEqual([mockDb, QUEUE.COMPILE, { flow_id: "nope" }, 3, expect.any(Error)]);
   });
 });
 

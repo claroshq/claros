@@ -51,3 +51,4 @@ workerCounterRollover	packages/worker/src/counter-rollover.ts
 apiEvents	packages/api/src/routes/events.ts
 apiProducts	packages/api/src/routes/products.ts
 apiInstance	packages/api/src/routes/instance.ts
+ops	packages/worker/src/alerts.ts (also packages/api/src/routes/instance.ts and packages/api/src/routes/webhooks/resend.ts)

@@ -1850,3 +1850,89 @@ export async function setProductArchived(slug: string, archived: boolean): Promi
   if (!res.ok) throw await productError(res, "Could not update the product");
   return ((await res.json()) as { product: Product }).product;
 }
+
+// ---------------------------------------------------------------------------
+// Instance health and alerts (instance admins)
+// ---------------------------------------------------------------------------
+
+export interface OpsProductRef {
+  id: string;
+  slug: string | null;
+  name: string | null;
+}
+
+export interface OpsAlert {
+  fingerprint: string;
+  kind: string;
+  severity: "warning" | "error" | "critical" | string;
+  message: string;
+  product: OpsProductRef | null;
+  status: "open" | "resolved" | string;
+  count: number;
+  first_at: string;
+  last_at: string;
+  last_notified_at: string | null;
+  muted_until: string | null;
+}
+
+export interface OpsEvent {
+  id: string;
+  at: string;
+  kind: string;
+  severity: string;
+  message: string;
+  fingerprint: string;
+  product: OpsProductRef | null;
+  context: unknown;
+}
+
+export interface HealthTick {
+  name: string;
+  last_run_at: string | null;
+  interval_minutes: number;
+  late: boolean;
+}
+
+export interface HealthResponse {
+  now: string;
+  alerts: { open: OpsAlert[]; recently_resolved: OpsAlert[] };
+  events: OpsEvent[];
+  ticks: HealthTick[];
+  failed_jobs_24h: number;
+  settings: { email: string | null; default_email: string | null; enabled: boolean; via_product: string | null };
+}
+
+/** GET /v1/instance/health (instance admins). */
+export async function fetchHealth(): Promise<HealthResponse> {
+  const res = await apiFetch("/v1/instance/health");
+  if (!res.ok) throw await productError(res, "Could not load health");
+  return res.json() as Promise<HealthResponse>;
+}
+
+/** POST /v1/instance/alerts/:fingerprint/resolve (instance admins). */
+export async function resolveOpsAlert(fingerprint: string): Promise<OpsAlert> {
+  const res = await apiFetch(`/v1/instance/alerts/${encodeURIComponent(fingerprint)}/resolve`, { method: "POST" });
+  if (!res.ok) throw await productError(res, "Could not resolve the alert");
+  return ((await res.json()) as { alert: OpsAlert }).alert;
+}
+
+/** POST /v1/instance/alerts/:fingerprint/mute (instance admins). */
+export async function muteOpsAlert(fingerprint: string, hours: number): Promise<OpsAlert> {
+  const res = await apiFetch(`/v1/instance/alerts/${encodeURIComponent(fingerprint)}/mute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hours }),
+  });
+  if (!res.ok) throw await productError(res, "Could not mute the alert");
+  return ((await res.json()) as { alert: OpsAlert }).alert;
+}
+
+/** PUT /v1/instance/settings/:key (instance admins). */
+export async function putInstanceSetting(key: string, value: unknown): Promise<void> {
+  const res = await apiFetch(`/v1/instance/settings/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+  if (!res.ok) throw await productError(res, "Could not save the setting");
+}

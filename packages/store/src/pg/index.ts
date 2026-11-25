@@ -57,6 +57,7 @@ import { pgApiEvents } from "./api-events.js";
 import { pgApiProducts } from "./api-products.js";
 import { pgApiInstance } from "./api-instance.js";
 import { pgApiTopics } from "./api-topics.js";
+import { pgOps } from "./ops.js";
 
 export function createPgStore(db: PgDb): Store {
   return {
@@ -115,5 +116,6 @@ export function createPgStore(db: PgDb): Store {
     apiProducts: pgApiProducts(db),
     apiInstance: pgApiInstance(db),
     apiTopics: pgApiTopics(db),
+    ops: pgOps(db),
   };
 }

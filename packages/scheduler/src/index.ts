@@ -59,4 +59,8 @@ export async function startScheduler(boss: PgBoss): Promise<void> {
   // day's retention-grid cell populations for the cell trend view.
   // Idempotent: a re-run on the same day overwrites that day's rows.
   await boss.schedule(QUEUE.GRID_SNAPSHOT, "17 0 * * *", {});
+
+  // alerts-digest: daily at 07:00 UTC. Mails the operational digest (when
+  // there is something to report) and deletes ops events older than 30 days.
+  await boss.schedule(QUEUE.ALERTS_DIGEST, "0 7 * * *", {});
 }

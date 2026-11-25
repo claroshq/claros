@@ -83,6 +83,14 @@ export interface ContentTickResult {
   /** Permanent failures terminally marked 'failed' this tick. */
   failed: number;
   errors: number;
+  /** LLM calls (decide, draft, assess) and their failures per product this tick. */
+  llmCalls: Record<string, LlmCallStats>;
+}
+
+/** LLM calls made for messages and how many failed (transient or permanent). */
+export interface LlmCallStats {
+  calls: number;
+  errors: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +164,7 @@ export async function processContentTick(
     valueGated: 0,
     failed: 0,
     errors: 0,
+    llmCalls: {},
   };
 
   // Step 1: Determine target tenants - use provided list or discover globally.
@@ -177,7 +186,8 @@ export async function processContentTick(
 
   // Step 3: Process each claimed message.
   for (const candidate of candidates) {
-    const outcome = await processOneContentMessage(db, candidate, now);
+    const llm = (stats.llmCalls[candidate.tenantId] ??= { calls: 0, errors: 0 });
+    const outcome = await processOneContentMessage(db, candidate, now, llm);
     switch (outcome) {
       case "advanced":
         stats.advanced++;
@@ -265,7 +275,14 @@ export async function processOneContentMessage(
   db: Db,
   candidate: ContentCandidate,
   now: Date,
+  llm?: LlmCallStats,
 ): Promise<ContentOutcome> {
+  /** Count one LLM call and whether it failed (for the LLM error-rate alert). */
+  const countCall = (ok: boolean) => {
+    if (!llm) return;
+    llm.calls++;
+    if (!ok) llm.errors++;
+  };
   try {
     // 1. Assemble the full context packet (needed for both template and LLM paths).
     const assembled = await assembleContext(db, candidate, now);
@@ -327,6 +344,7 @@ export async function processOneContentMessage(
 
     // 4. Call decide()
     const decideResult = await decide(provider, decideCtx);
+    countCall(decideResult.ok);
     if (!decideResult.ok) {
       if (isPermanentLlmFailure(decideResult.statusCode)) {
         return failPermanently(db, candidate, "generating", `decide: ${decideResult.error}`, now);
@@ -370,6 +388,7 @@ export async function processOneContentMessage(
 
     // 6. Call draft()
     const draftResult = await draft(provider, draftCtx);
+    countCall(draftResult.ok);
     if (!draftResult.ok) {
       if (isPermanentLlmFailure(draftResult.statusCode)) {
         return failPermanently(db, candidate, "awaiting_content", `draft: ${draftResult.error}`, now);
@@ -394,6 +413,7 @@ export async function processOneContentMessage(
       subject,
       body_markdown,
     });
+    countCall(assessResult.ok);
 
     if (!assessResult.ok) {
       if (isPermanentLlmFailure(assessResult.statusCode)) {

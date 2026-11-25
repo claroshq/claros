@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { testBackends, type Backend } from "./support/backends.js";
 import { getMessage, seedContact, seedFlow, seedMessage, sorted } from "./support/send-path-fixtures.js";
 
@@ -176,6 +177,16 @@ for (const factory of testBackends()) {
         expect(await b.store.workerDrain.setRecipientAddress(approved, "a@b.com", NOW)).toBe(false);
         expect(await getMessage(b, id)).toMatchObject({ status: "sending", recipientAddress: "c@d.com" });
         expect((await getMessage(b, approved)).recipientAddress).toBeNull();
+      });
+
+      it("setRecipientAddress records the transport when given", async () => {
+        const t = await b.newTenant();
+        const id = await seedMessage(b, { tenantId: t, status: "sending" });
+        const transportId = randomUUID();
+        expect(await b.store.workerDrain.setRecipientAddress(id, "a@b.com", NOW, transportId)).toBe(true);
+        expect(await getMessage(b, id)).toMatchObject({ recipientAddress: "a@b.com", transportId });
+        expect(await b.store.workerDrain.setRecipientAddress(id, "a@b.com", NOW, null)).toBe(true);
+        expect((await getMessage(b, id)).transportId).toBe(transportId);
       });
 
       it("markSent: sending -> sent with sent_at and provider id", async () => {

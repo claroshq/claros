@@ -71,6 +71,7 @@
 import { createRouter, parseBody } from "../../http/router.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { storeFor } from "@claros/store";
+import { recordWebhookFailure } from "../../ops-events.js";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import type { Db } from "../../plugins/db.js";
 
@@ -593,7 +594,10 @@ export default function resendWebhookRoutes() {
       webhookSecret,
     );
 
+    // Failures from here on are counted for the product's alert (G25): its
+    // secret exists, so the path names a real, configured product.
     if (!verification.ok) {
+      await recordWebhookFailure(db, tenantId, "signature");
       return c.json({ error: "Invalid webhook signature." }, 400);
     }
 
@@ -602,11 +606,17 @@ export default function resendWebhookRoutes() {
     try {
       event = JSON.parse(rawBody) as ResendWebhookEvent;
     } catch {
+      await recordWebhookFailure(db, tenantId, "payload");
       return c.json({ error: "Invalid JSON payload." }, 400);
     }
 
     // Step 5: Process the event, scoped to this tenant
-    await processResendWebhookEvent(db, event, tenantId, svixId);
+    try {
+      await processResendWebhookEvent(db, event, tenantId, svixId);
+    } catch (err) {
+      await recordWebhookFailure(db, tenantId, "processing");
+      throw err;
+    }
 
     // Always return 200 to acknowledge receipt (even for ignored events)
     return c.json({ received: true }, 200);

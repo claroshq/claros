@@ -40,6 +40,7 @@ import BrandingSettings from "./pages/settings/BrandingSettings.js";
 import PostalSettings from "./pages/settings/PostalSettings.js";
 import ProductsSettings from "./pages/settings/ProductsSettings.js";
 import TopicsSettings from "./pages/settings/TopicsSettings.js";
+import HealthSettings from "./pages/settings/HealthSettings.js";
 import NotFoundPage from "./pages/NotFoundPage.js";
 import IntegratePage from "./pages/IntegratePage.js";
 import SentLogPage from "./pages/SentLogPage.js";
@@ -107,6 +108,7 @@ export default function App() {
           <Route path="branding" element={<BrandingSettings />} />
           <Route path="postal" element={<PostalSettings />} />
           <Route path="products" element={<ProductsSettings />} />
+          <Route path="health" element={<HealthSettings />} />
         </Route>
         {/* Unknown route inside the shell: the chrome persists, only the
             content region reports the miss. */}

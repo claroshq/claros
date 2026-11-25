@@ -5,7 +5,8 @@
  *              dashboard from Static Assets with the Node SPA fallback rules
  *   queue      consumer of JOBS (claros-jobs): each message is one job, run by
  *              the same runJob() the pg-boss workers use; and of the dead
- *              letter queue (claros-jobs-dlq): dead jobs are logged
+ *              letter queue (claros-jobs-dlq): dead jobs are logged and
+ *              recorded as ops events (alert mail, see @claros/worker alerts)
  *   scheduled  one Cron Trigger every 5 minutes; dueTicks() picks the
  *              periodic jobs due at that tick and they are enqueued on JOBS
  *
@@ -124,8 +125,8 @@ export default {
   async queue(batch: MessageBatch<JobMessage>, env: Env, _ctx: ExecutionContext): Promise<void> {
     syncProcessEnv(env);
     syncTransportRuntime(env);
-    if (batch.queue.endsWith("-dlq")) return consumeDeadJobs(batch);
     const rt = runtime(env);
+    if (batch.queue.endsWith("-dlq")) return consumeDeadJobs(batch, rt.db);
     return consumeJobs(batch, { db: rt.db, enqueue: rt.enqueue });
   },
 

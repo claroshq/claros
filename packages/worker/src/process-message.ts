@@ -14,7 +14,7 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
 import type { ProcessMessageJobData } from "@claros/core";
-import { processOneContentMessage, type ContentCandidate } from "./content.js";
+import { processOneContentMessage, type ContentCandidate, type LlmCallStats } from "./content.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,6 +27,8 @@ export interface ProcessMessageResult {
   claimed: boolean;
   /** Outcome from content processing, if claimed. */
   outcome?: "advanced" | "skipped" | "value_gated" | "failed" | "error";
+  /** LLM calls made for the message, if claimed. */
+  llm?: LlmCallStats;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +67,7 @@ export async function handleProcessMessage(
     brainActionType: row.brain_action_type,
   };
 
-  const outcome = await processOneContentMessage(db, candidate, now);
-  return { claimed: true, outcome };
+  const llm: LlmCallStats = { calls: 0, errors: 0 };
+  const outcome = await processOneContentMessage(db, candidate, now, llm);
+  return { claimed: true, outcome, llm };
 }

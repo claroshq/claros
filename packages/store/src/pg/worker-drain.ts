@@ -159,10 +159,10 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
       return updated.length > 0;
     },
 
-    async setRecipientAddress(messageId, email, now) {
+    async setRecipientAddress(messageId, email, now, transportId) {
       const updated = await db
         .update(lifecycleMessages)
-        .set({ recipientAddress: email, updatedAt: now })
+        .set({ recipientAddress: email, updatedAt: now, ...(transportId ? { transportId } : {}) })
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
         .returning({ id: lifecycleMessages.id });
       return updated.length > 0;

@@ -15,6 +15,7 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   QUEUE,
+  isPeriodicJob,
   resolveThrottleConfig,
   type CompileJobData,
   type TriggerCheckJobData,
@@ -43,12 +44,37 @@ import { handleAdvanceMembership } from "./advance-membership.js";
 import { handleProcessMessage } from "./process-message.js";
 import { handleDrainMessage } from "./drain-message.js";
 import { processGridSnapshotTick } from "./snapshot-retention-grid.js";
+import {
+  checkSendErrors,
+  recordDrainFaults,
+  recordJobFailure,
+  recordLlmCalls,
+  recordTickRun,
+  runAlertTick,
+  runDigest,
+} from "./alerts.js";
 
 export { nullTransportResolver } from "./transport.js";
 export type { TransportAdapter, TransportResolver, TransportSendResult, TransportSendParams } from "./transport.js";
 export { buildTenantTransportResolver } from "./transport-resolver.js";
 export { processDrainTick, fetchDrainBatchSimple, processOneMessage as processOneDrainMessage } from "./drain.js";
-export type { FetchDrainBatch, DrainTickResult, DrainCandidate, MessageOutcome } from "./drain.js";
+export type { FetchDrainBatch, DrainTickResult, DrainCandidate, DrainConfigFault, MessageOutcome } from "./drain.js";
+export {
+  recordOpsEvent,
+  recordJobFailure,
+  recordDeadLetter,
+  recordTickRun,
+  checkLateTicks,
+  recordDrainFaults,
+  checkSendErrors,
+  recordLlmCalls,
+  runAlertTick,
+  runDigest,
+  dueForMail,
+  ALERT_SETTING,
+  COUNTER_PREFIX,
+} from "./alerts.js";
+export type { OpsEventSpec, AlertDeliveryDeps, AlertTickResult, DigestResult } from "./alerts.js";
 export {
   buildComplianceOutput,
   injectHtmlFooter,
@@ -75,7 +101,7 @@ export type { CounterRolloverResult } from "./counter-rollover.js";
 export { processPartitionMaintenance } from "./partition-maintenance.js";
 export type { PartitionMaintenanceResult } from "./partition-maintenance.js";
 export { processContentTick, claimContentBatch, processOneContentMessage } from "./content.js";
-export type { ContentTickResult, ContentCandidate, ContentOutcome } from "./content.js";
+export type { ContentTickResult, ContentCandidate, ContentOutcome, LlmCallStats } from "./content.js";
 export { handleTriggerCheck } from "./trigger-check.js";
 export type { TriggerCheckResult } from "./trigger-check.js";
 export { phaseStepAdvancement } from "./scan-step-advancement.js";
@@ -138,12 +164,36 @@ export interface JobDeps {
 /** Follow-up job options, as pg-boss reads them (Workers: see apps/worker). */
 const CHAIN_OPTS = { retryLimit: 2, retryDelay: 10, expireInSeconds: 300 } as const;
 
+/** Failures already recorded as ops events inside a job (not recorded twice). */
+const recordedFailures = new WeakSet<object>();
+
+async function recordFailureOnce(deps: JobDeps, name: string, data: unknown, err: unknown): Promise<void> {
+  if (typeof err === "object" && err !== null) {
+    if (recordedFailures.has(err)) return;
+    recordedFailures.add(err);
+  }
+  await recordJobFailure(deps.db, name, data, err);
+}
+
 /**
  * Run one job. `name` is a QUEUE value; `data` is the job payload (ignored
  * by the periodic jobs, which read the database). Throws when the job fails,
  * so the runtime retries it (pg-boss retryLimit, Queues retry()).
+ *
+ * A failure is recorded as an ops event (job_failed) before it is rethrown;
+ * a periodic job that completes records its heartbeat (tick.<name>).
  */
 export async function runJob(name: string, data: unknown, deps: JobDeps): Promise<void> {
+  try {
+    await runJobInner(name, data, deps);
+  } catch (err) {
+    await recordFailureOnce(deps, name, data, err);
+    throw err;
+  }
+  if (isPeriodicJob(name)) await recordTickRun(deps.db, name);
+}
+
+async function runJobInner(name: string, data: unknown, deps: JobDeps): Promise<void> {
   const { db } = deps;
   switch (name) {
     case QUEUE.SCAN:
@@ -194,6 +244,10 @@ export async function runJob(name: string, data: unknown, deps: JobDeps): Promis
           : 50;
 
       const result = await processDrainTick(db, now, resolveTransport, fetchDrainBatchSimple, batchLimit);
+      // Alerts: configuration faults seen by this tick, and the send error
+      // rate of the last 15 minutes (cron and targeted sends alike).
+      await recordDrainFaults(db, result.configFaults ?? [], now);
+      await checkSendErrors(db, now);
       if (result.candidatesFetched > 0) {
         console.log(
           `[drain] tick: ${result.candidatesFetched} candidates, ` +
@@ -247,15 +301,39 @@ export async function runJob(name: string, data: unknown, deps: JobDeps): Promis
 
     case QUEUE.CONTENT_GENERATION: {
       // Claims pending_generation messages, runs the Brain decide+draft+assess
-      // pipeline (or renders a fixed template), and advances them.
-      const result = await processContentTick(db, new Date());
-      if (result.claimed > 0) {
-        console.log(
-          `[content-generation] tick: ${result.claimed} claimed, ` +
-            `${result.advanced} advanced, ${result.skipped} skipped, ` +
-            `${result.valueGated} value_gated, ${result.errors} errors`,
-        );
+      // pipeline (or renders a fixed template), and advances them. Then the
+      // alert tick runs (late-tick check, resolution, alert mail), also when
+      // the content work failed, so that failure is mailed in this tick.
+      let failure: { err: unknown } | null = null;
+      try {
+        const now = new Date();
+        const result = await processContentTick(db, now);
+        for (const [tenantId, stats] of Object.entries(result.llmCalls ?? {})) {
+          await recordLlmCalls(db, tenantId, stats, now);
+        }
+        if (result.claimed > 0) {
+          console.log(
+            `[content-generation] tick: ${result.claimed} claimed, ` +
+              `${result.advanced} advanced, ${result.skipped} skipped, ` +
+              `${result.valueGated} value_gated, ${result.errors} errors`,
+          );
+        }
+      } catch (err) {
+        failure = { err };
+        await recordFailureOnce(deps, name, data, err);
       }
+      await runAlertTick(db, { resolveTransport: deps.resolveTransport });
+      if (failure) throw failure.err;
+      return;
+    }
+
+    case QUEUE.ALERTS_DIGEST: {
+      // Daily digest mail and retention of ops data.
+      const result = await runDigest(db, { resolveTransport: deps.resolveTransport });
+      console.log(
+        `[alerts-digest] ${result.sent ? "sent" : `not sent (${result.skipped ?? "send failed"})`}, ` +
+          `${result.deletedEvents} old events deleted`,
+      );
       return;
     }
 
@@ -300,6 +378,7 @@ export async function runJob(name: string, data: unknown, deps: JobDeps): Promis
       const job = data as ProcessMessageJobData;
       try {
         const result = await handleProcessMessage(job, db);
+        if (result.llm) await recordLlmCalls(db, job.tenant_id, result.llm);
         if (result.claimed) {
           console.log(`[process-message] message ${job.message_id}: ${result.outcome}`);
           // Chain: if message reached 'approved' (auto-approve), enqueue targeted drain

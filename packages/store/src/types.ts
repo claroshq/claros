@@ -57,6 +57,7 @@ import type { ApiEventsQueries } from "./areas/api-events.js";
 import type { ApiProductsQueries } from "./areas/api-products.js";
 import type { ApiInstanceQueries } from "./areas/api-instance.js";
 import type { ApiTopicsQueries } from "./areas/api-topics.js";
+import type { OpsQueries } from "./areas/ops.js";
 
 export interface Store {
   readonly dialect: "pg" | "sqlite";
@@ -114,6 +115,7 @@ export interface Store {
   readonly apiProducts: ApiProductsQueries;
   readonly apiInstance: ApiInstanceQueries;
   readonly apiTopics: ApiTopicsQueries;
+  readonly ops: OpsQueries;
 }
 
 export type * from "./areas/api-settings.js";
@@ -171,3 +173,4 @@ export type * from "./areas/api-products.js";
 export type * from "./areas/api-instance.js";
 export type * from "./areas/api-topics.js";
 export type * from "./areas/shared-topics.js";
+export type * from "./areas/ops.js";

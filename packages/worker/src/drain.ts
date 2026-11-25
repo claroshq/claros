@@ -160,6 +160,18 @@ export interface DrainTickResult {
   topicUnsubscribed: number;
   /** Messages failed by the transport policy (non-transactional mail routed to a cloudflare transport). */
   transportPolicyFailures: number;
+  /**
+   * Products whose due messages were left unsent by a configuration fault
+   * (one entry per product and fault): no usable transport, or no
+   * UNSUBSCRIBE_SIGNING_KEY. The drain job records them as critical ops events.
+   */
+  configFaults: DrainConfigFault[];
+}
+
+/** A configuration fault that kept a product's approved messages from sending. */
+export interface DrainConfigFault {
+  tenantId: string;
+  fault: "no_transport" | "no_signing_key";
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +261,12 @@ export async function processDrainTick(
     permanentFailures: 0,
     topicUnsubscribed: 0,
     transportPolicyFailures: 0,
+    configFaults: [],
+  };
+  const fault = (tenantId: string, kind: DrainConfigFault["fault"]) => {
+    if (!stats.configFaults.some((f) => f.tenantId === tenantId && f.fault === kind)) {
+      stats.configFaults.push({ tenantId, fault: kind });
+    }
   };
 
   // Step 1: Find tenants that have approved messages ready to drain.
@@ -267,6 +285,7 @@ export async function processDrainTick(
       tenantsWithTransport.set(dueTenantId, adapter);
     } else {
       stats.skippedNoTransport++;
+      fault(dueTenantId, "no_transport");
     }
   }
 
@@ -301,6 +320,7 @@ export async function processDrainTick(
       // decrypted): nothing is sent, the message waits for the next tick.
       await revertToApproved(db, candidate.id, now);
       stats.skippedNoTransport++;
+      fault(candidate.tenantId, "no_transport");
       continue;
     }
 
@@ -336,6 +356,7 @@ export async function processDrainTick(
         break;
       case "no_signing_key":
         stats.skippedNoSigningKey++;
+        fault(candidate.tenantId, "no_signing_key");
         break;
       case "bad_base_url":
         stats.skippedBadBaseUrl++;
@@ -641,7 +662,7 @@ export async function processOneMessage(
   // while this message was being processed, this write hits 0 rows and the reap
   // outcome wins. In that case the send below will also have its status write hit
   // 0 rows, and the message is safely retried by reap.
-  await storeFor(db).workerDrain.setRecipientAddress(candidate.id, contactEmail, now);
+  await storeFor(db).workerDrain.setRecipientAddress(candidate.id, contactEmail, now, transportInfo?.id ?? null);
 
   // Step 10: Send via transport.
   try {
@@ -685,8 +706,9 @@ export async function processOneMessage(
     } else if (sendResult.permanent === true) {
       // Permanent failure: mark failed immediately without waiting for reap.
       // CAS: same guard as suppress. If reap already moved the row, this hits
-      // 0 rows and the reap outcome wins.
-      await storeFor(db).workerDrain.markFailed(candidate.id, now);
+      // 0 rows and the reap outcome wins. The provider's error is kept as the
+      // status reason (the send-error alert check reads it, e.g. 401/403).
+      await storeFor(db).workerDrain.markFailed(candidate.id, now, providerErrorReason(sendResult.error));
       return "permanent_failure";
     } else {
       // Transient failure: message stays at 'sending'.
@@ -701,6 +723,12 @@ export async function processOneMessage(
     // provider's intent. Message stays at 'sending' for reap to retry.
     return "transport_error";
   }
+}
+
+/** status_reason for a permanent provider failure ("provider_error: <error>", at most 500 characters). */
+function providerErrorReason(error: string | undefined): string {
+  const reason = `provider_error: ${error?.trim() || "unknown error"}`;
+  return reason.length > 500 ? reason.slice(0, 500) : reason;
 }
 
 // ---------------------------------------------------------------------------

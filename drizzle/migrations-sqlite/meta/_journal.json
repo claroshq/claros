@@ -43,6 +43,13 @@
       "when": 1795570483875,
       "tag": "0005_topics_transports",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795573042115,
+      "tag": "0006_ops_alerts",
+      "breakpoints": true
     }
   ]
 }

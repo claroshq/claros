@@ -24,3 +24,4 @@ export { instanceSettings } from "./instance-settings.js";
 export { claimTokens } from "./claim-tokens.js";
 export { topics } from "./topics.js";
 export { contactTopics } from "./contact-topics.js";
+export { opsEvents, opsAlerts } from "./ops.js";
