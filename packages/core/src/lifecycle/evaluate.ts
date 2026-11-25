@@ -33,6 +33,12 @@ export interface EventTransitionInput {
   eventName: string | null;
   /** Whether all activation_events have been satisfied (pre-computed by caller). */
   activationSatisfied: boolean;
+  /**
+   * Whether the event counts as activity (isEngagementEvent). Default true.
+   * When false, only signed_up -> activated can happen: activation is
+   * evaluated independently of settings.lifecycle.engagement_events.
+   */
+  countsAsActivity?: boolean;
 }
 
 /**
@@ -63,11 +69,15 @@ export interface TimeTransitionInput {
  * - engaged contacts: no event-driven transition out of engaged (only time-driven)
  * - signed_up contacts: only transitions if activationSatisfied is true
  * - resurrected contacts: no event-driven transition (scan promotes to engaged)
+ * - an event that does not count as activity (countsAsActivity false) drives
+ *   no activity-based transition (activated/at_risk/dormant -> engaged,
+ *   churned -> resurrected)
  */
 export function evaluateEventTransition(
   input: EventTransitionInput,
 ): Transition | null {
   const { currentState, activationSatisfied } = input;
+  if (input.countsAsActivity === false && currentState !== "signed_up") return null;
 
   switch (currentState) {
     case "signed_up": {
@@ -236,6 +246,28 @@ export function isActivationRelevantEvent(
   if (eventName === null) return false;
   if (activationEvents.length === 0) return false;
   return activationEvents.includes(eventName);
+}
+
+// ---------------------------------------------------------------------------
+// Engagement events
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether an ingested event counts as activity: bumps last_seen_at and the
+ * engagement counters and may drive the activity-based transitions.
+ *
+ * - engagementEvents empty (settings.lifecycle.engagement_events unset or
+ *   []): every track and identify counts (eventName null = identify).
+ * - set: only track events whose name is in the list count; identify never
+ *   counts.
+ */
+export function isEngagementEvent(
+  eventName: string | null,
+  engagementEvents: readonly string[],
+): boolean {
+  if (engagementEvents.length === 0) return true;
+  if (eventName === null) return false;
+  return engagementEvents.includes(eventName);
 }
 
 // ---------------------------------------------------------------------------

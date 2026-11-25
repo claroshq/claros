@@ -172,6 +172,15 @@
               },
               "maxItems": 50
             },
+            "engagement_events": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "maxItems": 50
+            },
             "activation_window_days": {
               "type": "integer",
               "minimum": 1,

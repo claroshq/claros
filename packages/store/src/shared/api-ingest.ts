@@ -11,6 +11,7 @@ import {
   evaluateEventTransition,
   isActivationRelevantEvent,
   checkActivationSatisfied,
+  isEngagementEvent,
   resolveLifecycleConfig,
   type LifecycleState,
   type LifecycleConfig,
@@ -27,6 +28,14 @@ export function lifecycleConfigFromSettings(settings: unknown): LifecycleConfig 
   const s = settings as Record<string, unknown> | null | undefined;
   const lifecycleOverrides = s?.lifecycle as Partial<LifecycleConfig> | null | undefined;
   return resolveLifecycleConfig(lifecycleOverrides);
+}
+
+/**
+ * Whether the event bumps last_seen_at and the engagement counter
+ * (settings.lifecycle.engagement_events; eventName null = identify).
+ */
+export function countsAsActivity(eventName: string | null, config: LifecycleConfig): boolean {
+  return isEngagementEvent(eventName, config.engagement_events);
 }
 
 /**
@@ -68,7 +77,12 @@ export function planIngestTransition(input: {
     activationSatisfied = checkActivationSatisfied(names, config.activation_events);
   }
 
-  const transition = evaluateEventTransition({ currentState, eventName, activationSatisfied });
+  const transition = evaluateEventTransition({
+    currentState,
+    eventName,
+    activationSatisfied,
+    countsAsActivity: isEngagementEvent(eventName, config.engagement_events),
+  });
   if (transition === null) return null;
   return { from: transition.from, to: transition.to, setActivatedAt: transition.setActivatedAt };
 }

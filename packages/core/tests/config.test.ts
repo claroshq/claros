@@ -149,3 +149,12 @@ describe("docs/guide/CONFIG.md", () => {
     expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
   });
 });
+
+describe("settings.lifecycle.engagement_events", () => {
+  it("accepts a list of event names and rejects empty names", () => {
+    const ok = clarosConfigSchema.safeParse({ settings: { lifecycle: { engagement_events: ["project_created"] } } });
+    expect(ok.success).toBe(true);
+    expect(clarosConfigSchema.safeParse({ settings: { lifecycle: { engagement_events: [] } } }).success).toBe(true);
+    expect(clarosConfigSchema.safeParse({ settings: { lifecycle: { engagement_events: [""] } } }).success).toBe(false);
+  });
+});

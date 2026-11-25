@@ -19,6 +19,7 @@ import {
   evaluateTimeTransition,
   checkActivationSatisfied,
   isActivationRelevantEvent,
+  isEngagementEvent,
   LIFECYCLE_DEFAULTS,
   resolveLifecycleConfig,
   type LifecycleState,
@@ -506,5 +507,53 @@ describe("resolveLifecycleConfig", () => {
     // Others should be default
     expect(config.natural_frequency_days).toBe(7);
     expect(config.churned_days).toBe(90);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// settings.lifecycle.engagement_events
+// ---------------------------------------------------------------------------
+
+describe("isEngagementEvent", () => {
+  it("counts every track and identify when the list is empty", () => {
+    expect(isEngagementEvent("anything", [])).toBe(true);
+    expect(isEngagementEvent(null, [])).toBe(true);
+  });
+
+  it("counts only listed track events when the list is set; identify never counts", () => {
+    expect(isEngagementEvent("project_created", ["project_created"])).toBe(true);
+    expect(isEngagementEvent("email_opened", ["project_created"])).toBe(false);
+    expect(isEngagementEvent(null, ["project_created"])).toBe(false);
+  });
+});
+
+describe("evaluateEventTransition with countsAsActivity", () => {
+  const states: LifecycleState[] = ["activated", "at_risk", "dormant", "churned"];
+
+  it("defaults to counting as activity (today's behaviour)", () => {
+    for (const currentState of states) {
+      expect(evaluateEventTransition({ currentState, eventName: "x", activationSatisfied: false })).not.toBeNull();
+    }
+  });
+
+  it("drives no activity-based transition when the event does not count", () => {
+    for (const currentState of [...states, "engaged", "resurrected"] as LifecycleState[]) {
+      expect(
+        evaluateEventTransition({ currentState, eventName: "x", activationSatisfied: false, countsAsActivity: false }),
+      ).toBeNull();
+    }
+  });
+
+  it("still activates a signed_up contact (activation is independent of the list)", () => {
+    expect(
+      evaluateEventTransition({ currentState: "signed_up", eventName: "x", activationSatisfied: true, countsAsActivity: false }),
+    ).toEqual({ from: "signed_up", to: "activated", setActivatedAt: true });
+  });
+});
+
+describe("resolveLifecycleConfig engagement_events", () => {
+  it("defaults to an empty list and keeps an override", () => {
+    expect(resolveLifecycleConfig(null).engagement_events).toEqual([]);
+    expect(resolveLifecycleConfig({ engagement_events: ["a"] }).engagement_events).toEqual(["a"]);
   });
 });

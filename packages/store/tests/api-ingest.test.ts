@@ -409,5 +409,119 @@ for (const factory of testBackends()) {
         expect(trs[0]).toMatchObject({ fromState: "churned", toState: "resurrected", triggerEventId: ev.id, transitionedAt: NOW });
       });
     });
+
+    describe("settings.lifecycle.engagement_events", () => {
+      const OLD = new Date("2026-09-01T00:00:00.000Z");
+
+      async function setLifecycle(tenantId: string, lifecycle: Record<string, unknown>) {
+        const t = b.schema.tenants;
+        await b.db.update(t).set({ settings: { lifecycle } }).where(eq(t.id, tenantId));
+      }
+
+      async function dormant(tenantId: string, externalId: string) {
+        return insertContact(tenantId, {
+          externalId,
+          lifecycleState: "dormant",
+          firstSeenAt: OLD,
+          lastSeenAt: OLD,
+          eventCountBucketCurrent: 3,
+        });
+      }
+
+      it("an event in the list bumps last_seen_at and the counter and recovers a dormant contact", async () => {
+        const t = await b.newTenant();
+        await setLifecycle(t, { engagement_events: ["project_created", "report_viewed"] });
+        await dormant(t, "u1");
+        await track(t, "u1", "report_viewed");
+        const c = await contactOf(t, "u1");
+        expect(c.lastSeenAt).toEqual(NOW);
+        expect(c.eventCountBucketCurrent).toBe(4);
+        expect(c.lifecycleState).toBe("engaged");
+        expect(await transitionsOf(t)).toMatchObject([{ fromState: "dormant", toState: "engaged" }]);
+      });
+
+      it("an event outside the list is stored but does not bump last_seen_at, the counter or the state", async () => {
+        const t = await b.newTenant();
+        await setLifecycle(t, { engagement_events: ["project_created"] });
+        await dormant(t, "u1");
+        await insertContact(t, { externalId: "u2", lifecycleState: "churned", lastSeenAt: OLD });
+        await insertContact(t, { externalId: "u3", lifecycleState: "activated", lastSeenAt: OLD });
+        const r1 = await track(t, "u1", "email_opened");
+        const r2 = await track(t, "u2", "email_opened", { messageId: "m-out-1" });
+        await track(t, "u3", "email_opened");
+        const c = await contactOf(t, "u1");
+        expect(r1).toEqual({ deduplicated: false, contactId: c.id });
+        expect(r2.deduplicated).toBe(false);
+        expect(c.lastSeenAt).toEqual(OLD);
+        expect(c.eventCountBucketCurrent).toBe(3);
+        expect(c.lifecycleState).toBe("dormant");
+        expect((await contactOf(t, "u2")).lifecycleState).toBe("churned");
+        expect((await contactOf(t, "u2")).lastSeenAt).toEqual(OLD);
+        expect((await contactOf(t, "u3")).lifecycleState).toBe("activated");
+        expect(await transitionsOf(t)).toEqual([]);
+        const evs = await eventsOf(t);
+        expect(evs).toHaveLength(3);
+        expect(evs.every((e: { eventName: string }) => e.eventName === "email_opened")).toBe(true);
+      });
+
+      it("a new contact from an event outside the list starts with last_seen_at = first_seen_at and a zero counter", async () => {
+        const t = await b.newTenant();
+        await setLifecycle(t, { engagement_events: ["project_created"] });
+        await track(t, "u1", "email_opened");
+        const c = await contactOf(t, "u1");
+        expect(c.lifecycleState).toBe("signed_up");
+        expect(c.firstSeenAt).toEqual(NOW);
+        expect(c.lastSeenAt).toEqual(NOW);
+        expect(c.eventCountBucketCurrent).toBe(0);
+      });
+
+      it("activation is evaluated independently of the list", async () => {
+        const t = await b.newTenant();
+        await setLifecycle(t, { activation_events: ["signed_in"], engagement_events: ["project_created"] });
+        await insertContact(t, { externalId: "u1", lifecycleState: "signed_up", lastSeenAt: OLD, eventCountBucketCurrent: 0 });
+        await track(t, "u1", "signed_in");
+        const c = await contactOf(t, "u1");
+        expect(c.lifecycleState).toBe("activated");
+        expect(c.activatedAt).toEqual(NOW);
+        expect(c.lastSeenAt).toEqual(OLD);
+        expect(c.eventCountBucketCurrent).toBe(0);
+        // The next activity event (in the list) moves activated -> engaged.
+        await track(t, "u1", "project_created");
+        expect((await contactOf(t, "u1")).lifecycleState).toBe("engaged");
+      });
+
+      it("identify does not count as activity when the list is set; traits still update", async () => {
+        const t = await b.newTenant();
+        await setLifecycle(t, { engagement_events: ["project_created"] });
+        await dormant(t, "u1");
+        await identify(t, "u1", emptyPlan({ columnUpdates: { name: "Ada" }, propsToMerge: { a: 1 } }), { messageId: "idm-e" });
+        await identify(t, "u1", null);
+        const c = await contactOf(t, "u1");
+        expect(c.name).toBe("Ada");
+        expect(c.properties).toEqual({ a: 1 });
+        expect(c.lastSeenAt).toEqual(OLD);
+        expect(c.eventCountBucketCurrent).toBe(3);
+        expect(c.lifecycleState).toBe("dormant");
+        expect(await eventsOf(t)).toHaveLength(2);
+        expect(await transitionsOf(t)).toEqual([]);
+      });
+
+      it("an unset or empty list keeps every track and identify as activity", async () => {
+        for (const lifecycle of [{}, { engagement_events: [] }]) {
+          const t = await b.newTenant();
+          await setLifecycle(t, lifecycle);
+          await dormant(t, "u1");
+          await dormant(t, "u2");
+          await track(t, "u1", "email_opened");
+          await identify(t, "u2", null);
+          for (const id of ["u1", "u2"]) {
+            const c = await contactOf(t, id);
+            expect(c.lastSeenAt).toEqual(NOW);
+            expect(c.eventCountBucketCurrent).toBe(4);
+            expect(c.lifecycleState).toBe("engaged");
+          }
+        }
+      });
+    });
   });
 }
