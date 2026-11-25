@@ -1,6 +1,6 @@
 # Topics and consent
 
-> Status: unreleased (planned for v0.8). Released versions up to v0.7 have no topics: every message carries List-Unsubscribe and an unsubscribe stops all mail of the product.
+> Since v0.8. Versions up to v0.7 have no topics: every message carries List-Unsubscribe and an unsubscribe stops all mail of the product.
 
 Topics let a contact choose which kinds of email they receive from a product, for example "Product news" or "Onboarding tips", without unsubscribing from everything. A product without topics behaves exactly as before.
 

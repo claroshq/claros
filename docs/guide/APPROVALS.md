@@ -1,6 +1,6 @@
 # Approvals
 
-> Status: the approval queue, approve, reject and retry are released. Everything marked (v0.8) below is unreleased.
+> The approval queue, approve, reject and retry are in every release. Everything marked (v0.8) below is available since v0.8.
 
 Messages of flows with approval mode `require` wait in the queue (status `pending_approval`) until someone approves or rejects them. Flows with approval mode `auto` skip the queue.
 

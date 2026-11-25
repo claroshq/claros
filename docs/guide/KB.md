@@ -1,6 +1,6 @@
 # Knowledge base
 
-> Status: categories, pinned entries, `kb_select` and the import are unreleased (planned for v0.8).
+> Since v0.8: categories, pinned entries, `kb_select` and the import.
 
 The knowledge base holds what the drafting model may say about your product. Entries have a `title`, `content` (markdown, html or text), `tags`, and since v0.8:
 

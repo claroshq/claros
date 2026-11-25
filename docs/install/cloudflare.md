@@ -1,6 +1,6 @@
 # Install on Cloudflare Workers + D1
 
-> Status: unreleased, planned for v0.8. This page describes the Workers runtime as it exists on the development branch. It is not part of a release yet, and parts of it do not work yet (see [Not available yet](#not-available-yet)). The released install path is Postgres + Node with Docker.
+> Available since v0.8. Known limits are listed under [Known limits](#known-limits). Postgres + Node with Docker remains a fully supported install option.
 
 Claros can run as a single Cloudflare Worker on a D1 database, next to the Postgres + Node runtime. Both run the same engine and the same HTTP API; the Workers runtime is an additional install option, not a replacement for Postgres.
 
@@ -56,7 +56,7 @@ Files that exist in the dashboard build are served by Cloudflare before the Work
 
 ## Deploy with `npx claros deploy`
 
-> Unreleased, planned for v0.8. The `claros` npm package is not published yet; inside the repository run `npm run build`, then `node packages/cli/bin/claros.mjs` in place of `npx claros`.
+From a checkout of the repository you can run the same CLI without npm: `npm run build`, then `node packages/cli/bin/claros.mjs` in place of `npx claros`.
 
 `claros deploy` creates or updates one Claros instance in your Cloudflare account. It runs wrangler with your Cloudflare login (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in CI) and never changes DNS records.
 
@@ -123,8 +123,9 @@ curl "http://localhost:8787/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*"
 
 `npm run build -w @claros/cloudflare-worker` bundles the Worker the way a deploy would (`wrangler deploy --dry-run`) without uploading anything.
 
-## Not available yet
+## Known limits
 
-- `claros deploy` has been tested against a simulated account, not yet released or run against a real Cloudflare account. The `wrangler.jsonc` in `apps/worker` stays a development template with a placeholder database id.
+- `claros deploy` is tested against a simulated Cloudflare account in CI and was verified against a real account before the v0.8.0 release. The `wrangler.jsonc` in `apps/worker` is a development template with a placeholder database id; deployed configuration comes from `claros deploy`.
+- Moving an existing Postgres install to D1 is not supported; Postgres installs stay on Postgres and upgrade in place.
 - Transports: the Workers end-to-end test sends through the Resend adapter (against a fake Resend API). SMTP has not been tested on Workers.
 - Knowledge base similarity search uses SQLite full-text search on D1 instead of pgvector.

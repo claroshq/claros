@@ -1,6 +1,6 @@
 # Flows: triggers, steps and what a step can use
 
-> Status: unreleased (planned for v0.8). Everything here works on Postgres + Node and on Cloudflare Workers + D1.
+> Since v0.8. Everything here works on Postgres + Node and on Cloudflare Workers + D1.
 
 A flow is a trigger and a list of steps. This page covers the trigger types, the step fields, and the step features that let a real product's mail use its own data: dates, context sources, the knowledge base, named links, and the `choose` step. The fields are written in a [config document](CONFIG.md); `GET /v1/flows/:id` shows them on stored flows.
 

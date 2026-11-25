@@ -1,6 +1,6 @@
 # Webhooks and the analytics sink
 
-> Status: unreleased (planned for v0.8).
+> Since v0.8.
 
 Claros tells your product what happened to its contacts and messages with signed HTTP webhooks, and can send lifecycle events to an analytics tool. Both are configured per product with [config as code](CONFIG.md) (`webhooks` and `settings.analytics`); webhooks can also be managed one by one in the dashboard (Settings, Webhooks) or with the [webhooks API](#managing-webhooks).
 

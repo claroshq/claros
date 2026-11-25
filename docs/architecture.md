@@ -2,19 +2,19 @@
 
 This page describes how Claros is built and what each install option offers. It is kept current with every release; [CHANGELOG.md](../CHANGELOG.md) records what changed.
 
-> Status: Claros v0.6 runs on **Postgres + Node (Docker)**. Support for **Cloudflare D1 + Workers** is planned for v0.8 and is not available yet. Sections marked "planned" describe work in progress.
+> Status: since v0.8, Claros runs on **Postgres + Node (Docker)** or on **Cloudflare Workers + D1**. Both are supported install options; Postgres installs upgrade in place.
 
 ## Install options
 
-| | Postgres + Node (Docker) | Cloudflare D1 + Workers (planned, v0.8) |
+| | Postgres + Node (Docker) | Cloudflare D1 + Workers |
 |---|---|---|
-| Available | Yes | Not yet |
-| Install | `docker compose up`, see [Installation](guide/INSTALLATION.md) | `npx claros deploy` |
+| Available | Yes | Yes, since v0.8 |
+| Install | `docker compose up`, see [Installation](guide/INSTALLATION.md) | `npx claros deploy`, see [Install on Cloudflare Workers + D1](install/cloudflare.md) |
 | Dependencies | Postgres 16 with pgvector | a Cloudflare account |
 | Job queue | pg-boss (inside Postgres) | Cloudflare Queues |
 | Upgrades | pull the new tag, migrations run on boot or via `scripts/migrate.sh` | `npx claros upgrade` |
 
-Both options will run the same HTTP API and the same engine behaviour. Postgres stays fully supported.
+Both options run the same HTTP API and the same engine behaviour. Postgres stays fully supported.
 
 ## Components
 
@@ -35,18 +35,18 @@ Both options will run the same HTTP API and the same engine behaviour. Postgres 
 
 ## Tenancy
 
-Every product-owned table carries `tenant_id` (user-facing name: product) and every query is scoped by it; ingestion keys belong to one product. In v0.6 and v0.7 an install runs one product. Multi-product instances are in progress for v0.8 (unreleased): one instance serves several products, users act on them through memberships, instance admins on all of them. See [Products](guide/PRODUCTS.md).
+Every product-owned table carries `tenant_id` (user-facing name: product) and every query is scoped by it; ingestion keys belong to one product. Up to v0.7 an install runs one product. Since v0.8 one instance can serve several products; users act on them through memberships, instance admins on all of them. See [Products](guide/PRODUCTS.md).
 
 ## Engine rules
 
 - The LLM runs only at flow compile time and content draft time, never in the send path.
 - Message state transitions use compare-and-swap on status; delivery feedback only moves forward.
 - Suppression is checked before anything else at send time.
-- Every outgoing message carries a compliant footer and, unless its topic kind is `transactional`, RFC 8058 one-click unsubscribe headers (the transactional exception is unreleased, planned for v0.8).
-- A topic unsubscribe blocks that topic's mail (not transactional topics); a cloudflare transport sends transactional-topic mail only (unreleased, planned for v0.8).
+- Every outgoing message carries a compliant footer and, unless its topic kind is `transactional`, RFC 8058 one-click unsubscribe headers.
+- A topic unsubscribe blocks that topic's mail (not transactional topics); a cloudflare transport sends transactional-topic mail only.
 - Drain is round-robin across tenants so a large tenant cannot starve a small one.
 
-## Capability differences between backends (planned)
+## Capability differences between backends
 
 | Capability | Postgres + Node | D1 + Workers |
 |---|---|---|
@@ -56,4 +56,4 @@ Every product-owned table carries `tenant_id` (user-facing name: product) and ev
 | Custom domains from the CLI | no (use your reverse proxy) | yes |
 | Scale target | larger installs; partitioned events (not benchmarked) | small and medium installs; one database per instance |
 
-The running instance reports its capabilities at `GET /v1/capabilities` (planned).
+The running instance reports its capabilities at `GET /v1/capabilities`.

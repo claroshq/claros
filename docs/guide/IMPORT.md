@@ -1,6 +1,6 @@
 # Importing send history
 
-> Status: unreleased (planned for v0.8).
+> Since v0.8.
 
 When a product moves to Claros from another system, the mail that system already sent matters: frequency caps, re-entry, "already sent" and history conditions, and knowledge base deduplication should treat it like mail Claros sent. The history import brings those messages in.
 

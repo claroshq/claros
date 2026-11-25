@@ -1,6 +1,6 @@
 # API keys
 
-> Status: unreleased (planned for v0.8). Admin keys and the `clr_` prefixes are not in released versions up to v0.7.
+> Since v0.8: admin keys, instance keys and the `clr_` prefixes. Versions up to v0.7 have publishable and secret ingestion keys only.
 
 A product has three kinds of API keys, and the instance has one more (instance keys). Each is shown once when it is created; only a SHA-256 hash is stored. Revoking a key takes effect on the next request.
 
