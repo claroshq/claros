@@ -25,7 +25,7 @@ Every transition is a compare-and-swap on the current status: when the message a
 
 - **Edit** renders the Markdown body to HTML and text like a drafted body. The first edit keeps the drafted subject and body in `original_subject`, `original_body_html` and `original_body_text`; `edited_by` and `edited_at` record the last edit.
 - **Regenerate** sends the message back for a new draft. With `action_type`, the brain drafts that action and skips its decide step (the reviewer took that decision); the value gate still runs.
-- **Exclude person** adds a manual suppression of the person's address and cancels every message not handed to the drain yet (`pending_generation`, `generating`, `awaiting_content`, `pending_approval`, `approved`), in one atomic step. A message already `sending` is left to the drain (the suppression check before the send stops it when it has not left yet). Undo with `DELETE /v1/suppressions/:email`; cancelled messages stay cancelled.
+- **Exclude person** adds a manual suppression of the person's address and cancels every message not handed to the drain yet (`pending_generation`, `generating`, `awaiting_content`, `pending_approval`, `approved`), in one atomic step. A message already `sending` is left to the drain (the suppression check before the send stops it when it has not left yet). Undo with `DELETE /v1/suppressions/:email`; cancelled messages stay cancelled. The person's page (People) has the same action under **Actions**, **Exclude from mail**.
 
 The dashboard Approvals screen offers all of these. Keyboard: `j`/`k` move through the queue, `a` approves, `r` rejects, `e` edits. Approved messages that have not been sent yet are listed under **Approved, not sent yet** with **Back to review** and **Cancel send**.
 

@@ -3,7 +3,7 @@
  */
 import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
-import type { ApiContactsQueries, ContactListRow } from "../areas/api-contacts.js";
+import type { ApiContactsQueries, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { pgWriteOutbox } from "./outbox.js";
 
@@ -11,6 +11,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** Statuses a message has before it is handed to the drain (G20 cancel). */
 const NOT_SENT = ["pending_generation", "generating", "awaiting_content", "pending_approval", "approved"];
+
+type NoteRaw = {
+  id: string;
+  body: string;
+  created_at: string | Date;
+  author_user_id: string | null;
+  author_name: string | null;
+  author_email: string | null;
+};
+
+function toNote(r: NoteRaw): ContactNoteRow {
+  return {
+    id: r.id,
+    body: r.body,
+    createdAt: new Date(r.created_at),
+    authorUserId: r.author_user_id,
+    authorName: r.author_name,
+    authorEmail: r.author_email,
+  };
+}
 
 export function pgApiContacts(db: PgDb): ApiContactsQueries {
   return {
@@ -199,6 +219,7 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
         await tx.execute(sql`DELETE FROM flow_memberships WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM contact_topics WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM contact_dates WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM contact_notes WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM contact_conflicts WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM lifecycle_transitions WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM events WHERE tenant_id = ${t} AND contact_id = ${c}`);
@@ -235,5 +256,47 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
         return { suppressed, cancelled: cancelled.rows.map((r) => r.id) };
       });
     },
-};
+
+    async listContactNotes({ tenantId, contactId }) {
+      if (!UUID_RE.test(contactId)) return [];
+      const rows = await db.execute<NoteRaw>(sql`
+        SELECT n.id, n.body, n.created_at, n.author_user_id,
+               u.name AS author_name, u.email AS author_email
+        FROM contact_notes n
+        LEFT JOIN users u ON u.id = n.author_user_id
+        WHERE n.tenant_id = ${tenantId}::uuid AND n.contact_id = ${contactId}::uuid
+        ORDER BY n.created_at DESC, n.id DESC
+      `);
+      return rows.rows.map(toNote);
+    },
+
+    async addContactNote({ tenantId, contactId, authorUserId, body, now }) {
+      if (!UUID_RE.test(contactId)) return null;
+      const rows = await db.execute<NoteRaw>(sql`
+        WITH inserted AS (
+          INSERT INTO contact_notes (tenant_id, contact_id, author_user_id, body, created_at)
+          SELECT ${tenantId}::uuid, c.id, ${authorUserId}::uuid, ${body}, ${now}
+          FROM contacts c
+          WHERE c.tenant_id = ${tenantId}::uuid AND c.id = ${contactId}::uuid
+          RETURNING id, body, created_at, author_user_id
+        )
+        SELECT i.id, i.body, i.created_at, i.author_user_id,
+               u.name AS author_name, u.email AS author_email
+        FROM inserted i
+        LEFT JOIN users u ON u.id = i.author_user_id
+      `);
+      const row = rows.rows[0];
+      return row ? toNote(row) : null;
+    },
+
+    async deleteContactNote({ tenantId, contactId, noteId }) {
+      if (!UUID_RE.test(contactId) || !UUID_RE.test(noteId)) return false;
+      const rows = await db.execute(sql`
+        DELETE FROM contact_notes
+        WHERE tenant_id = ${tenantId}::uuid AND contact_id = ${contactId}::uuid AND id = ${noteId}::uuid
+        RETURNING id
+      `);
+      return rows.rows.length > 0;
+    },
+  };
 }

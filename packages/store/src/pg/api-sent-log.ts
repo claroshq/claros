@@ -94,7 +94,7 @@ export function pgApiSentLog(db: PgDb): ApiSentLogQueries {
     async getSentMessage({ tenantId, messageId }) {
       const msgResult = await db.execute<SentLogDetailRow>(sql`
         SELECT m.id, m.tenant_id, m.contact_id, m.flow_id,
-               f.name AS flow_name,
+               f.name AS flow_name, f.compiled_plan AS flow_compiled_plan,
                m.membership_id, m.flow_step_order,
                m.status, m.feedback, m.subject, m.body_html, m.body_text,
                m.brain_reasoning, m.brain_action_type,
