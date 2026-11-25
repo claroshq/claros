@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-25
+
+### Fixed
+
+- `claros upgrade` no longer aborts before migrating on every D1 database: `wrangler d1 export` refuses databases with virtual tables, and the knowledge-base search index (`kb_fts`) is an FTS5 table. The upgrade now records a D1 Time Travel bookmark before migrating (printed with its restore command and kept in the state file) and exports only the regular tables to the SQL backup. A failed export only warns; the upgrade stops before migrating only when neither backup could be taken. After restoring from the SQL file, rebuild the search index with `INSERT INTO kb_fts(kb_fts) VALUES('rebuild')`; see [Upgrade backups](docs/install/cloudflare.md#upgrade-backups).
+
 ## [0.8.0] - 2026-11-25
 
 Claros 0.8 adds a second install option, Cloudflare Workers + D1 (`npx claros deploy`), next to Postgres + Node with Docker, which stays fully supported. Both run the same HTTP API and engine. One instance can now serve several products, each with topics and consent, several transports with routing, admin keys, config as code, signed webhooks and an analytics sink, and the engine gains date schedules, a context hook, knowledge base v2, the `choose` step and send-history import. Postgres installs upgrade in place: the v0.6 and v0.7 HTTP API, ingest contract, Docker environment variables and data keep working. Read the upgrade notes for the behaviour changes.
@@ -167,7 +173,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/claroshq/claros/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/claroshq/claros/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/claroshq/claros/compare/v0.6.4...v0.7.0
 [0.6.4]: https://github.com/claroshq/claros/compare/v0.6.3...v0.6.4

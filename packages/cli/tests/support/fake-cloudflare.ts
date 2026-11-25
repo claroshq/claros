@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import type { Runner, RunResult } from "../../src/wrangler.js";
 import { ANY_USER_SQL } from "../../src/claim.js";
 import { PRODUCT_HOSTS_SQL } from "../../src/ops.js";
+import { D1_EXPORTABLE_TABLES_SQL } from "../../src/wrangler.js";
 
 export interface FakeWorker {
   secrets: Map<string, string>;
@@ -57,6 +58,25 @@ export class FakeCloudflare {
   failDeploy: string | null = null;
   calls: string[][] = [];
   exports: string[] = [];
+  /** Tables of the D1 database, as sqlite_master lists them (kb_fts and its shadow tables included). */
+  tables = [
+    "_cf_KV",
+    "d1_migrations",
+    "kb_entries",
+    "kb_fts",
+    "kb_fts_config",
+    "kb_fts_data",
+    "kb_fts_docsize",
+    "kb_fts_idx",
+    "sqlite_sequence",
+    "tenants",
+  ];
+  /** The D1 Time Travel bookmark `d1 time-travel info` returns. */
+  bookmark = "00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683";
+  /** Fail `d1 time-travel info` with this message. */
+  failBookmark: string | null = null;
+  /** Fail `d1 export` with this message. */
+  failExport: string | null = null;
   private workersDevSubdomain = "acme";
 
   /** Calls that changed something on the account. */
@@ -125,7 +145,18 @@ export class FakeCloudflare {
         }
         for (const m of this.migrations) this.applied.add(m);
         return this.ok("applied");
+      case cmd === "d1 time-travel":
+        if (args[2] !== "info" || !args.includes("--json")) return this.fail(`fake: unexpected wrangler ${args.join(" ")}`);
+        this.configOf(args);
+        if (this.failBookmark) return this.fail(this.failBookmark);
+        return this.ok(JSON.stringify({ bookmark: this.bookmark }, null, 2));
       case cmd === "d1 export": {
+        if (this.failExport) return this.fail(this.failExport);
+        const tables = args.flatMap((a, i) => (args[i - 1] === "--table" ? [a] : []));
+        // Like D1: a database with an FTS5 table exports only when the export leaves it out.
+        if (tables.length === 0 || tables.some((t) => t.startsWith("kb_fts"))) {
+          return this.fail("✘ [ERROR] D1 Export error: cannot export databases with virtual tables (like FTS5)");
+        }
         const out = args[args.indexOf("--output") + 1]!;
         writeFileSync(out, "-- fake export\n");
         this.exports.push(out);
@@ -151,6 +182,13 @@ export class FakeCloudflare {
       if (!this.applied.size) return this.fail("✘ ERROR: no such table: tenants: SQLITE_ERROR");
       return this.sqlResult([
         this.products.filter((p) => p.publicHost && !p.archived).map((p) => ({ public_host: p.publicHost })),
+      ]);
+    }
+    if (sql === D1_EXPORTABLE_TABLES_SQL) {
+      return this.sqlResult([
+        this.tables
+          .filter((t) => !t.startsWith("sqlite_") && !t.startsWith("_cf_") && !t.startsWith("kb_fts"))
+          .map((name) => ({ name })),
       ]);
     }
     if (sql === ANY_USER_SQL) return this.sqlResult([[{ any_user: this.anyUser ? 1 : 0 }]]);

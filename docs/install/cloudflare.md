@@ -93,10 +93,36 @@ When the command cannot confirm a Workers Paid plan, it prints the Workers Free 
 
 | Command | Does |
 |---|---|
-| `npx claros upgrade [--name]` | Refuses a downgrade, exports D1 to `~/.config/claros/<name>/backups/`, applies migrations, deploys the package's version and waits for it. If the new version does not come up, it rolls the Worker back (`wrangler rollback`); migrations are additive and stay applied. |
+| `npx claros upgrade [--name]` | Refuses a downgrade, backs up D1 (see [Upgrade backups](#upgrade-backups)), applies migrations, deploys the package's version and waits for it. If the new version does not come up, it rolls the Worker back (`wrangler rollback`); migrations are additive and stay applied. |
 | `npx claros products set-host <slug> <host> [--name]` | Sets the product's public host and redeploys with a custom domain route for it. |
 | `npx claros doctor [--name]` | Checks the secrets, pending migrations, HTTPS on every route, `/health` and `/version`. |
 | `npx claros claim-url [--name]` | Prints a new one-time claim URL while no user exists. |
+
+### Upgrade backups
+
+Right before it applies migrations, `claros upgrade` takes two backups of the D1 database:
+
+1. A D1 Time Travel bookmark (`wrangler d1 time-travel info`). It covers the whole database, including the knowledge-base search index. The command prints it with the restore command, and the state file keeps it as `lastUpgradeBackup` (bookmark, time, versions before and after).
+2. An SQL export of the regular tables to `~/.config/claros/<name>/backups/<time>-<version>.sql`. `wrangler d1 export` cannot export virtual tables, so the export leaves out the FTS5 knowledge-base search index (`kb_fts` and its internal tables).
+
+If one of them fails, the command warns and goes on with the other. If both fail, it stops before applying any migration.
+
+To restore from the bookmark (this replaces the database's current contents; Time Travel keeps bookmarks only for its retention period, see [Cloudflare's Time Travel docs](https://developers.cloudflare.com/d1/reference/time-travel/)):
+
+```bash
+npx wrangler d1 time-travel restore claros-<name> --bookmark <bookmark>
+```
+
+Roll the Worker back to the matching version as well (`npx wrangler rollback`), since the restored schema is the one the earlier version used.
+
+To restore from the SQL file, load it into an empty D1 database and rebuild the search index, which the file does not contain:
+
+```bash
+npx wrangler d1 execute <database> --remote --file ~/.config/claros/<name>/backups/<file>.sql
+npx wrangler d1 execute <database> --remote --command "INSERT INTO kb_fts(kb_fts) VALUES('rebuild')"
+```
+
+If `kb_fts` does not exist in that database, create it first with the statements of `drizzle/migrations-sqlite/0001_kb_fts.sql` (the virtual table, and its triggers if they are missing), then run the rebuild.
 
 ### Product public hosts
 

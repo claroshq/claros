@@ -22,6 +22,7 @@ import {
   statePath,
   type InstanceState,
   type SecretName,
+  type UpgradeBackup,
 } from "./state.js";
 import { configHash, generateConfig, renderConfig, type GeneratedConfig } from "./template.js";
 import { compareVersions } from "./version.js";
@@ -462,7 +463,59 @@ async function liveVersion(ctx: Context, host: string): Promise<string | null> {
   }
 }
 
-export async function upgrade(ctx: Context, opts: UpgradeOptions): Promise<{ upgraded: boolean; backup: string | null }> {
+/** The command that restores D1 to a Time Travel bookmark. */
+export function restoreCommand(d1Name: string, bookmark: string): string {
+  return `npx wrangler d1 time-travel restore ${d1Name} --bookmark ${bookmark}`;
+}
+
+/**
+ * Back up D1 right before migrating: a Time Travel bookmark (the primary
+ * backup, it covers every table including the FTS5 index) and an SQL export
+ * of the regular tables (`d1 export` refuses virtual tables). Either one is
+ * enough to go on; without both the upgrade stops before migrating.
+ */
+async function backupD1(ctx: Context, s: Session, from: string | null, to: string): Promise<UpgradeBackup> {
+  const { state } = s;
+  const backups = join(s.dir, "backups");
+  mkdirSync(backups, { recursive: true, mode: 0o700 });
+  const takenAt = ctx.now().toISOString();
+  const errors: string[] = [];
+
+  let bookmark: string | null = null;
+  try {
+    bookmark = await s.wr.d1Bookmark();
+    ctx.io.log(`D1 Time Travel bookmark before the upgrade: ${bookmark} (${takenAt}).`);
+    ctx.io.log(`  Restore with: ${restoreCommand(state.d1Name, bookmark)}`);
+  } catch (err) {
+    errors.push(`Time Travel bookmark: ${(err as Error).message}`);
+    ctx.io.warn(`Could not read a D1 Time Travel bookmark: ${(err as Error).message}`);
+  }
+
+  let sqlFile: string | null = join(backups, `${takenAt.replace(/[:.]/g, "-")}-${from ?? "unknown"}.sql`);
+  try {
+    const tables = await s.wr.d1ExportableTables();
+    ctx.io.log(`Exporting ${tables.length} D1 table(s) to ${sqlFile} (the knowledge-base search index is rebuilt after a restore, not exported).`);
+    await s.wr.d1Export(sqlFile, tables);
+  } catch (err) {
+    errors.push(`SQL export: ${(err as Error).message}`);
+    rmSync(sqlFile, { force: true });
+    sqlFile = null;
+    if (bookmark) ctx.io.warn(`The SQL export of D1 failed; going on with the Time Travel bookmark as the backup. ${(err as Error).message}`);
+  }
+
+  if (!bookmark && !sqlFile) {
+    throw new Error(`Stopped before migrating: could not back up D1 (no Time Travel bookmark and no SQL export).\n${errors.join("\n")}`);
+  }
+  const backup: UpgradeBackup = { takenAt, fromVersion: from, toVersion: to, bookmark, sqlFile };
+  state.lastUpgradeBackup = backup;
+  saveState(ctx.configDir, state);
+  return backup;
+}
+
+export async function upgrade(
+  ctx: Context,
+  opts: UpgradeOptions,
+): Promise<{ upgraded: boolean; backup: string | null; bookmark: string | null }> {
   const name = opts.name ?? DEFAULT_INSTANCE;
   const s = await existingSession(ctx, name, opts);
   const { state } = s;
@@ -475,16 +528,11 @@ export async function upgrade(ctx: Context, opts: UpgradeOptions): Promise<{ upg
   }
   if (running === target && state.deployedVersion === target) {
     ctx.io.log(`"${name}" already runs Claros ${target}.`);
-    return { upgraded: false, backup: null };
+    return { upgraded: false, backup: null, bookmark: null };
   }
 
   const config = await currentConfig(ctx, s);
-  const backups = join(s.dir, "backups");
-  mkdirSync(backups, { recursive: true, mode: 0o700 });
-  const stamp = ctx.now().toISOString().replace(/[:.]/g, "-");
-  const backup = join(backups, `${stamp}-${running ?? "unknown"}.sql`);
-  ctx.io.log(`Backing up D1 to ${backup}.`);
-  await s.wr.d1Export(backup);
+  const backup = await backupD1(ctx, s, running, target);
 
   const pending = await s.wr.migrationsPending();
   if (pending.length > 0) {
@@ -503,8 +551,10 @@ export async function upgrade(ctx: Context, opts: UpgradeOptions): Promise<{ upg
     ctx.io.warn(`Deploy failed: ${(err as Error).message}`);
   }
   if (!ok) {
-    ctx.io.warn("Rolling the Worker back to the previous version. D1 migrations are not rolled back (they are additive);");
-    ctx.io.warn(`the backup taken before the upgrade is ${backup}.`);
+    ctx.io.warn("Rolling the Worker back to the previous version. D1 migrations are not rolled back (they are additive).");
+    ctx.io.warn(`D1 backups taken before the upgrade (${backup.takenAt}):`);
+    if (backup.bookmark) ctx.io.warn(`  Time Travel: ${restoreCommand(state.d1Name, backup.bookmark)}`);
+    if (backup.sqlFile) ctx.io.warn(`  SQL export (without the knowledge-base search index): ${backup.sqlFile}`);
     await s.wr.rollback(previousVersionId, `claros upgrade to ${target} failed`);
     state.versionId = previousVersionId;
     state.deployedVersion = running;
@@ -513,7 +563,7 @@ export async function upgrade(ctx: Context, opts: UpgradeOptions): Promise<{ upg
     throw new Error(`Upgrade to ${target} failed and was rolled back.`);
   }
   ctx.io.log(`"${name}" now runs Claros ${target}.`);
-  return { upgraded: true, backup };
+  return { upgraded: true, backup: backup.sqlFile, bookmark: backup.bookmark };
 }
 
 // ---------------------------------------------------------------------------
