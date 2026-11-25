@@ -1,6 +1,7 @@
 // Copies what `claros deploy` ships into assets/ before `npm pack` / publish:
 // the built Worker (apps/worker/dist), the dashboard build and the SQLite
-// migrations. Run `npm run build` at the repository root first.
+// migrations. `npm pack` / `npm publish` run the repository build first
+// (prepack), so the package never ships an earlier build.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
