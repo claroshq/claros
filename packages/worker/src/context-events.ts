@@ -41,8 +41,8 @@
  * All queries are scoped by tenant_id and contact_id.
  * Ordering is always deterministic (ties broken explicitly).
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 import { INGEST_TIMESTAMP_CLAMP_HOURS } from "@claros/core";
 
 // ---------------------------------------------------------------------------
@@ -130,25 +130,6 @@ export const MOST_USED_FEATURES_COUNT = 5;
 export const RECENT_EVENTS_COUNT = 10;
 
 // ---------------------------------------------------------------------------
-// Raw DB row types
-// ---------------------------------------------------------------------------
-
-type CadenceRow = Record<string, unknown> & {
-  current_7d: string; // pg COUNT returns bigint as string
-  previous_7d: string;
-};
-
-type RecentEventRow = Record<string, unknown> & {
-  event_name: string | null;
-  timestamp: Date | string;
-};
-
-type FeatureRow = Record<string, unknown> & {
-  event_name: string;
-  cnt: string; // bigint as string
-};
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -231,24 +212,14 @@ export async function buildEventSections(
   // received_at >= rcvAt14Prune prunes all partitions older than 14 days + slack.
   // timestamp filters then apply the precise semantic windows.
   // -------------------------------------------------------------------------
-  const cadenceRows = await db.execute<CadenceRow>(sql`
-    SELECT
-      COUNT(*) FILTER (
-        WHERE timestamp >= ${w7Start.toISOString()}::timestamptz
-          AND timestamp  < ${now.toISOString()}::timestamptz
-      ) AS current_7d,
-      COUNT(*) FILTER (
-        WHERE timestamp >= ${w14Start.toISOString()}::timestamptz
-          AND timestamp  < ${w7Start.toISOString()}::timestamptz
-      ) AS previous_7d
-    FROM events
-    WHERE contact_id  = ${contactId}
-      AND tenant_id   = ${tenantId}
-      AND received_at >= ${rcvAt14Prune.toISOString()}::timestamptz
-      AND received_at  < ${now.toISOString()}::timestamptz
-  `);
-
-  const cadRow = cadenceRows.rows[0]!;
+  const cadRow = await storeFor(db).workerContextEvents.countCadenceWindows({
+    tenantId,
+    contactId,
+    now,
+    w7Start,
+    w14Start,
+    receivedFrom: rcvAt14Prune,
+  });
   const current7d = parseInt(cadRow.current_7d, 10) || 0;
   const previous7d = parseInt(cadRow.previous_7d, 10) || 0;
 
@@ -271,15 +242,12 @@ export async function buildEventSections(
   //
   // Ordering: timestamp DESC, then event_name ASC for deterministic tie-break.
   // -------------------------------------------------------------------------
-  const recentRows = await db.execute<RecentEventRow>(sql`
-    SELECT event_name, timestamp
-    FROM events
-    WHERE contact_id  = ${contactId}
-      AND tenant_id   = ${tenantId}
-      AND received_at >= ${rcvAt30Prune.toISOString()}::timestamptz
-    ORDER BY timestamp DESC, event_name ASC
-    LIMIT ${RECENT_EVENTS_COUNT}
-  `);
+  const recentRows = await storeFor(db).workerContextEvents.listRecentEvents({
+    tenantId,
+    contactId,
+    receivedFrom: rcvAt30Prune,
+    limit: RECENT_EVENTS_COUNT,
+  });
 
   // -------------------------------------------------------------------------
   // Query 3: most-used features (five most frequent event_name in last 30 days)
@@ -287,28 +255,22 @@ export async function buildEventSections(
   // Excludes null event_name (identify events carry no feature signal).
   // Tie-break: alphabetical ascending on event_name (impl note 13).
   // -------------------------------------------------------------------------
-  const featureRows = await db.execute<FeatureRow>(sql`
-    SELECT event_name, COUNT(*) AS cnt
-    FROM events
-    WHERE contact_id  = ${contactId}
-      AND tenant_id   = ${tenantId}
-      AND event_name IS NOT NULL
-      AND timestamp  >= ${w30Start.toISOString()}::timestamptz
-      AND timestamp   < ${now.toISOString()}::timestamptz
-      AND received_at >= ${rcvAt30Prune.toISOString()}::timestamptz
-      AND received_at  < ${now.toISOString()}::timestamptz
-    GROUP BY event_name
-    ORDER BY cnt DESC, event_name ASC
-    LIMIT ${MOST_USED_FEATURES_COUNT}
-  `);
+  const featureRows = await storeFor(db).workerContextEvents.listMostUsedEventNames({
+    tenantId,
+    contactId,
+    now,
+    since: w30Start,
+    receivedFrom: rcvAt30Prune,
+    limit: MOST_USED_FEATURES_COUNT,
+  });
 
   // -------------------------------------------------------------------------
   // Assemble behavior section
   // -------------------------------------------------------------------------
   const behavior: BehaviorSection = {};
 
-  if (recentRows.rows.length > 0) {
-    const mapped: RecentEvent[] = recentRows.rows.map((r) => {
+  if (recentRows.length > 0) {
+    const mapped: RecentEvent[] = recentRows.map((r) => {
       const ts = toDate(r.timestamp);
       return {
         eventName: r.event_name,
@@ -321,8 +283,8 @@ export async function buildEventSections(
     behavior.recentEvents = mapped;
   }
 
-  if (featureRows.rows.length > 0) {
-    behavior.mostUsedFeatures = featureRows.rows.map((r) => r.event_name);
+  if (featureRows.length > 0) {
+    behavior.mostUsedFeatures = featureRows.map((r) => r.event_name);
   }
 
   return { cadence, behavior };

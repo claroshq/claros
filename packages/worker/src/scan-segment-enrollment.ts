@@ -19,9 +19,8 @@
  * interval. The cap is per-flow, not per-tenant: fairness across flows
  * within a tenant matches the scan's per-tenant fairness across tenants.
  */
-import { eq, and, inArray, gt, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { contacts, flows, tenants } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   resolveLifecycleConfig,
   isSegmentTriggerConfig,
@@ -87,19 +86,8 @@ export async function phaseSegmentEnrollment(
     flowsCapped: 0,
   };
 
-  let tenantRows: { id: string; settings: unknown }[];
-  if (tenantIds && tenantIds.length > 0) {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .where(inArray(tenants.id, tenantIds))
-      .orderBy(tenants.id);
-  } else {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .orderBy(tenants.id);
-  }
+  const tenantRows: { id: string; settings: unknown }[] =
+    await storeFor(db).workerScanSegmentEnrollment.listTenants(tenantIds);
 
   for (const tenant of tenantRows) {
     const settings = tenant.settings as Record<string, unknown> | null | undefined;
@@ -108,27 +96,8 @@ export async function phaseSegmentEnrollment(
     );
 
     // Small cardinality: a tenant typically has < 50 flows total.
-    const segmentFlows = await db
-      .select({
-        id: flows.id,
-        tenantId: flows.tenantId,
-        priority: flows.priority,
-        triggerType: flows.triggerType,
-        triggerConfig: flows.triggerConfig,
-        flowClass: flows.flowClass,
-        reentryPolicy: flows.reentryPolicy,
-        reentryCooldownDays: flows.reentryCooldownDays,
-      })
-      .from(flows)
-      .where(
-        and(
-          eq(flows.tenantId, tenant.id),
-          eq(flows.status, "active"),
-          eq(flows.triggerType, "segment"),
-          eq(flows.compileStatus, "ready"),
-          sql`${flows.compiledPlan} IS NOT NULL`,
-        ),
-      );
+    const segmentFlows =
+      await storeFor(db).workerScanSegmentEnrollment.listActiveSegmentFlows(tenant.id);
 
     for (const flow of segmentFlows) {
       if (!isSegmentTriggerConfig(flow.triggerConfig)) continue;
@@ -201,45 +170,28 @@ async function processSegmentFlow(
 
     // Contacts whose tenure and recency ages fall inside the cell, excluding
     // anyone already actively enrolled in this flow. Keyset pagination by id.
-    const batch = await db
-      .select({ id: contacts.id })
-      .from(contacts)
-      .where(
-        and(
-          eq(contacts.tenantId, tenantId),
-          sql`${contacts.firstSeenAt} <= ${now}::timestamptz - make_interval(days => ${tenure.minDays})`,
-          tenure.maxDays === null
-            ? undefined
-            : sql`${contacts.firstSeenAt} > ${now}::timestamptz - make_interval(days => ${tenure.maxDays})`,
-          sql`${contacts.lastSeenAt} <= ${now}::timestamptz - make_interval(days => ${recency.minDays})`,
-          recency.maxDays === null
-            ? undefined
-            : sql`${contacts.lastSeenAt} > ${now}::timestamptz - make_interval(days => ${recency.maxDays})`,
-          sql`NOT EXISTS (
-            SELECT 1 FROM flow_memberships fm
-            WHERE fm.contact_id = ${contacts.id}
-              AND fm.flow_id = ${flow.id}
-              AND fm.status = 'active'
-          )`,
-          lastId === null ? undefined : gt(contacts.id, lastId),
-        ),
-      )
-      .orderBy(contacts.id)
-      .limit(Math.min(BATCH_SIZE, SEGMENT_ENROLLMENT_CAP - result.attempted));
+    const batch = await storeFor(db).workerScanSegmentEnrollment.listCellContactsPage({
+      tenantId,
+      flowId: flow.id,
+      now,
+      tenure,
+      recency,
+      afterId: lastId,
+      limit: Math.min(BATCH_SIZE, SEGMENT_ENROLLMENT_CAP - result.attempted),
+    });
 
     if (batch.length === 0) break;
 
     for (const contact of batch) {
       result.attempted++;
-      const results = await db.transaction(async (tx) => {
-        return enrollContactInFlows(
-          tx as unknown as Db,
-          contact.id,
-          tenantId,
-          [flow],
-          now,
-        );
-      });
+      // enrollContactInFlows opens the transaction (advisory lock inside)
+      const results = await enrollContactInFlows(
+        db,
+        contact.id,
+        tenantId,
+        [flow],
+        now,
+      );
       if (results.some((r) => r.enrolled)) {
         result.succeeded++;
       }

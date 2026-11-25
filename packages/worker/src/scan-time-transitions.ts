@@ -12,9 +12,8 @@
  * double-fire, and the arithmetic shows the scan completes well within the
  * 15-minute interval at realistic scale (see BACKLOG.md for the threshold).
  */
-import { eq, and, inArray, gt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { contacts, tenants, lifecycleTransitions } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   evaluateTimeTransition,
   resolveLifecycleConfig,
@@ -86,19 +85,8 @@ export async function phaseTimeTransitions(
   };
 
   // Load tenants: use provided list or discover all.
-  let tenantRows: { id: string; settings: unknown }[];
-  if (tenantIds && tenantIds.length > 0) {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .where(inArray(tenants.id, tenantIds))
-      .orderBy(tenants.id);
-  } else {
-    tenantRows = await db
-      .select({ id: tenants.id, settings: tenants.settings })
-      .from(tenants)
-      .orderBy(tenants.id);
-  }
+  const tenantRows: { id: string; settings: unknown }[] =
+    await storeFor(db).workerScanTimeTransitions.listTenants(tenantIds);
 
   for (const tenant of tenantRows) {
     const settings = tenant.settings as Record<string, unknown> | null | undefined;
@@ -152,24 +140,12 @@ async function processTenanTimeTransitions(
   while (true) {
     // Keyset pagination: fetch next batch of contacts in time-transition states.
     // On the first page, omit the id > $lastId condition.
-    const whereConditions = [
-      eq(contacts.tenantId, tenantId),
-      inArray(contacts.lifecycleState, TIME_TRANSITION_STATES),
-    ];
-    if (lastId !== null) {
-      whereConditions.push(gt(contacts.id, lastId));
-    }
-
-    const batch = await db
-      .select({
-        id: contacts.id,
-        lifecycleState: contacts.lifecycleState,
-        lastSeenAt: contacts.lastSeenAt,
-      })
-      .from(contacts)
-      .where(and(...whereConditions))
-      .orderBy(contacts.id)
-      .limit(BATCH_SIZE);
+    const batch = await storeFor(db).workerScanTimeTransitions.listContactsInStatesPage({
+      tenantId,
+      states: TIME_TRANSITION_STATES,
+      afterId: lastId,
+      limit: BATCH_SIZE,
+    });
 
     if (batch.length === 0) break;
 
@@ -190,32 +166,19 @@ async function processTenanTimeTransitions(
       if (transition === null) continue;
 
       // Apply via CAS: only succeeds if lifecycle_state still matches.
-      const updated = await db
-        .update(contacts)
-        .set({ lifecycleState: transition.to })
-        .where(
-          and(
-            eq(contacts.id, contact.id),
-            eq(contacts.lifecycleState, transition.from),
-          ),
-        )
-        .returning({ id: contacts.id });
-
-      if (updated.length === 0) {
-        // CAS failed: state was already changed by a concurrent process. No-op.
-        continue;
-      }
-
-      // CAS succeeded: write audit row.
-      await db.insert(lifecycleTransitions).values({
+      // On success the audit row is written too.
+      const applied = await storeFor(db).workerScanTimeTransitions.applyTimeTransition({
         tenantId,
         contactId: contact.id,
         fromState: transition.from,
         toState: transition.to,
-        triggerEventId: null,
-        metadata: { trigger: "scan" },
-        transitionedAt: now,
+        now,
       });
+
+      if (!applied) {
+        // CAS failed: state was already changed by a concurrent process. No-op.
+        continue;
+      }
 
       appliedTransitions.push({
         contactId: contact.id,

@@ -41,7 +41,7 @@ import { handleAdvanceMembership } from "./advance-membership.js";
 import { handleProcessMessage } from "./process-message.js";
 import { handleDrainMessage } from "./drain-message.js";
 import { processGridSnapshotTick } from "./snapshot-retention-grid.js";
-import { tenants } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 
 export { fromDrizzle };
 export { nullTransportResolver } from "./transport.js";
@@ -294,12 +294,9 @@ export async function startWorker(boss: PgBoss, db: Db): Promise<void> {
       const now = new Date();
 
       // Read batch_size_per_tick from tenant throttle config, default to 50
-      const tenantRows = await db
-        .select({ settings: tenants.settings })
-        .from(tenants)
-        .limit(1);
-      const batchLimit = tenantRows.length > 0
-        ? resolveThrottleConfig(tenantRows[0]!.settings as Record<string, unknown> | null).batch_size_per_tick
+      const tenantRow = await storeFor(db).workerIndex.getAnyTenantSettings();
+      const batchLimit = tenantRow !== null
+        ? resolveThrottleConfig(tenantRow.settings as Record<string, unknown> | null).batch_size_per_tick
         : 50;
 
       const result = await processDrainTick(
