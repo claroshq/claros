@@ -232,6 +232,13 @@
       "when": 1795613847008,
       "tag": "0032_contact_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795615130528,
+      "tag": "0033_email_layouts",
+      "breakpoints": true
     }
   ]
 }

@@ -74,6 +74,7 @@ export const FEATURES = [
   "webhook_batch_interval",
   "engagement_events",
   "brand_logo_upload",
+  "email_templates",
 ] as const;
 
 export type Runtime = "node" | "workers";

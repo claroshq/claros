@@ -53,6 +53,8 @@ import IntegratePage from "./pages/IntegratePage.js";
 import SentLogPage from "./pages/SentLogPage.js";
 import SentLogDetailPage from "./pages/SentLogDetailPage.js";
 import SuppressionsPage from "./pages/SuppressionsPage.js";
+import { LayoutsPage } from "./pages/LayoutsPage.js";
+import { LayoutStudioPage } from "./pages/LayoutStudioPage.js";
 
 /**
  * Default landing route. Always redirects to /home, which handles the
@@ -105,6 +107,8 @@ export default function App() {
         <Route path="flows" element={<FlowsPage />} />
         <Route path="flows/new" element={<FlowEditorPage />} />
         <Route path="flows/:id/edit" element={<FlowEditorPage />} />
+        <Route path="templates" element={<LayoutsPage />} />
+        <Route path="templates/:ref" element={<LayoutStudioPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="people" element={<PeoplePage />} />
         <Route path="people/:id" element={<PersonPage />} />

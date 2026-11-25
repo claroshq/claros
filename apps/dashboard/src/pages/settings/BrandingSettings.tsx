@@ -7,6 +7,7 @@
  * exactly this configuration (plus transport and postal address).
  */
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useSetupState, usePatchTenant, useSendTestEmail, useBrandLogo, useBrandLogoMutations } from "../../settings.js";
 import type { BrandLogo, BrandSettingsData } from "../../api.js";
 import { Button } from "../../components/ui/button.js";
@@ -34,7 +35,6 @@ export default function BrandingSettings() {
   const [accentColor, setAccentColor] = useState("");
   const [footerText, setFooterText] = useState("");
   const [replyTo, setReplyTo] = useState("");
-  const [layout, setLayout] = useState<"narrow" | "wide">("narrow");
   const [testTo, setTestTo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -52,7 +52,6 @@ export default function BrandingSettings() {
     setAccentColor(b.accent_color ?? "");
     setFooterText(b.footer_text ?? "");
     setReplyTo(b.reply_to ?? "");
-    setLayout(b.layout === "wide" ? "wide" : "narrow");
     setInitialized(true);
   }, [tenant, initialized, logoQuery.isLoading, uploaded]);
 
@@ -72,8 +71,6 @@ export default function BrandingSettings() {
       brand.accent_color = accentColor.trim() || null;
       brand.footer_text = footerText.trim() || null;
       brand.reply_to = replyTo.trim() || null;
-      // Narrow is the default: clear the field unless it is stored explicitly.
-      brand.layout = layout === "wide" ? "wide" : tenant!.brand.layout === "narrow" ? "narrow" : null;
       await patch.mutateAsync({ brand });
       setSaved(true);
     } catch (err) {
@@ -199,36 +196,13 @@ export default function BrandingSettings() {
           </div>
         </div>
 
-        <fieldset>
-          <legend className="mb-1.5 block text-[14px] font-medium text-foreground">
-            Layout
-          </legend>
-          <div className="flex flex-wrap gap-4 text-[14px] text-foreground">
-            <label className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                name="brand-layout"
-                checked={layout === "narrow"}
-                disabled={patch.isPending}
-                onChange={() => { setLayout("narrow"); setSaved(false); }}
-              />
-              Narrow
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                name="brand-layout"
-                checked={layout === "wide"}
-                disabled={patch.isPending}
-                onChange={() => { setLayout("wide"); setSaved(false); }}
-              />
-              Wide
-            </label>
-          </div>
-          <p className="mt-1 text-[12px] text-muted-foreground">
-            Narrow (default) is a centered card up to 600px wide. Wide fills the reading pane; paragraphs stay at most 680px wide.
+        <div>
+          <p className="mb-1.5 block text-[14px] font-medium text-foreground">Template</p>
+          <p className="text-[13px] text-muted-foreground">
+            The layout around every email (narrow or wide, header, footer) is chosen and edited on the{" "}
+            <Link to="/templates" className="text-accent-text underline">Templates</Link> page. These brand settings fill it in.
           </p>
-        </fieldset>
+        </div>
 
         <FormError message={error} />
         <div className="flex items-center gap-3 pt-1">

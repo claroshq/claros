@@ -50,6 +50,7 @@ import resendWebhookRoutes from "./routes/webhooks/resend.js";
 import settingsRoutes from "./routes/settings.js";
 import libraryRoutes from "./routes/library.js";
 import emailTemplatesRoutes from "./routes/email-templates.js";
+import layoutsRoutes from "./routes/layouts.js";
 import eventsRoutes from "./routes/events.js";
 import sentLogRoutes from "./routes/sent-log.js";
 import teamRoutes from "./routes/team.js";
@@ -203,6 +204,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/ingestion", ingestionRoutes());
     app.route("/v1/library", libraryRoutes());
     app.route("/v1/email-templates", emailTemplatesRoutes());
+    app.route("/v1/layouts", layoutsRoutes());
     app.route("/v1/events", eventsRoutes());
     app.route("/v1/sent-log", sentLogRoutes());
     app.route("/v1/team", teamRoutes());

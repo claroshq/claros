@@ -66,6 +66,7 @@ import { d1WorkerWebhooks } from "./worker-webhooks.js";
 import { d1ApiConfig } from "./api-config.js";
 import { d1ApiWebhooks } from "./api-webhooks.js";
 import { d1ApiBrand } from "./api-brand.js";
+import { d1EmailLayouts } from "./email-layouts.js";
 
 export function createD1Store(db: D1Db): Store {
   return {
@@ -133,5 +134,6 @@ export function createD1Store(db: D1Db): Store {
     apiConfig: d1ApiConfig(db),
     apiWebhooks: d1ApiWebhooks(db),
     apiBrand: d1ApiBrand(db),
+    emailLayouts: d1EmailLayouts(db),
   };
 }

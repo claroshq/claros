@@ -26,6 +26,11 @@
                 "narrow",
                 "wide"
               ]
+            },
+            "template": {
+              "description": "Email template the product sends with: a built-in key (classic, letter, banner, compact, wide, broadsheet, canvas) or the id of a template made on the Templates page. Wins over layout. A name that matches no template falls back to layout.",
+              "type": "string",
+              "pattern": "^(?:[a-z][a-z0-9_-]{0,31}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
             }
           }
         },

@@ -34,6 +34,7 @@ import {
   Send,
   Menu,
   X,
+  LayoutTemplate,
 } from "lucide-react";
 import { BrandLockup } from "../components/brand-lockup.js";
 import { ThemeToggle } from "../components/theme-toggle.js";
@@ -70,6 +71,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Home", path: "/home", icon: Home, enabled: true },
   { label: "Integrate", path: "/integrate", icon: Plug, enabled: true },
   { label: "Flows", path: "/flows", icon: Workflow, enabled: true },
+  { label: "Templates", path: "/templates", icon: LayoutTemplate, enabled: true },
   { label: "Lifecycle", path: "/lifecycle", icon: Activity, enabled: true },
   { label: "People", path: "/people", icon: Users, enabled: true },
   { label: "Approvals", path: "/approvals", icon: Inbox, enabled: true },

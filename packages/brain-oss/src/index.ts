@@ -202,3 +202,24 @@ export {
   type ChooseOption,
   type JsonCallResult,
 } from "./opening-choose.js";
+
+// ---------------------------------------------------------------------------
+// Template studio (authoring time only, never on the send path)
+// ---------------------------------------------------------------------------
+
+export {
+  assistTemplate,
+  parseStudioOutput,
+  STUDIO_TEMPERATURE,
+  STUDIO_MAX_TOKENS,
+  type StudioDecision,
+  type TemplateStudioResult,
+  type ParsedStudioOutput,
+} from "./template-studio.js";
+export {
+  buildTemplateStudioMessages,
+  TEMPLATE_STUDIO_SYSTEM_PROMPT,
+  STUDIO_HISTORY_TURNS,
+  type TemplateStudioTurn,
+  type TemplateStudioPromptContext,
+} from "./prompts/template-studio.js";

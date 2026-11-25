@@ -31,3 +31,4 @@ export { contactDates } from "./contact-dates.js";
 export { tenantDailyUsage } from "./tenant-daily-usage.js";
 export { brandAssets } from "./brand-assets.js";
 export { contactNotes } from "./contact-notes.js";
+export { emailLayouts } from "./email-layouts.js";

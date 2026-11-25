@@ -737,6 +737,8 @@ export interface BrandSettingsData {
   reply_to: string | null;
   /** Email layout; null means the default, "narrow". */
   layout: "narrow" | "wide" | null;
+  /** Email template in use: a built-in key or a custom template id; null = by layout. */
+  template?: string | null;
 }
 
 export interface TenantSettings {
@@ -2250,4 +2252,104 @@ export async function createInstanceKey(input: { label?: string; scopes: string[
 export async function revokeInstanceKey(id: string): Promise<void> {
   const res = await apiFetch(`/v1/instance/keys/${encodeURIComponent(id)}/revoke`, { method: "POST" });
   if (!res.ok) throw await productError(res, "Could not revoke the key");
+}
+
+// ---------------------------------------------------------------------------
+// Email templates (layouts) and the template studio
+// ---------------------------------------------------------------------------
+
+export type LayoutWidth = "narrow" | "wide";
+
+export interface LayoutFinding {
+  rule: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  clients: string[];
+  fix: string;
+}
+
+export interface LayoutSummary {
+  /** Built-in key or custom template id. */
+  ref: string;
+  kind: "builtin" | "custom";
+  id: string | null;
+  name: string;
+  description: string | null;
+  width: LayoutWidth;
+  based_on: string | null;
+  in_use: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  preview_html?: string;
+}
+
+export interface LayoutDetail extends LayoutSummary {
+  source: string;
+}
+
+export type StudioDecision = "applied" | "proposed" | "answered" | "off_topic" | "failed";
+
+export interface StudioTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface StudioResult {
+  decision: StudioDecision;
+  reply: string;
+  source: string | null;
+  findings: LayoutFinding[];
+  new_findings: string[];
+  preview_html: string | null;
+}
+
+/** Error with the API's message and, for 422 saves, the findings. */
+export class LayoutApiError extends Error {
+  constructor(message: string, readonly status: number, readonly findings: LayoutFinding[] = []) {
+    super(message);
+  }
+}
+
+async function layoutJson<T>(res: Response): Promise<T> {
+  if (res.ok) return (res.status === 204 ? undefined : await res.json()) as T;
+  const body = (await res.json().catch(() => ({}))) as { error?: string; findings?: LayoutFinding[] };
+  throw new LayoutApiError(body.error ?? `Request failed (${res.status})`, res.status, body.findings ?? []);
+}
+
+const jsonInit = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export async function fetchLayouts(previews: boolean): Promise<{ active: string; templates: LayoutSummary[] }> {
+  return layoutJson(await apiFetch(`/v1/layouts${previews ? "?previews=true" : ""}`));
+}
+
+export async function fetchLayout(ref: string): Promise<{ template: LayoutDetail; findings: LayoutFinding[]; preview_html: string }> {
+  return layoutJson(await apiFetch(`/v1/layouts/${encodeURIComponent(ref)}`));
+}
+
+export async function createLayout(input: { name: string; description?: string | null; width: LayoutWidth; source: string; based_on?: string | null }): Promise<{ template: LayoutDetail; findings: LayoutFinding[] }> {
+  return layoutJson(await apiFetch("/v1/layouts", jsonInit("POST", input)));
+}
+
+export async function updateLayout(id: string, input: { name?: string; description?: string | null; width?: LayoutWidth; source?: string }): Promise<{ template: LayoutDetail; findings: LayoutFinding[] }> {
+  return layoutJson(await apiFetch(`/v1/layouts/${encodeURIComponent(id)}`, jsonInit("PUT", input)));
+}
+
+export async function deleteLayout(id: string): Promise<void> {
+  return layoutJson(await apiFetch(`/v1/layouts/${encodeURIComponent(id)}`, { method: "DELETE" }));
+}
+
+export async function setActiveLayout(ref: string): Promise<{ active: string }> {
+  return layoutJson(await apiFetch("/v1/layouts/active", jsonInit("PUT", { template: ref })));
+}
+
+export async function previewLayout(source: string, width: LayoutWidth): Promise<{ html: string; findings: LayoutFinding[] }> {
+  return layoutJson(await apiFetch("/v1/layouts/preview", jsonInit("POST", { source, width })));
+}
+
+export async function assistLayout(input: { source: string; width: LayoutWidth; message: string; history: StudioTurn[] }): Promise<StudioResult> {
+  return layoutJson(await apiFetch("/v1/layouts/assist", jsonInit("POST", input)));
 }

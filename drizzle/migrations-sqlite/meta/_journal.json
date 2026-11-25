@@ -92,6 +92,13 @@
       "when": 1795613847808,
       "tag": "0012_contact_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1795615131313,
+      "tag": "0013_email_layouts",
+      "breakpoints": true
     }
   ]
 }

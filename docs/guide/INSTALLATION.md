@@ -261,7 +261,9 @@ From v0.8.5 you can upload the logo instead of linking to an image on another si
 
 ### Email layout
 
-`brand.layout` sets the shape of the email card. Set it in Settings → Branding, with `PATCH /v1/settings/tenant` (`{"brand": {"layout": "wide"}}`, owner only; `null` resets it) or in a [config document](CONFIG.md#settings) (`settings.brand.layout`).
+> Since the template library, the Templates page is the place to choose how email looks: see [Email templates](TEMPLATES.md). `brand.template` wins over `brand.layout`; `brand.layout` still decides while no template is chosen.
+
+`brand.layout` sets the shape of the email card. Set it with `PATCH /v1/settings/tenant` (`{"brand": {"layout": "wide"}}`, owner only; `null` resets it) or in a [config document](CONFIG.md#settings) (`settings.brand.layout`).
 
 | Value | Layout |
 |---|---|

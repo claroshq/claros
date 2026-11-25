@@ -50,6 +50,7 @@ import {
   type TransportRouting,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
+import { loadCustomLayout } from "./layouts.js";
 import type { AppContext } from "../http/env.js";
 import { allowInstanceKey, type RoleRouter } from "../http/router.js";
 
@@ -332,6 +333,7 @@ export async function sendTestEmail(
     brand,
     tenantName,
     complianceFooterHtml: buildShellComplianceHtml(browserUrl, postalAddress),
+    layout: await loadCustomLayout(db, tenantId, brand.template),
   });
   const deliveredText = wrapInTextShell({
     bodyText,

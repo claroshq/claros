@@ -69,7 +69,7 @@
 import { z } from "zod";
 import { storeFor } from "@claros/store";
 import { encrypt, decrypt, parseEncryptionKey, resolveTransportAdapter, SmtpTransportAdapter } from "@claros/adapters";
-import { wrapInShell, wrapInTextShell, buildShellComplianceHtml, buildShellComplianceText, resolveThrottleConfig, BRAND_LAYOUTS, type BrandSettings } from "@claros/core";
+import { wrapInShell, wrapInTextShell, buildShellComplianceHtml, buildShellComplianceText, resolveThrottleConfig, BRAND_LAYOUTS, BUILTIN_LAYOUTS, builtinLayout, isCustomLayoutRef, type BrandSettings } from "@claros/core";
 import {
   KNOWN_LLM_PROVIDERS,
   isKnownLlmProvider,
@@ -205,6 +205,7 @@ const tenantPatchBodySchema = z.object({
         footer_text: nullableString().optional(),
         reply_to: nullableString().optional(),
         layout: nullableString().optional(),
+        template: nullableString().optional(),
       },
       { invalid_type_error: "must be object" },
     )
@@ -699,6 +700,7 @@ export default function settingsRoutes() {
           footer_text: (brand.footer_text as string | undefined) ?? null,
           reply_to: (brand.reply_to as string | undefined) ?? null,
           layout: (brand.layout as string | undefined) ?? null,
+          template: (brand.template as string | undefined) ?? null,
         },
         created_at: row.createdAt,
       },
@@ -802,6 +804,14 @@ export default function settingsRoutes() {
             return c.json({ error: `brand.layout must be one of: ${BRAND_LAYOUTS.join(", ")}.` }, 400);
           }
         }
+        if (brand.template !== undefined && brand.template !== null) {
+          const ref = brand.template.trim();
+          const known = builtinLayout(ref) !== null
+            || (isCustomLayoutRef(ref) && (await storeFor(db).emailLayouts.getLayout({ tenantId, id: ref })) !== null);
+          if (!known) {
+            return c.json({ error: `brand.template must be a built-in template (${BUILTIN_LAYOUTS.map((b) => b.key).join(", ")}) or the id of one of the product's templates.` }, 400);
+          }
+        }
       }
 
       // Read current settings, merge, write back
@@ -860,6 +870,7 @@ export default function settingsRoutes() {
             footer_text: (finalBrand.footer_text as string | undefined) ?? null,
             reply_to: (finalBrand.reply_to as string | undefined) ?? null,
             layout: (finalBrand.layout as string | undefined) ?? null,
+            template: (finalBrand.template as string | undefined) ?? null,
           },
         },
       });
