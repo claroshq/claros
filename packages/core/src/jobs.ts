@@ -183,6 +183,15 @@ export const QUEUE = {
    * Schedule: daily at 07:00 UTC (pg-boss "0 7 * * *", Workers: the 07:00 tick).
    */
   ALERTS_DIGEST: "claros.alerts-digest",
+
+  /**
+   * Webhook delivery: send due outbound webhook and analytics outbox rows
+   * (G5, G30) with retries and backoff.
+   * Payload: empty.
+   * Handler: packages/worker (webhooks.ts).
+   * Schedule: every minute (pg-boss "* * * * *"); Workers: every 5-minute tick.
+   */
+  WEBHOOK_DELIVERY: "claros.webhook-delivery",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -303,3 +312,6 @@ export type GridSnapshotJobData = Record<string, never>;
  * message counts and mails the digest when there is something to report.
  */
 export type AlertsDigestJobData = Record<string, never>;
+
+/** WEBHOOK_DELIVERY job: no payload. The worker claims due outbox rows. */
+export type WebhookDeliveryJobData = Record<string, never>;

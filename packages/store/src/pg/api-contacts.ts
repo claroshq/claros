@@ -5,6 +5,12 @@ import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
 import type { ApiContactsQueries, ContactListRow } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
+import { pgWriteOutbox } from "./outbox.js";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Statuses a message has before it is handed to the drain (G20 cancel). */
+const NOT_SENT = ["pending_generation", "generating", "awaiting_content", "pending_approval", "approved"];
 
 export function pgApiContacts(db: PgDb): ApiContactsQueries {
   return {
@@ -169,5 +175,64 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
     listContactTopics({ tenantId, contactId }) {
       return listContactTopicStatuses(db, tenantId, contactId);
     },
-  };
+  
+    async findContactByRef({ tenantId, ref }) {
+      const byExt = await db.execute<{ id: string; external_id: string; email: string | null }>(sql`
+        SELECT id, external_id, email FROM contacts WHERE tenant_id = ${tenantId}::uuid AND external_id = ${ref} LIMIT 1
+      `);
+      let row = byExt.rows[0];
+      if (!row && UUID_RE.test(ref)) {
+        const byId = await db.execute<{ id: string; external_id: string; email: string | null }>(sql`
+          SELECT id, external_id, email FROM contacts WHERE tenant_id = ${tenantId}::uuid AND id = ${ref}::uuid LIMIT 1
+        `);
+        row = byId.rows[0];
+      }
+      return row ? { id: row.id, externalId: row.external_id, email: row.email } : null;
+    },
+
+    async eraseContact({ tenantId, contactId }) {
+      return db.transaction(async (tx) => {
+        const t = sql`${tenantId}::uuid`;
+        const c = sql`${contactId}::uuid`;
+        await tx.execute(sql`DELETE FROM message_events WHERE tenant_id = ${t} AND message_id IN (SELECT id FROM lifecycle_messages WHERE tenant_id = ${t} AND contact_id = ${c})`);
+        await tx.execute(sql`DELETE FROM lifecycle_messages WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM flow_memberships WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM contact_topics WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM contact_conflicts WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM lifecycle_transitions WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM events WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM webhook_outbox WHERE tenant_id = ${t} AND status = 'pending' AND payload->>'contact_id' = ${contactId}`);
+        const deleted = await tx.execute(sql`DELETE FROM contacts WHERE tenant_id = ${t} AND id = ${c} RETURNING id`);
+        return deleted.rows.length > 0;
+      });
+    },
+
+    async excludeContact({ tenantId, contactId, email, now }) {
+      return db.transaction(async (tx) => {
+        let suppressed = false;
+        if (email) {
+          const ins = await tx.execute(sql`
+            INSERT INTO suppressions (tenant_id, email, reason, source, created_at)
+            VALUES (${tenantId}::uuid, ${email.toLowerCase()}, 'manual', 'admin', ${now})
+            ON CONFLICT (tenant_id, lower(email)) DO NOTHING
+            RETURNING id
+          `);
+          suppressed = ins.rows.length > 0;
+          if (suppressed) {
+            await pgWriteOutbox(tx as unknown as PgDb, tenantId, [
+              { event: "contact.suppressed", payload: { email: email.toLowerCase(), reason: "manual", source: "admin", contact_id: contactId } },
+            ], now);
+          }
+        }
+        const statuses = sql.join(NOT_SENT.map((s) => sql`${s}`), sql`, `);
+        const cancelled = await tx.execute<{ id: string }>(sql`
+          UPDATE lifecycle_messages
+          SET status = 'cancelled', status_reason = 'excluded', updated_at = ${now}
+          WHERE tenant_id = ${tenantId}::uuid AND contact_id = ${contactId}::uuid AND status IN (${statuses})
+          RETURNING id
+        `);
+        return { suppressed, cancelled: cancelled.rows.map((r) => r.id) };
+      });
+    },
+};
 }

@@ -52,7 +52,7 @@
  *   served by idx_kb_entries_tenant_created (tenant_id, created_at, id),
  *   added in migration 0018.
  */
-import { RoleRouter } from "../http/router.js";
+import { RoleRouter, allowAdminKey } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor, type ApiKbQueries } from "@claros/store";
@@ -266,7 +266,7 @@ export default function kbRoutes() {
    * is not set (stays null = "never enqueued" state). Tests that need to
    * verify enqueue behavior pass a mock enqueue function.
    */
-  r.post("/", "member", async (c) => {
+  r.post("/", "member", allowAdminKey("kb"), async (c) => {
     const parsed = createKbEntrySchema.safeParse(c.var.body);
     if (!parsed.success) {
       return validationError(c, parsed.error.issues);
@@ -327,7 +327,7 @@ export default function kbRoutes() {
    * Response: { entries: EntryPreview[], next_cursor: string | null }
    * Content is returned as a truncated preview (first 300 chars).
    */
-  r.get("/", "member", async (c) => {
+  r.get("/", "member", allowAdminKey("kb"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const query = c.req.query() as {
@@ -382,7 +382,7 @@ export default function kbRoutes() {
    * Get a single KB entry with full content.
    * Returns 404 if not found or owned by another tenant.
    */
-  r.get("/:id", "member", async (c) => {
+  r.get("/:id", "member", allowAdminKey("kb"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
@@ -409,6 +409,7 @@ export default function kbRoutes() {
   r.patch(
     "/:id",
     "member",
+    allowAdminKey("kb"),
     async (c) => {
       const parsed = updateKbEntrySchema.safeParse(c.var.body);
       if (!parsed.success) {
@@ -481,7 +482,7 @@ export default function kbRoutes() {
    * Hard delete. Returns 200 with the deleted entry on success.
    * Returns 404 if the entry does not exist for this tenant.
    */
-  r.delete("/:id", "member", async (c) => {
+  r.delete("/:id", "member", allowAdminKey("kb"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const id = c.req.param("id")!;
@@ -528,7 +529,7 @@ export default function kbRoutes() {
    * Returns 202 with { enqueued, remaining, total_qualifying }.
    * Returns 503 if the job queue is not available.
    */
-  r.post("/re-embed", "member", async (c) => {
+  r.post("/re-embed", "member", allowAdminKey("kb"), async (c) => {
     const enqueue = c.var.enqueue;
     if (!enqueue) {
       return c.json({ error: "Job queue is not available." }, 503);

@@ -44,7 +44,7 @@ import {
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import type { AppContext } from "../http/env.js";
-import { RoleRouter } from "../http/router.js";
+import { RoleRouter, allowAdminKey } from "../http/router.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -171,7 +171,7 @@ export default function contactsRoutes() {
    *
    * Response: { contacts: [...], next_cursor: string | null }
    */
-  router.get("/", "member", async (c) => {
+  router.get("/", "member", allowAdminKey("contacts:read"), async (c) => {
     const parsed = listQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
       return validationError(c, parsed.error.issues);
@@ -251,7 +251,7 @@ export default function contactsRoutes() {
    *
    * Response: { contact: {...}, memberships: [...], suppression: {...} | null }
    */
-  router.get("/:id", "member", async (c) => {
+  router.get("/:id", "member", allowAdminKey("contacts:read"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
@@ -307,7 +307,7 @@ export default function contactsRoutes() {
    *   { kind: "message",    id, occurred_at, subject, status, feedback,
    *     flow_id, flow_name, flow_step_order }
    */
-  router.get("/:id/timeline", "member", async (c) => {
+  router.get("/:id/timeline", "member", allowAdminKey("contacts:read"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
@@ -347,5 +347,44 @@ export default function contactsRoutes() {
 
     return c.json({ items: pageRows, next_cursor: nextCursor });
   });
+  /**
+   * DELETE /v1/contacts/:ref (G12)
+   *
+   * Erase a contact of the product by external_id (or contact id): its
+   * events, memberships, messages and topic statuses. Suppressions stay.
+   * Owner session or an admin key with the contacts:delete scope.
+   */
+  router.delete("/:id", "owner", allowAdminKey("contacts:delete"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const ref = decodeURIComponent(c.req.param("id")!);
+    const contact = await storeFor(db).apiContacts.findContactByRef({ tenantId, ref });
+    if (!contact) return c.json({ error: "Contact not found." }, 404);
+    await storeFor(db).apiContacts.eraseContact({ tenantId, contactId: contact.id });
+    return c.json({ erased: true, id: contact.id, external_id: contact.externalId });
+  });
+
+  /**
+   * POST /v1/contacts/:ref/exclude (G20)
+   *
+   * Exclude a person from lifecycle mail: a manual suppression of the
+   * contact's email and every not-yet-sent message cancelled, atomically.
+   * Undo with DELETE /v1/suppressions/:email (cancelled messages stay).
+   */
+  router.post("/:id/exclude", "member", allowAdminKey("messages"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const ref = decodeURIComponent(c.req.param("id")!);
+    const contact = await storeFor(db).apiContacts.findContactByRef({ tenantId, ref });
+    if (!contact) return c.json({ error: "Contact not found." }, 404);
+    const out = await storeFor(db).apiContacts.excludeContact({
+      tenantId,
+      contactId: contact.id,
+      email: contact.email,
+      now: new Date(),
+    });
+    return c.json({ id: contact.id, external_id: contact.externalId, suppressed: out.suppressed, cancelled: out.cancelled });
+  });
+
   return router.app;
 }

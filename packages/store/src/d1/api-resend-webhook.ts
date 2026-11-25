@@ -15,7 +15,9 @@
 import { eq, and, sql, inArray, isNull, or, type SQL } from "drizzle-orm";
 import { lifecycleMessages } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
-import type { ApiResendWebhookQueries } from "../areas/api-resend-webhook.js";
+import type { ApiResendWebhookQueries, OutboxEvents } from "../areas/api-resend-webhook.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
+import { rawBatch } from "./raw-batch.js";
 
 /** Forms Postgres accepts for uuid input: optional braces, hyphens after any group of four. */
 const PG_UUID_INPUT = /^\{?[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}\}?$/i;
@@ -29,6 +31,26 @@ function canonicalUuid(value: string): string {
 }
 
 export function d1ApiResendWebhook(db: D1Db): ApiResendWebhookQueries {
+  /** A builder CAS update; with outbox entries, batched with guarded inserts. */
+  async function updateWithOutbox(update: PromiseLike<unknown[]>, events: OutboxEvents | undefined): Promise<boolean> {
+    if (!events || events.outbox.length === 0) return (await update).length > 0;
+    const endpoints = await d1OutboxEndpoints(db, events.tenantId, events.outbox);
+    const inserts = d1OutboxInserts(db, events.tenantId, endpoints, events.outbox, events.now, { afterChange: true });
+    const [rows] = (await db.batch([update, ...inserts] as never)) as unknown[][];
+    return (rows ?? []).length > 0;
+  }
+
+  /** A raw insert; with outbox entries, in one batch with guarded inserts. */
+  async function runWithOutbox(statement: SQL, events: OutboxEvents | undefined): Promise<void> {
+    if (!events || events.outbox.length === 0) {
+      await db.run(statement);
+      return;
+    }
+    const endpoints = await d1OutboxEndpoints(db, events.tenantId, events.outbox);
+    const inserts = d1OutboxInserts(db, events.tenantId, endpoints, events.outbox, events.now, { afterChange: true });
+    await rawBatch(db, [statement, ...inserts.map((i) => i.getSQL())]);
+  }
+
   return {
     async findActiveResendConfig(tenantId) {
       const id = canonicalUuid(tenantId);
@@ -49,8 +71,8 @@ export function d1ApiResendWebhook(db: D1Db): ApiResendWebhookQueries {
       return raw;
     },
 
-    async setTerminalFeedback({ messageId, feedback }) {
-      const rows = await db
+    async setTerminalFeedback({ messageId, feedback, events }) {
+      const update = db
         .update(lifecycleMessages)
         .set({ feedback, updatedAt: new Date() })
         .where(
@@ -60,31 +82,31 @@ export function d1ApiResendWebhook(db: D1Db): ApiResendWebhookQueries {
           ),
         )
         .returning({ id: lifecycleMessages.id });
-      return rows.length > 0;
+      return updateWithOutbox(update, events);
     },
 
-    async advanceFeedback({ messageId, feedback, predecessors }) {
+    async advanceFeedback({ messageId, feedback, predecessors, events }) {
       const nonNull = predecessors.filter((p): p is string => p !== null);
       const guards: SQL[] = [];
       if (predecessors.includes(null)) guards.push(isNull(lifecycleMessages.feedback));
       if (nonNull.length > 0) guards.push(inArray(lifecycleMessages.feedback, nonNull));
       if (guards.length === 0) return false;
-      const rows = await db
+      const update = db
         .update(lifecycleMessages)
         .set({ feedback, updatedAt: new Date() })
         .where(and(eq(lifecycleMessages.id, messageId), or(...guards)))
         .returning({ id: lifecycleMessages.id });
-      return rows.length > 0;
+      return updateWithOutbox(update, events);
     },
 
-    async insertSuppression({ tenantId, email, reason }) {
-      await db.run(sql`
+    async insertSuppression({ tenantId, email, reason, events }) {
+      await runWithOutbox(sql`
         INSERT INTO suppressions (id, tenant_id, email, reason, source, created_at)
         SELECT ${crypto.randomUUID()}, ${tenantId}, ${email}, ${reason}, 'webhook', ${Date.now()}
         WHERE NOT EXISTS (
           SELECT 1 FROM suppressions WHERE tenant_id = ${tenantId} AND lower(email) = lower(${email})
         )
-      `);
+      `, events);
     },
 
     async findMessageByProviderId({ tenantId, providerMessageId }) {
@@ -112,19 +134,19 @@ export function d1ApiResendWebhook(db: D1Db): ApiResendWebhookQueries {
       return Number(rows[0]?.cnt ?? 0);
     },
 
-    async insertMessageEvent({ tenantId, messageId, eventType, occurredAt, providerEventId, metadataJson }) {
+    async insertMessageEvent({ tenantId, messageId, eventType, occurredAt, providerEventId, metadataJson, events }) {
       const occurredMs = new Date(occurredAt).getTime();
       if (Number.isNaN(occurredMs)) {
         throw new Error(`invalid input syntax for type timestamp with time zone: "${occurredAt}"`);
       }
       // Postgres validates metadata with ::jsonb; keep the same failure mode.
       const metadata = metadataJson === null ? null : JSON.stringify(JSON.parse(metadataJson));
-      await db.run(sql`
+      await runWithOutbox(sql`
         INSERT INTO message_events (id, tenant_id, message_id, event_type, occurred_at, provider_event_id, metadata, created_at)
         VALUES (${crypto.randomUUID()}, ${tenantId}, ${messageId}, ${eventType}, ${occurredMs}, ${providerEventId}, ${metadata}, ${Date.now()})
         ON CONFLICT (tenant_id, provider_event_id) WHERE provider_event_id IS NOT NULL
         DO NOTHING
-      `);
+      `, events);
     },
   };
 }

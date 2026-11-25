@@ -8,6 +8,9 @@
  */
 
 /** The membership fields targeted step advancement reads. */
+import type { ContactConditionQueries } from "./shared-conditions.js";
+import type { OutboxEntry } from "./shared-outbox.js";
+
 export interface WorkerAdvanceMembershipRow {
   id: string;
   contactId: string;
@@ -18,7 +21,7 @@ export interface WorkerAdvanceMembershipRow {
   status: string;
 }
 
-export interface WorkerAdvanceMembershipQueries {
+export interface WorkerAdvanceMembershipQueries extends ContactConditionQueries {
   /** A membership by id, tenant-scoped, or null. */
   getMembership(input: { tenantId: string; membershipId: string }): Promise<WorkerAdvanceMembershipRow | null>;
   /** A flow's status and raw compiled_plan, or null when the flow does not exist. */
@@ -38,6 +41,8 @@ export interface WorkerAdvanceMembershipQueries {
     now: Date;
     exitReason: string;
     clearConditionError: boolean;
+    /** Outbox entries (G5: flow.exited) written with the exit when it happens. */
+    events?: { tenantId: string; outbox: OutboxEntry[] };
   }): Promise<void>;
   /**
    * Complete a membership regardless of its current step (CAS on

@@ -15,9 +15,9 @@
  * - "secret": server-side. No origin check, higher rate limit. Must never
  *   be embedded in a browser; the CORS layer deliberately does not echo an
  *   Origin for secret keys, so browsers cannot use them cross-origin.
- * - "admin" / "instance": management keys for one product / the whole
- *   instance (tenant_id null for instance keys). Stored and listed only for
- *   now; they do not authenticate ingestion.
+ * - "admin": management key of one product (prefix clr_ak_). Authenticates
+ *   the management routes its scopes allow; never ingestion.
+ * - "instance": instance key (tenant_id null). Stored and listed only.
  *
  * The `prefix` column (first 8 chars of the raw key) enables masked display
  * in the dashboard without exposing the full key.
@@ -54,6 +54,8 @@ export const apiKeys = sqliteTable(
     // (write-only capability makes this safe; the allowlist is abuse friction,
     // not the security boundary). Ignored for secret keys.
     allowedOrigins: text("allowed_origins", { mode: "json" }).$type<string[]>(),
+    /** Admin keys only (G1): granted management scopes. Null for every other kind. */
+    scopes: text("scopes", { mode: "json" }).$type<string[]>(),
     lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }), // null = active

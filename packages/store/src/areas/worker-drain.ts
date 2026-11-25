@@ -8,6 +8,8 @@
  */
 
 /** A message claimed by the drain (status already 'sending'). */
+import type { OutboxEntry } from "./shared-outbox.js";
+
 export interface WorkerDrainClaimedMessage {
   id: string;
   tenantId: string;
@@ -96,9 +98,16 @@ export interface WorkerDrainQueries {
    * CAS sending -> sent with sent_at and provider_message_id (and transport_id when given);
    * true when this call won.
    */
-  markSent(messageId: string, providerMessageId: string | null, now: Date, transportId?: string | null): Promise<boolean>;
+  markSent(
+    messageId: string,
+    providerMessageId: string | null,
+    now: Date,
+    transportId?: string | null,
+    /** Outbox entries (G5: message.sent) written with the transition when this call won. */
+    events?: { tenantId: string; outbox: OutboxEntry[] },
+  ): Promise<boolean>;
   /** CAS sending -> failed (with status_reason when given); true when this call won. */
-  markFailed(messageId: string, now: Date, reason?: string): Promise<boolean>;
+  markFailed(messageId: string, now: Date, reason?: string, events?: { tenantId: string; outbox: OutboxEntry[] }): Promise<boolean>;
   /**
    * The topic (of this tenant) and the contact's status for it, or null when the topic does
    * not exist in the tenant.
@@ -110,6 +119,8 @@ export interface WorkerDrainQueries {
   isSuppressed(tenantId: string, email: string): Promise<boolean>;
   /** The flow's class and compiled plan, or null when the flow does not exist. */
   getFlowThrottleInfo(flowId: string): Promise<WorkerDrainFlowThrottleInfo | null>;
+  /** Slug and name of a flow (G6 link tagging), or null. */
+  getFlowLabel(flowId: string): Promise<{ slug: string | null; name: string } | null>;
   /** The tenant's raw settings JSON, or null when the tenant does not exist or has none. */
   getTenantSettings(tenantId: string): Promise<unknown>;
   /** The contact's sends in the last 7 days (and 24 hours) for the throttle gate. */

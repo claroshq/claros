@@ -190,6 +190,13 @@
       "when": 1795573041472,
       "tag": "0026_ops_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795574899277,
+      "tag": "0027_integration_surface",
+      "breakpoints": true
     }
   ]
 }

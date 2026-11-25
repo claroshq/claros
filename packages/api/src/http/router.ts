@@ -21,6 +21,7 @@ import { bodyParser, type BodyOptions } from "./body.js";
 import { validateBody } from "./validate.js";
 import type { z } from "zod";
 import { roleSatisfies, type UserRole } from "../types.js";
+import { requireRoleOrAdminKey, type AdminScope } from "./admin-auth.js";
 
 /** Hono app typed with the Claros environment. */
 export function createRouter(): Hono<AppEnv> {
@@ -46,6 +47,19 @@ export function validatedBody<S extends z.ZodTypeAny>(schema: S): PreAuthMiddlew
     return next();
   };
   return Object.assign(mw, { [PRE_AUTH]: true as const });
+}
+
+const KEY_SCOPE = Symbol("claros.adminKeyScope");
+type AdminKeyMarker = MiddlewareHandler<AppEnv> & { [KEY_SCOPE]: AdminScope };
+
+/**
+ * Let a RoleRouter route also accept a product admin key that carries
+ * `scope` (G1). Pass it right after the role. Without it, a route accepts
+ * sessions only.
+ */
+export function allowAdminKey(scope: AdminScope): AdminKeyMarker {
+  const mw: MiddlewareHandler<AppEnv> = async (_c, next) => next();
+  return Object.assign(mw, { [KEY_SCOPE]: scope });
 }
 
 export function requireRole(minRole: UserRole): MiddlewareHandler<AppEnv> {
@@ -106,7 +120,11 @@ export class RoleRouter {
   }
 
   private add(method: Method, path: string, minRole: UserRole, handlers: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]): this {
-    const guard = requireRole(minRole);
+    const marker = handlers.find((h) => (h as Partial<AdminKeyMarker>)[KEY_SCOPE] !== undefined) as
+      | AdminKeyMarker
+      | undefined;
+    const guard = marker ? requireRoleOrAdminKey(minRole, marker[KEY_SCOPE]) : requireRole(minRole);
+    handlers = handlers.filter((h) => h !== marker);
     const preAuth = handlers.filter((h) => (h as Partial<PreAuthMiddleware>)[PRE_AUTH] === true);
     const rest = handlers.filter((h) => (h as Partial<PreAuthMiddleware>)[PRE_AUTH] !== true);
     (this.app[method] as (p: string, ...h: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]) => unknown)(

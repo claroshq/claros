@@ -58,6 +58,9 @@ import { d1WorkerTransportResolver } from "./worker-transport-resolver.js";
 import { d1WorkerTriggerCheck } from "./worker-trigger-check.js";
 import { d1ApiTopics } from "./api-topics.js";
 import { d1Ops } from "./ops.js";
+import { d1ApiAdminAuth } from "./api-admin-auth.js";
+import { d1WorkerWebhooks } from "./worker-webhooks.js";
+import { d1ApiConfig } from "./api-config.js";
 
 export function createD1Store(db: D1Db): Store {
   return {
@@ -117,5 +120,8 @@ export function createD1Store(db: D1Db): Store {
     workerTriggerCheck: d1WorkerTriggerCheck(db),
     apiTopics: d1ApiTopics(db),
     ops: d1Ops(db),
+    apiAdminAuth: d1ApiAdminAuth(db),
+    workerWebhooks: d1WorkerWebhooks(db),
+    apiConfig: d1ApiConfig(db),
   };
 }

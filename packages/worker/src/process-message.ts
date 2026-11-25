@@ -65,6 +65,7 @@ export async function handleProcessMessage(
     membershipId: row.membership_id,
     flowStepOrder: row.flow_step_order,
     brainActionType: row.brain_action_type,
+    forcedActionType: row.forced_action_type ?? null,
   };
 
   const llm: LlmCallStats = { calls: 0, errors: 0 };

@@ -8,6 +8,9 @@
  */
 
 /** An active membership as the step-advancement scan reads it. */
+import type { ContactConditionQueries } from "./shared-conditions.js";
+import type { OutboxEntry } from "./shared-outbox.js";
+
 export interface WorkerStepAdvancementMembershipRow {
   id: string;
   contactId: string;
@@ -24,7 +27,7 @@ export interface WorkerStepAdvancementCheckpoint {
   discardCount: number;
 }
 
-export interface WorkerScanStepAdvancementQueries {
+export interface WorkerScanStepAdvancementQueries extends ContactConditionQueries {
   /** All tenant ids, ordered by id. */
   listTenantIds(): Promise<string[]>;
   /** The checkpoint for (phase, tenant), or null. */
@@ -60,6 +63,8 @@ export interface WorkerScanStepAdvancementQueries {
     now: Date;
     exitReason: string;
     clearConditionError: boolean;
+    /** Outbox entries (G5: flow.exited) written with the exit when it happens. */
+    events?: { tenantId: string; outbox: OutboxEntry[] };
   }): Promise<void>;
   /**
    * Complete a membership regardless of its current step (CAS on

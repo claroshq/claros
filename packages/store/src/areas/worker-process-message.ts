@@ -16,6 +16,7 @@ export interface WorkerProcessMessageClaimed {
   membership_id: string;
   flow_step_order: number | null;
   brain_action_type: string | null;
+  forced_action_type?: string | null;
 }
 
 export interface WorkerProcessMessageQueries {

@@ -14,6 +14,7 @@ const KEY_COLUMNS = {
   prefix: apiKeys.prefix,
   label: apiKeys.label,
   allowedOrigins: apiKeys.allowedOrigins,
+  scopes: apiKeys.scopes,
   lastUsedAt: apiKeys.lastUsedAt,
   createdAt: apiKeys.createdAt,
   revokedAt: apiKeys.revokedAt,
@@ -39,6 +40,7 @@ export function d1ApiIngestion(db: D1Db): ApiIngestionQueries {
           label: key.label,
           kind: key.kind,
           allowedOrigins: key.allowedOrigins,
+          scopes: key.scopes ?? null,
         })
         .returning(KEY_COLUMNS);
       return row;

@@ -12,6 +12,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import { contacts, flows, lifecycleMessages, templates, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 import type {
   WorkerContentQueries,
   WorkerContentTemplateContact,
@@ -31,13 +33,19 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
     messageId: string,
     fromStatus: string,
     values: Partial<typeof lifecycleMessages.$inferInsert>,
+    events?: { tenantId: string; outbox: OutboxEntry[] },
+    now?: Date,
   ): Promise<boolean> {
-    const updated = await db
+    const update = db
       .update(lifecycleMessages)
       .set(values)
       .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, fromStatus)))
       .returning({ id: lifecycleMessages.id });
-    return updated.length > 0;
+    if (!events || events.outbox.length === 0) return (await update).length > 0;
+    const endpoints = await d1OutboxEndpoints(db, events.tenantId, events.outbox);
+    const inserts = d1OutboxInserts(db, events.tenantId, endpoints, events.outbox, now ?? new Date(), { afterChange: true });
+    const [updated] = (await db.batch([update, ...inserts] as never)) as unknown[][];
+    return (updated ?? []).length > 0;
   }
 
   return {
@@ -51,6 +59,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         membership_id: string;
         flow_step_order: number | null;
         brain_action_type: string | null;
+        forced_action_type: string | null;
         created_at: number | null;
       }>(sql`
         UPDATE lifecycle_messages
@@ -64,7 +73,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
             LIMIT ${limit}
           )
           AND status = 'pending_generation'
-        RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, created_at
+        RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type, created_at
       `);
       // RETURNING order is unspecified in SQLite: restore oldest first.
       const ts = (v: number | null) => (v === null ? Number.POSITIVE_INFINITY : v);
@@ -77,6 +86,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         membershipId: row.membership_id,
         flowStepOrder: row.flow_step_order,
         brainActionType: row.brain_action_type,
+        forcedActionType: row.forced_action_type,
       }));
     },
 
@@ -111,7 +121,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
       });
     },
 
-    completeDraft(messageId, status, { subject, bodyHtml, bodyText }, approvedAt, now) {
+    completeDraft(messageId, status, { subject, bodyHtml, bodyText }, approvedAt, now, events) {
       return cas(messageId, "awaiting_content", {
         status,
         subject,
@@ -119,10 +129,10 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         bodyText,
         approvedAt,
         updatedAt: now,
-      });
+      }, events, now);
     },
 
-    completeTemplate(messageId, status, { subject, bodyHtml, bodyText }, approvedAt, reasoning, now) {
+    completeTemplate(messageId, status, { subject, bodyHtml, bodyText }, approvedAt, reasoning, now, events) {
       return cas(messageId, "generating", {
         status,
         subject,
@@ -131,7 +141,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         approvedAt,
         brainReasoning: reasoning,
         updatedAt: now,
-      });
+      }, events, now);
     },
 
     async getFlowApprovalMode(flowId) {

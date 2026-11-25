@@ -51,4 +51,15 @@ if hits=$(grep -rn "$EM_DASH" "${DOC_FILES[@]}"); then
   status=1
 fi
 
+# The config JSON Schema must match the Zod schema it is generated from.
+# Needs the built core package; where it is not built (the lint job), the
+# core test suite runs the same comparison.
+if [ -f packages/core/dist/index.js ] && command -v node >/dev/null 2>&1; then
+  if ! node scripts/gen-config-schema.mjs --check; then
+    status=1
+  fi
+else
+  echo "docs check: config schema check skipped (packages/core not built; tests check it)" >&2
+fi
+
 exit "$status"

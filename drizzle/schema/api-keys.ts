@@ -15,9 +15,9 @@
  * - "secret": server-side. No origin check, higher rate limit. Must never
  *   be embedded in a browser; the CORS layer deliberately does not echo an
  *   Origin for secret keys, so browsers cannot use them cross-origin.
- * - "admin" / "instance": management keys for one product / the whole
- *   instance (tenant_id null for instance keys). Stored and listed only for
- *   now; they do not authenticate ingestion.
+ * - "admin": management key of one product (prefix clr_ak_). Authenticates
+ *   the management routes its scopes allow; never ingestion.
+ * - "instance": instance key (tenant_id null). Stored and listed only.
  *
  * The `prefix` column (first 8 chars of the raw key) enables masked display
  * in the dashboard without exposing the full key.
@@ -56,6 +56,12 @@ export const apiKeys = pgTable(
     // (write-only capability makes this safe; the allowlist is abuse friction,
     // not the security boundary). Ignored for secret keys.
     allowedOrigins: jsonb("allowed_origins").$type<string[]>(),
+    /**
+     * Admin keys only (G1): the management scopes the key grants
+     * (config, suppressions, messages, contacts:read, contacts:delete,
+     * broadcasts, kb). Null for every other kind.
+     */
+    scopes: jsonb("scopes").$type<string[]>(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }), // null = active

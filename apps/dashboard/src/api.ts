@@ -367,6 +367,17 @@ export interface Message {
     name: string | null;
     external_id: string | null;
   };
+  /** Why an approved message has not gone out yet (send window). */
+  waiting_reason?: string | null;
+  /** G20 additions. */
+  flow?: { name: string | null; class: string | null };
+  status_reason?: string | null;
+  approved_by?: string | null;
+  rejected_by?: string | null;
+  edited_by?: string | null;
+  edited_at?: string | null;
+  original?: { subject: string | null; body_html: string | null; body_text: string | null } | null;
+  forced_action_type?: string | null;
 }
 
 export interface MessagesPage {
@@ -410,9 +421,15 @@ export interface MessageActionError {
 
 async function messageAction(
   id: string,
-  action: "approve" | "reject",
+  action: "approve" | "reject" | "regenerate" | "cancel" | "unapprove",
+  body?: Record<string, unknown>,
 ): Promise<void> {
-  const res = await apiFetch(`/v1/messages/${id}/${action}`, { method: "POST" });
+  const res = await apiFetch(
+    `/v1/messages/${id}/${action}`,
+    body
+      ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+      : { method: "POST" },
+  );
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as {
       error?: string;
@@ -435,6 +452,45 @@ export async function approveMessage(id: string): Promise<void> {
 /** POST /v1/messages/:id/reject - CAS pending_approval -> rejected (terminal). */
 export async function rejectMessage(id: string): Promise<void> {
   return messageAction(id, "reject");
+}
+
+/** POST /v1/messages/:id/regenerate - back to generation, optionally forcing the action type. */
+export async function regenerateMessage(id: string, actionType?: string): Promise<void> {
+  return messageAction(id, "regenerate", actionType ? { action_type: actionType } : {});
+}
+
+/** POST /v1/messages/:id/cancel - approved -> cancelled. */
+export async function cancelMessage(id: string): Promise<void> {
+  return messageAction(id, "cancel");
+}
+
+/** POST /v1/messages/:id/unapprove - approved -> pending_approval. */
+export async function unapproveMessage(id: string): Promise<void> {
+  return messageAction(id, "unapprove");
+}
+
+/** PATCH /v1/messages/:id - edit subject and body (Markdown) while pending_approval. */
+export async function editMessage(id: string, input: { subject?: string; body_markdown?: string }): Promise<void> {
+  const res = await apiFetch(`/v1/messages/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string; status?: string } | null;
+    const err: MessageActionError = { status: res.status, message: body?.error ?? `HTTP ${res.status}`, currentStatus: body?.status };
+    throw err;
+  }
+}
+
+/** POST /v1/contacts/:id/exclude - suppress the person and cancel their unsent messages. */
+export async function excludeContact(contactId: string): Promise<{ suppressed: boolean; cancelled: string[] }> {
+  const res = await apiFetch(`/v1/contacts/${contactId}/exclude`, { method: "POST" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Exclude failed (${res.status})`);
+  }
+  return res.json() as Promise<{ suppressed: boolean; cancelled: string[] }>;
 }
 
 export interface BulkActionResult {
@@ -1286,7 +1342,10 @@ export async function fetchRetentionGridCellTrend(
 // Ingestion (Integrate screen)
 // ---------------------------------------------------------------------------
 
-export type ApiKeyKind = "publishable" | "secret";
+export type ApiKeyKind = "publishable" | "secret" | "admin";
+
+/** Management scopes of an admin key (G1). */
+export const ADMIN_KEY_SCOPES = ["config", "suppressions", "messages", "contacts:read", "contacts:delete", "broadcasts", "kb"] as const;
 
 export interface IngestKey {
   id: string;
@@ -1294,6 +1353,8 @@ export interface IngestKey {
   prefix: string;
   label: string | null;
   allowed_origins: string[];
+  /** Admin keys only. */
+  scopes?: string[];
   last_used_at: string | null;
   created_at: string | null;
   revoked_at: string | null;
@@ -1328,6 +1389,7 @@ export async function createIngestKey(input: {
   kind: ApiKeyKind;
   label?: string;
   allowed_origins?: string[];
+  scopes?: string[];
 }): Promise<CreatedIngestKey> {
   const res = await apiFetch(`/v1/ingestion/keys`, {
     method: "POST",

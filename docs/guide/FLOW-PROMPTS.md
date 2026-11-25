@@ -11,7 +11,7 @@ The compiler is an LLM with a strict output contract. It handles natural languag
 - **Name the trigger event exactly** as your app sends it (`signed_up`, not `sign-up`). The trigger itself is set in the editor; the prompt should agree with it.
 - **Number the steps with their delays**: "Step 1 (day 0, immediate) ... Step 2 (2 days later, respect_window) ...". Delays are minutes, hours, or days only.
 - **Say `immediate` or `respect_window` per step.** Immediate ignores the send window (use for welcomes, payment failures); respect_window holds the email for the next 09:00-17:00 weekday slot.
-- **Use the closed condition vocabulary.** Steps can proceed-if or exit-if: the contact is / is not in a lifecycle state, or an event has happened since the step. Nothing else compiles.
+- **Use the closed condition vocabulary.** Steps can proceed-if or exit-if: the contact is / is not in a lifecycle state, or an event has happened since the step. Nothing else compiles. Flows written out in a [config file](CONFIG.md#conditions) can also use trait, send-history and first-contact conditions (unreleased, planned for v0.8).
 - **State the exit conditions**: "Exit the flow the moment the user activates" compiles to a plan-level exit on the lifecycle change.
 - **End with class and re-entry**: "Flow class: nurture. Reentry: once."
 

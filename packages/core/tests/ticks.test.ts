@@ -59,6 +59,7 @@ describe("dueTicks", () => {
       QUEUE.CONTENT_GENERATION,
       QUEUE.GRID_SNAPSHOT,
       QUEUE.ALERTS_DIGEST,
+      QUEUE.WEBHOOK_DELIVERY,
     ]) {
       expect(isPeriodicJob(q)).toBe(true);
       expect(TICK_INTERVAL_MINUTES[q]).toBeGreaterThan(0);
@@ -87,8 +88,8 @@ describe("dueTicks", () => {
 
   it("a 15-minute tick returns exactly the expected set", () => {
     expect(dueTicks(at("2026-11-25T10:45:00Z")).sort()).toEqual(
-      [QUEUE.CONTENT_GENERATION, QUEUE.SCAN, QUEUE.DRAIN, QUEUE.COUNTER_ROLLOVER].sort(),
+      [QUEUE.CONTENT_GENERATION, QUEUE.WEBHOOK_DELIVERY, QUEUE.SCAN, QUEUE.DRAIN, QUEUE.COUNTER_ROLLOVER].sort(),
     );
-    expect(dueTicks(at("2026-11-25T10:05:00Z"))).toEqual([QUEUE.CONTENT_GENERATION]);
+    expect(dueTicks(at("2026-11-25T10:05:00Z"))).toEqual([QUEUE.CONTENT_GENERATION, QUEUE.WEBHOOK_DELIVERY]);
   });
 });

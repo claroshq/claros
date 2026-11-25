@@ -19,7 +19,7 @@ export function pgWorkerProcessMessage(db: PgDb): WorkerProcessMessageQueries {
           AND tenant_id = ${tenantId}
           AND status = 'pending_generation'
         RETURNING id, tenant_id, contact_id, flow_id, membership_id,
-                  flow_step_order, brain_action_type
+                  flow_step_order, brain_action_type, forced_action_type
       `);
       return claimed.rows[0] ?? null;
     },

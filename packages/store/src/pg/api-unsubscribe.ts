@@ -4,6 +4,7 @@
 import { eq, and, sql } from "drizzle-orm";
 import { lifecycleMessages, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type { ApiUnsubscribeQueries } from "../areas/api-unsubscribe.js";
 import { listContactTopicStatuses, setContactTopicStatuses } from "./contact-topics.js";
 
@@ -28,13 +29,22 @@ export function pgApiUnsubscribe(db: PgDb): ApiUnsubscribeQueries {
       return messageRows[0] ?? null;
     },
 
-    async suppressAddress({ tenantId, email, reason, source }) {
+    async suppressAddress({ tenantId, email, reason, source, outbox, now }) {
       // Idempotent via ON CONFLICT DO NOTHING on (tenant_id, lower(email))
-      await db.execute(sql`
-        INSERT INTO suppressions (tenant_id, email, reason, source)
-        VALUES (${tenantId}::uuid, ${email}, ${reason}, ${source})
-        ON CONFLICT (tenant_id, lower(email)) DO NOTHING
-      `);
+      const insert = (tx: PgDb) =>
+        tx.execute(sql`
+          INSERT INTO suppressions (tenant_id, email, reason, source)
+          VALUES (${tenantId}::uuid, ${email}, ${reason}, ${source})
+          ON CONFLICT (tenant_id, lower(email)) DO NOTHING
+        `);
+      if (!outbox || outbox.length === 0) {
+        await insert(db);
+        return;
+      }
+      await db.transaction(async (tx) => {
+        const res = await insert(tx as unknown as PgDb);
+        if ((res.rowCount ?? 0) > 0) await pgWriteOutbox(tx as unknown as PgDb, tenantId, outbox, now ?? new Date());
+      });
     },
 
     async findTenantIdByPublicHost(host) {

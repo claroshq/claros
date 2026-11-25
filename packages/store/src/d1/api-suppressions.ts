@@ -15,6 +15,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { suppressions } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiSuppressionsQueries } from "../areas/api-suppressions.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 
 /** Rows per INSERT: 2 params per row + 3 shared stays under 100. */
 const IMPORT_CHUNK = 45;
@@ -68,13 +69,76 @@ export function d1ApiSuppressions(db: D1Db): ApiSuppressionsQueries {
       return results.reduce((n, rows) => n + rows.length, 0);
     },
 
-    async listSuppressions({ tenantId, after, limit }) {
-      const where = after
-        ? and(
-            eq(suppressions.tenantId, tenantId),
-            sql`(${suppressions.createdAt}, ${suppressions.id}) > (${new Date(after.createdAt).getTime()}, ${after.id})`,
-          )
-        : eq(suppressions.tenantId, tenantId);
+    async addSuppressions({ tenantId, emails, reason, source, now }) {
+      const seen = new Set<string>();
+      const unique: string[] = [];
+      for (const e of emails) {
+        const key = e.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(e);
+      }
+      if (unique.length === 0) return [];
+      // Which addresses are new is decided by the guarded inserts; the
+      // outbox rows are written per inserted address, so each insert is
+      // followed by its own guarded outbox insert (same batch, atomic).
+      const endpoints = await d1OutboxEndpoints(db, tenantId, [{ event: "contact.suppressed", payload: {} }]);
+      const statements: unknown[] = [];
+      const order: number[] = [];
+      unique.forEach((email, i) => {
+        statements.push(
+          db.insert(suppressions).select(sql`
+            SELECT ${crypto.randomUUID()}, ${tenantId}, ${email}, ${reason}, ${source}, ${now.getTime()}
+            WHERE NOT EXISTS (
+              SELECT 1 FROM suppressions s WHERE s.tenant_id = ${tenantId} AND lower(s.email) = lower(${email})
+            )
+          `).returning({ email: suppressions.email }),
+        );
+        order.push(i);
+        for (const st of d1OutboxInserts(db, tenantId, endpoints, [{ event: "contact.suppressed", payload: { email, reason, source } }], now, { afterChange: true })) {
+          statements.push(st);
+          order.push(-1);
+        }
+      });
+      const results = (await db.batch(statements as never)) as unknown[];
+      const inserted: string[] = [];
+      results.forEach((r, i) => {
+        if (order[i]! >= 0 && Array.isArray(r) && r.length > 0) inserted.push(unique[order[i]!]!);
+      });
+      return inserted;
+    },
+
+    async removeSuppression({ tenantId, email, force, protectedReasons, now }) {
+      const [row] = await db
+        .select({ id: suppressions.id, reason: suppressions.reason })
+        .from(suppressions)
+        .where(and(eq(suppressions.tenantId, tenantId), sql`lower(${suppressions.email}) = lower(${email})`))
+        .limit(1);
+      if (!row) return { result: "not_found" as const, reason: null };
+      if (!force && protectedReasons.includes(row.reason)) {
+        return { result: "protected" as const, reason: row.reason };
+      }
+      const entries = [{ event: "contact.resubscribed", payload: { email: email.toLowerCase(), previous_reason: row.reason } }];
+      const endpoints = await d1OutboxEndpoints(db, tenantId, entries);
+      // The delete is guarded by the reason read above, so a suppression
+      // replaced in between (another reason) is not deleted by a stale decision.
+      const del = db
+        .delete(suppressions)
+        .where(and(eq(suppressions.id, row.id), eq(suppressions.reason, row.reason)))
+        .returning({ id: suppressions.id });
+      const [deleted] = (await db.batch([del, ...d1OutboxInserts(db, tenantId, endpoints, entries, now, { afterChange: true })] as never)) as unknown[][];
+      if (!deleted || deleted.length === 0) return { result: "not_found" as const, reason: null };
+      return { result: "deleted" as const, reason: row.reason };
+    },
+
+    async listSuppressions({ tenantId, after, limit, since }) {
+      const where = and(
+        eq(suppressions.tenantId, tenantId),
+        after
+          ? sql`(${suppressions.createdAt}, ${suppressions.id}) > (${new Date(after.createdAt).getTime()}, ${after.id})`
+          : undefined,
+        since ? sql`${suppressions.createdAt} >= ${since.getTime()}` : undefined,
+      );
       return db
         .select()
         .from(suppressions)

@@ -11,7 +11,9 @@
  *   2. Browser snippet - the two-stub + claros.js snippet with the tenant's
  *      publishable key already interpolated. Creates a publishable key
  *      inline when none exists.
- *   3. API keys - list, create (publishable / secret), edit origins, revoke.
+ *   3. API keys - list, create (publishable / secret / admin with scopes),
+ *      edit origins, revoke. Admin keys authenticate the management API
+ *      (owners only).
  *      The raw key is shown exactly once, in the creation banner.
  */
 import { Fragment, useMemo, useState, type ElementType } from "react";
@@ -23,7 +25,7 @@ import {
   useRevokeIngestKey,
   useIngestStatus,
 } from "../ingestion.js";
-import type { CreatedIngestKey, IngestKey } from "../api.js";
+import { ADMIN_KEY_SCOPES, type CreatedIngestKey, type IngestKey } from "../api.js";
 import { Badge } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
@@ -269,7 +271,7 @@ function CreatedKeyBanner({ created, onDismiss }: { created: CreatedIngestKey; o
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[14px] font-medium text-foreground">
-            {created.kind === "publishable" ? "Publishable" : "Secret"} key created
+            {created.kind === "publishable" ? "Publishable" : created.kind === "admin" ? "Admin" : "Secret"} key created
           </p>
           <p className="mt-1 text-[14px] text-foreground">
             Copy it now. For your security it is stored as a hash and will
@@ -367,11 +369,27 @@ function KeysCard({ keys, onCreated }: { keys: IngestKey[]; onCreated: (k: Creat
   const create = useCreateIngestKey();
   const revoke = useRevokeIngestKey();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminLabel, setAdminLabel] = useState("");
+  const [adminScopes, setAdminScopes] = useState<Set<string>>(new Set(["config", "suppressions", "messages", "contacts:read"]));
 
   function createKey(kind: "publishable" | "secret") {
     create.mutate(
       { kind },
       { onSuccess: (created) => onCreated(created) },
+    );
+  }
+
+  function createAdminKey() {
+    create.mutate(
+      { kind: "admin", label: adminLabel.trim() || undefined, scopes: [...adminScopes] },
+      {
+        onSuccess: (created) => {
+          setAdminOpen(false);
+          setAdminLabel("");
+          onCreated(created);
+        },
+      },
     );
   }
 
@@ -404,8 +422,57 @@ function KeysCard({ keys, onCreated }: { keys: IngestKey[]; onCreated: (k: Creat
             <Plus size={16} strokeWidth={1.5} />
             Secret key
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setAdminOpen((v) => !v)}
+            disabled={create.isPending}
+          >
+            <Plus size={16} strokeWidth={1.5} />
+            Admin key
+          </Button>
         </div>
       </div>
+
+      {adminOpen && (
+        <div className="mt-4 rounded-md border border-border bg-secondary p-4">
+          <p className="text-[14px] text-foreground">
+            Admin keys call the management API (config, suppressions, approvals)
+            from your backend or CI. Owners only. Pick the scopes it needs.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+            {ADMIN_KEY_SCOPES.map((scope) => (
+              <label key={scope} className="flex items-center gap-2 text-[14px] text-foreground">
+                <input
+                  type="checkbox"
+                  checked={adminScopes.has(scope)}
+                  onChange={() =>
+                    setAdminScopes((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(scope)) next.delete(scope);
+                      else next.add(scope);
+                      return next;
+                    })
+                  }
+                  className="h-4 w-4 accent-(--accent-deep)"
+                />
+                <span className="font-mono text-[13px]">{scope}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              value={adminLabel}
+              onChange={(e) => setAdminLabel(e.target.value)}
+              placeholder="Label (e.g. CI deploy)"
+              className="h-8 w-64 rounded-md border border-border bg-card px-2.5 text-[14px] text-foreground"
+            />
+            <Button size="sm" onClick={createAdminKey} disabled={create.isPending || adminScopes.size === 0}>
+              Create admin key
+            </Button>
+          </div>
+        </div>
+      )}
 
       {create.isError && (
         <p className="mt-3 text-[14px] text-danger">
@@ -448,7 +515,9 @@ function KeysCard({ keys, onCreated }: { keys: IngestKey[]; onCreated: (k: Creat
                       {k.label ?? <span className="text-subtle-foreground">-</span>}
                     </TableCell>
                     <TableCell className="text-[14px] text-muted-foreground">
-                      {k.kind !== "publishable" ? (
+                      {k.kind === "admin" ? (
+                        <span className="font-mono text-[12px]">{(k.scopes ?? []).join(", ")}</span>
+                      ) : k.kind !== "publishable" ? (
                         <span className="text-subtle-foreground">-</span>
                       ) : k.allowed_origins.length === 0 ? (
                         "Any"

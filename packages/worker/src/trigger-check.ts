@@ -13,6 +13,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
 import {
   matchesEventTrigger,
+  evaluateAllContactConditions,
+  cachedConditionContext,
   type EnrollableFlow,
   type TriggerCheckJobData,
 } from "@claros/core";
@@ -53,11 +55,27 @@ export async function handleTriggerCheck(
   // Load active, compiled event-trigger flows for this tenant
   const tenantFlows = await storeFor(db).workerTriggerCheck.listActiveEventFlows(tenant_id);
 
-  // Filter to flows matching this event name
-  const matchingFlows: EnrollableFlow[] = tenantFlows
-    .filter((f) =>
-      matchesEventTrigger(f as EnrollableFlow, event_name),
-    )
+  // Filter to flows matching this event name, then to those whose trigger
+  // conditions (`where`: trait, history, first_contact; G4/G28) hold. A
+  // malformed `where` never enrolls.
+  const named = tenantFlows.filter((f) => matchesEventTrigger(f as EnrollableFlow, event_name));
+  const now = new Date();
+  const ctx = cachedConditionContext({
+    now,
+    traits: async () => (await storeFor(db).workerTriggerCheck.getContactTraits({ tenantId: tenant_id, contactId: contact_id })) ?? {},
+    countSends: (f) => storeFor(db).workerTriggerCheck.countSends({ tenantId: tenant_id, contactId: contact_id, ...f }),
+  });
+  const passing: typeof named = [];
+  for (const f of named) {
+    const where = (f.triggerConfig as { where?: unknown } | null)?.where;
+    if (where === undefined || where === null) {
+      passing.push(f);
+      continue;
+    }
+    if (!Array.isArray(where)) continue;
+    if ((await evaluateAllContactConditions(where, ctx)) === true) passing.push(f);
+  }
+  const matchingFlows: EnrollableFlow[] = passing
     .map((f) => ({
       id: f.id,
       tenantId: f.tenantId,
@@ -73,7 +91,6 @@ export async function handleTriggerCheck(
 
   // Enroll within a transaction (enrollContactInFlows opens it and acquires
   // the advisory lock inside)
-  const now = new Date();
   const results = await enrollContactInFlows(
     db,
     contact_id,

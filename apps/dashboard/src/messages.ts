@@ -21,11 +21,17 @@ import {
   bulkRejectMessages,
   fetchFailedMessages,
   retryMessage,
+  editMessage,
+  regenerateMessage,
+  cancelMessage,
+  unapproveMessage,
+  excludeContact,
   type MessagesPage,
 } from "./api.js";
 
 export const MESSAGES_QUERY_KEY = ["messages"] as const;
 export const FAILED_MESSAGES_QUERY_KEY = ["messages", "failed"] as const;
+export const APPROVED_MESSAGES_QUERY_KEY = ["messages", "approved"] as const;
 
 /** The pending-approval queue, paginated by cursor. */
 export function useMessageQueue() {
@@ -126,6 +132,69 @@ export function useRetryMessage() {
     mutationFn: (id: string) => retryMessage(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: FAILED_MESSAGES_QUERY_KEY });
+    },
+  });
+}
+
+/** Edit subject/body of the draft under review; the queue is refetched to show the new content. */
+export function useEditMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; subject?: string; body_markdown?: string }) =>
+      editMessage(input.id, { subject: input.subject, body_markdown: input.body_markdown }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: MESSAGES_QUERY_KEY, exact: true });
+    },
+  });
+}
+
+/** Send a draft back for a new one (optionally forcing the action type); it leaves the queue. */
+export function useRegenerateMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; actionType?: string }) => regenerateMessage(input.id, input.actionType),
+    onSuccess: (_d, input) => removeFromQueue(qc, input.id),
+  });
+}
+
+/** Exclude the person: suppression plus every unsent message cancelled. */
+export function useExcludeContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (contactId: string) => excludeContact(contactId),
+    onSuccess: (result) => {
+      removeManyFromQueue(qc, result.cancelled);
+      void qc.invalidateQueries({ queryKey: APPROVED_MESSAGES_QUERY_KEY });
+    },
+  });
+}
+
+/** Approved messages that have not been sent yet (cancel or pull back to review). */
+export function useApprovedMessages() {
+  return useQuery({
+    queryKey: APPROVED_MESSAGES_QUERY_KEY,
+    queryFn: () => fetchMessages(undefined, "approved"),
+    refetchInterval: 30000,
+  });
+}
+
+export function useCancelMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => cancelMessage(id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: APPROVED_MESSAGES_QUERY_KEY });
+    },
+  });
+}
+
+export function useUnapproveMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => unapproveMessage(id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: APPROVED_MESSAGES_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: MESSAGES_QUERY_KEY, exact: true });
     },
   });
 }

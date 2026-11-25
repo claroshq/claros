@@ -19,14 +19,18 @@ lifecycle events, not web analytics.
 
 ## Keys
 
-Two kinds, created in the dashboard under **Integrate** (or via the API,
-below):
+Two kinds write events, created in the dashboard under **Integrate** (or via
+the API, below):
 
-- **Publishable** (`cl_pub_...`): safe to paste into a web page. It can write
+- **Publishable** (`clr_pk_...`): safe to paste into a web page. It can write
   events and nothing else - there is no key-authenticated read endpoint at
   all. Optional origin allowlist; rate limited to 300 requests/minute.
-- **Secret** (`cl_live_...`): your backend. Never put it in browser code,
+- **Secret** (`clr_sk_...`): your backend. Never put it in browser code,
   a mobile app, or a public repo. Rate limited to 3000 requests/minute.
+
+Keys created before the `clr_` prefixes (`cl_pub_...`, `cl_live_...`) keep
+working. A third kind, the admin key (`clr_ak_...`), calls the management API
+and never writes events: see [API keys](API_KEYS.md).
 
 Raw keys are shown once at creation. Only a SHA-256 hash is stored. Revoking
 a key takes effect immediately.
@@ -35,12 +39,12 @@ a key takes effect immediately.
 
 ```bash
 curl -X POST https://YOUR_CLAROS_HOST/v1/identify \
-  -H "Authorization: Bearer cl_live_YOUR_SECRET_KEY" \
+  -H "Authorization: Bearer clr_sk_YOUR_SECRET_KEY" \
   -H "Content-Type: application/json" \
   -d '{"userId": "user_123", "traits": {"email": "user@example.com", "plan": "trial"}}'
 
 curl -X POST https://YOUR_CLAROS_HOST/v1/track \
-  -H "Authorization: Bearer cl_live_YOUR_SECRET_KEY" \
+  -H "Authorization: Bearer clr_sk_YOUR_SECRET_KEY" \
   -H "Content-Type: application/json" \
   -d '{"userId": "user_123", "event": "signed_up", "messageId": "optional-dedup-key"}'
 ```
@@ -57,7 +61,7 @@ Served by your own install at `/claros.js`. Paste before `</body>`:
 </script>
 <script async src="https://YOUR_CLAROS_HOST/claros.js"></script>
 <script>
-  claros("init", "cl_pub_YOUR_PUBLISHABLE_KEY", { endpoint: "https://YOUR_CLAROS_HOST" });
+  claros("init", "clr_pk_YOUR_PUBLISHABLE_KEY", { endpoint: "https://YOUR_CLAROS_HOST" });
   claros("identify", "user_123", { email: "user@example.com" });
   claros("track", "signed_up", { plan: "trial" });
 </script>
@@ -93,7 +97,7 @@ Any HTTP client works. Node 18+:
 
 ```javascript
 const CLAROS = "https://YOUR_CLAROS_HOST";
-const KEY = "cl_live_YOUR_SECRET_KEY";
+const KEY = "clr_sk_YOUR_SECRET_KEY";
 
 async function track(userId, event, properties = {}) {
   const res = await fetch(`${CLAROS}/v1/track`, {
@@ -127,7 +131,7 @@ Claros understands:
 const { Analytics } = require("@segment/analytics-node");
 
 const analytics = new Analytics({
-  writeKey: "cl_live_YOUR_SECRET_KEY",
+  writeKey: "clr_sk_YOUR_SECRET_KEY",
   host: "https://YOUR_CLAROS_HOST",  // path defaults to /v1/batch
   flushAt: 20,                        // batching works; /v1/batch is supported
   maxRetries: 3,

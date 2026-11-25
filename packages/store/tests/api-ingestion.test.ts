@@ -35,6 +35,7 @@ for (const factory of testBackends()) {
         prefix: "cl_test_",
         label: "Web",
         allowedOrigins: ["https://a.example"],
+        scopes: null,
         lastUsedAt: null,
         createdAt: expect.any(Date),
         revokedAt: null,

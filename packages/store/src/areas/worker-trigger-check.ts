@@ -8,6 +8,8 @@
  */
 
 /** A flow row as the event-trigger enrollment path reads it. */
+import type { ContactConditionQueries } from "./shared-conditions.js";
+
 export interface WorkerTriggerCheckFlowRow {
   id: string;
   tenantId: string;
@@ -19,7 +21,7 @@ export interface WorkerTriggerCheckFlowRow {
   reentryCooldownDays: number | null;
 }
 
-export interface WorkerTriggerCheckQueries {
+export interface WorkerTriggerCheckQueries extends ContactConditionQueries {
   /** Active, compiled (compile_status = ready, plan present) event-triggered flows of a tenant. */
   listActiveEventFlows(tenantId: string): Promise<WorkerTriggerCheckFlowRow[]>;
 }

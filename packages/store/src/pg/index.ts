@@ -58,6 +58,9 @@ import { pgApiProducts } from "./api-products.js";
 import { pgApiInstance } from "./api-instance.js";
 import { pgApiTopics } from "./api-topics.js";
 import { pgOps } from "./ops.js";
+import { pgApiAdminAuth } from "./api-admin-auth.js";
+import { pgWorkerWebhooks } from "./worker-webhooks.js";
+import { pgApiConfig } from "./api-config.js";
 
 export function createPgStore(db: PgDb): Store {
   return {
@@ -117,5 +120,8 @@ export function createPgStore(db: PgDb): Store {
     apiInstance: pgApiInstance(db),
     apiTopics: pgApiTopics(db),
     ops: pgOps(db),
+    apiAdminAuth: pgApiAdminAuth(db),
+    workerWebhooks: pgWorkerWebhooks(db),
+    apiConfig: pgApiConfig(db),
   };
 }

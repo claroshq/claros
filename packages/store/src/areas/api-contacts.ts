@@ -66,4 +66,24 @@ export interface ApiContactsQueries {
   }): Promise<Record<string, unknown>[]>;
   /** Every topic of the tenant with the contact's explicit status for it (null = the topic default). */
   listContactTopics(input: { tenantId: string; contactId: string }): Promise<ContactTopicStatusRow[]>;
+  /** A contact of the tenant by external_id, else by id (uuid), or null. */
+  findContactByRef(input: { tenantId: string; ref: string }): Promise<{ id: string; externalId: string; email: string | null } | null>;
+  /**
+   * Erase a contact of the tenant (G12): its events, transitions, conflicts,
+   * topic statuses, memberships, messages and their message events, pending
+   * outbox rows about it, and the contact row, in one atomic unit.
+   * Suppressions stay (they keep the address from being mailed again).
+   * Returns false when the contact does not exist.
+   */
+  eraseContact(input: { tenantId: string; contactId: string }): Promise<boolean>;
+  /**
+   * Exclude a contact from lifecycle mail (G20): a manual suppression of its
+   * email (when it has one and is not suppressed yet) and every message not
+   * sent yet (pending_generation, generating, awaiting_content,
+   * pending_approval, approved) moved to cancelled, in one atomic unit.
+   * Cancelled messages get status_reason "excluded". Messages in sending are
+   * left to the drain. Writes contact.suppressed
+   * when a suppression was added. Returns what changed.
+   */
+  excludeContact(input: { tenantId: string; contactId: string; email: string | null; now: Date }): Promise<{ suppressed: boolean; cancelled: string[] }>;
 }

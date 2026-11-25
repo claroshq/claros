@@ -25,6 +25,8 @@ import {
   contactTopics,
 } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 import type { WorkerDrainQueries } from "../areas/worker-drain.js";
 
 interface ClaimRow {
@@ -61,13 +63,19 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
   async function casFromSending(
     messageId: string,
     values: Partial<typeof lifecycleMessages.$inferInsert>,
+    events?: { tenantId: string; outbox: OutboxEntry[] },
+    now?: Date,
   ): Promise<boolean> {
-    const updated = await db
+    const update = db
       .update(lifecycleMessages)
       .set(values)
       .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
       .returning({ id: lifecycleMessages.id });
-    return updated.length > 0;
+    if (!events || events.outbox.length === 0) return (await update).length > 0;
+    const endpoints = await d1OutboxEndpoints(db, events.tenantId, events.outbox);
+    const inserts = d1OutboxInserts(db, events.tenantId, endpoints, events.outbox, now ?? new Date(), { afterChange: true });
+    const [updated] = (await db.batch([update, ...inserts] as never)) as unknown[][];
+    return (updated ?? []).length > 0;
   }
 
   return {
@@ -166,18 +174,18 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
       return casFromSending(messageId, { recipientAddress: email, updatedAt: now, ...(transportId ? { transportId } : {}) });
     },
 
-    markSent(messageId, providerMessageId, now, transportId) {
+    markSent(messageId, providerMessageId, now, transportId, events) {
       return casFromSending(messageId, {
         status: "sent",
         sentAt: now,
         providerMessageId,
         updatedAt: now,
         ...(transportId ? { transportId } : {}),
-      });
+      }, events, now);
     },
 
-    markFailed(messageId, now, reason) {
-      return casFromSending(messageId, { status: "failed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) });
+    markFailed(messageId, now, reason, events) {
+      return casFromSending(messageId, { status: "failed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) }, events, now);
     },
 
     async getTopicGate({ tenantId, contactId, topicId }) {
@@ -214,6 +222,11 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
         .where(and(eq(suppressions.tenantId, tenantId), sql`lower(${suppressions.email}) = lower(${email})`))
         .limit(1);
       return rows.length > 0;
+    },
+
+    async getFlowLabel(flowId) {
+      const rows = await db.select({ slug: flows.slug, name: flows.name }).from(flows).where(eq(flows.id, flowId)).limit(1);
+      return rows[0] ?? null;
     },
 
     async getFlowThrottleInfo(flowId) {

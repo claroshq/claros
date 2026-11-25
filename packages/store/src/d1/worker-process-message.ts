@@ -30,6 +30,7 @@ export function d1WorkerProcessMessage(db: D1Db): WorkerProcessMessageQueries {
           membership_id: lifecycleMessages.membershipId,
           flow_step_order: lifecycleMessages.flowStepOrder,
           brain_action_type: lifecycleMessages.brainActionType,
+          forced_action_type: lifecycleMessages.forcedActionType,
         });
       return rows[0] ?? null;
     },

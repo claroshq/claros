@@ -22,7 +22,7 @@ export function useIngestKeys() {
 export function useCreateIngestKey() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { kind: ApiKeyKind; label?: string; allowed_origins?: string[] }) =>
+    mutationFn: (input: { kind: ApiKeyKind; label?: string; allowed_origins?: string[]; scopes?: string[] }) =>
       createIngestKey(input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: INGEST_KEYS_QUERY_KEY });

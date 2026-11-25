@@ -62,13 +62,13 @@ describe("QUEUE constants", () => {
     expect(new Set(values).size).toBe(values.length);
   });
 
-  it("QUEUE has exactly 14 entries (SCAN + COMPILE + TRIGGER_CHECK + DRAIN + REAP + COUNTER_ROLLOVER + PARTITION_MAINTENANCE + CONTENT_GENERATION + KB_EMBED + ADVANCE_MEMBERSHIP + PROCESS_MESSAGE + DRAIN_MESSAGE + GRID_SNAPSHOT + ALERTS_DIGEST)", () => {
-    expect(Object.keys(QUEUE)).toHaveLength(14);
+  it("QUEUE has exactly 15 entries (SCAN + COMPILE + TRIGGER_CHECK + DRAIN + REAP + COUNTER_ROLLOVER + PARTITION_MAINTENANCE + CONTENT_GENERATION + KB_EMBED + ADVANCE_MEMBERSHIP + PROCESS_MESSAGE + DRAIN_MESSAGE + GRID_SNAPSHOT + ALERTS_DIGEST + WEBHOOK_DELIVERY)", () => {
+    expect(Object.keys(QUEUE)).toHaveLength(15);
   });
 
   it("QueueName is assignable from QUEUE values", () => {
     const names: QueueName[] = Object.values(QUEUE);
-    expect(names).toHaveLength(14);
+    expect(names).toHaveLength(15);
   });
 });
 
