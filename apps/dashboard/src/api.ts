@@ -132,6 +132,8 @@ export interface Flow {
   compile_error: string | null;
   /** Topic of the flow's messages; absent from servers before topics. */
   topic_id?: string | null;
+  /** Email template of the flow's messages (built-in key or custom id); null = the product's. */
+  email_template?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -205,6 +207,8 @@ export interface CreateFlowInput {
   reentry_policy?: Flow["reentry_policy"];
   reentry_cooldown_days?: number;
   topic_id?: string | null;
+  /** Email template of the flow's messages (built-in key or custom id); null = the product's. */
+  email_template?: string | null;
 }
 
 export interface UpdateFlowInput {
@@ -216,6 +220,8 @@ export interface UpdateFlowInput {
   status?: Flow["status"];
   approval_mode?: Flow["approval_mode"];
   topic_id?: string | null;
+  /** Email template of the flow's messages (built-in key or custom id); null = the product's. */
+  email_template?: string | null;
   flow_class?: Flow["flow_class"];
   priority?: number;
   reentry_policy?: Flow["reentry_policy"];
@@ -2358,6 +2364,8 @@ export interface LayoutSummary {
   width: LayoutWidth;
   based_on: string | null;
   in_use: boolean;
+  /** Flows that set this template; absent from servers before per-flow templates. */
+  flow_count?: number;
   created_at: string | null;
   updated_at: string | null;
   preview_html?: string;

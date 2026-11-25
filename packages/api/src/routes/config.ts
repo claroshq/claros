@@ -229,6 +229,7 @@ function exportConfig(state: ConfigState): Record<string, unknown> {
           priority: f.priority ?? 0,
           reentry: { policy: f.reentryPolicy, cooldown_days: f.reentryCooldownDays ?? 30 },
           topic: f.topicId ? (topicSlug.get(f.topicId) ?? null) : null,
+          ...(f.emailTemplate ? { email_template: f.emailTemplate } : {}),
         };
       }),
     webhooks: state.endpoints

@@ -27,6 +27,8 @@ import {
 export interface FlowSettingsDraft {
   approval_mode: Flow["approval_mode"];
   topic_id: string | null;
+  /** Email template of the flow (built-in key or custom id); null = the product's. */
+  email_template: string | null;
   flow_class: Flow["flow_class"];
   priority: number;
   reentry_policy: Flow["reentry_policy"];
@@ -54,7 +56,7 @@ const STASH_PREFIX = "__";
 // ---------------------------------------------------------------------------
 
 export function defaultSettings(): FlowSettingsDraft {
-  return { approval_mode: "require", topic_id: null, flow_class: "nurture", priority: 0, reentry_policy: "once", reentry_cooldown_days: 30 };
+  return { approval_mode: "require", topic_id: null, email_template: null, flow_class: "nurture", priority: 0, reentry_policy: "once", reentry_cooldown_days: 30 };
 }
 
 export function emptyDraft(trigger: TriggerDraft = { type: "event", config: { event: "" } }): EditorDraft {
@@ -79,6 +81,7 @@ export function draftFromFlow(flow: Flow): EditorDraft {
     copies: {},
     approval_mode: flow.approval_mode,
     topic_id: flow.topic_id ?? null,
+    email_template: flow.email_template ?? null,
     flow_class: flow.flow_class,
     priority: flow.priority ?? 0,
     reentry_policy: flow.reentry_policy,
@@ -317,7 +320,7 @@ export function draftChanges(saved: EditorDraft, draft: EditorDraft, cleanTrigge
     patch.trigger_config = cleanTrigger(draft.trigger);
   }
   if (draft.prompt !== null && draft.prompt !== saved.prompt) patch.prompt_source = draft.prompt;
-  for (const k of ["approval_mode", "topic_id", "flow_class", "priority", "reentry_policy", "reentry_cooldown_days"] as const) {
+  for (const k of ["approval_mode", "topic_id", "email_template", "flow_class", "priority", "reentry_policy", "reentry_cooldown_days"] as const) {
     if (draft[k] !== saved[k]) patch[k] = draft[k];
   }
   const used = new Set(draft.steps.map((s) => s.template_ref).filter((r): r is string => typeof r === "string"));

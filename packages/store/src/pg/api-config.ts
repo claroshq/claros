@@ -40,7 +40,7 @@ export function pgApiConfig(db: PgDb): ApiConfigQueries {
           id: x.id, slug: x.slug, name: x.name, description: x.description, status: x.status, triggerType: x.triggerType,
           triggerConfig: x.triggerConfig, steps: x.steps, compiledPlan: x.compiledPlan, promptSource: x.promptSource,
           contentMode: x.contentMode, approvalMode: x.approvalMode, flowClass: x.flowClass, priority: x.priority,
-          reentryPolicy: x.reentryPolicy, reentryCooldownDays: x.reentryCooldownDays, topicId: x.topicId,
+          reentryPolicy: x.reentryPolicy, reentryCooldownDays: x.reentryCooldownDays, topicId: x.topicId, emailTemplate: x.emailTemplate,
         })),
         transports: tr.map((x) => ({ id: x.id, name: x.name, kind: x.kind ?? x.provider, isActive: x.isActive !== false })),
         endpoints: ep.map((x) => ({ id: x.id, slug: x.slug, kind: x.kind, url: x.url, events: x.events ?? [], enabled: x.enabled, secret: x.secret, config: (x.config as Record<string, unknown> | null) ?? null })),
@@ -86,7 +86,7 @@ export function pgApiConfig(db: PgDb): ApiConfigQueries {
                 slug: v.slug, name: v.name, description: v.description, status: v.status, triggerType: v.triggerType,
                 triggerConfig: v.triggerConfig, steps: v.steps, promptSource: v.promptSource, contentMode: v.contentMode,
                 approvalMode: v.approvalMode, flowClass: v.flowClass, priority: v.priority, reentryPolicy: v.reentryPolicy,
-                reentryCooldownDays: v.reentryCooldownDays, topicId: v.topicId, updatedAt: now, ...compile,
+                reentryCooldownDays: v.reentryCooldownDays, topicId: v.topicId, emailTemplate: v.emailTemplate, updatedAt: now, ...compile,
               };
               if (op.create) await tx.insert(flows).values({ id: op.id, tenantId, source: "config", createdAt: now, ...fields });
               else await tx.update(flows).set(fields).where(and(eq(flows.id, op.id), eq(flows.tenantId, tenantId)));

@@ -247,13 +247,13 @@ for (const factory of testBackends()) {
       expect(await b.store.workerDrain.isSuppressed(t, "only-other@example.com")).toBe(false);
     });
 
-    it("getFlowThrottleInfo returns class and compiled plan", async () => {
+    it("getFlowThrottleInfo returns class, compiled plan and email template", async () => {
       const t = await b.newTenant();
       const plan = { steps: [{ order: 1, wait: "1d" }], frequency: { maxPerDay: 1 } };
-      const f = await seedFlow(b, t, { flowClass: "critical", compiledPlan: plan });
+      const f = await seedFlow(b, t, { flowClass: "critical", compiledPlan: plan, emailTemplate: "letter" });
       const plain = await seedFlow(b, t);
-      expect(await b.store.workerDrain.getFlowThrottleInfo(f)).toEqual({ flowClass: "critical", compiledPlan: plan });
-      expect(await b.store.workerDrain.getFlowThrottleInfo(plain)).toEqual({ flowClass: "nurture", compiledPlan: null });
+      expect(await b.store.workerDrain.getFlowThrottleInfo(f)).toEqual({ flowClass: "critical", compiledPlan: plan, emailTemplate: "letter" });
+      expect(await b.store.workerDrain.getFlowThrottleInfo(plain)).toEqual({ flowClass: "nurture", compiledPlan: null, emailTemplate: null });
       expect(await b.store.workerDrain.getFlowThrottleInfo(MISSING)).toBeNull();
     });
 

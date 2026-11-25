@@ -35,6 +35,7 @@ import {
   QUEUE,
   pendingApprovalBatch,
   wrapInShell,
+  resolveMessageLayout,
   buildShellComplianceHtml,
   stepPresentation,
   type BrandSettings,
@@ -114,23 +115,25 @@ async function buildPreviews(db: Db, tenantId: string, rows: MessageListRow[]): 
     addr || "No postal address set. Mail is held until one is set in Settings.",
     tenant?.locale ?? null,
   );
-  const layout = await loadCustomLayout(db, tenantId, brand.template);
   const plans = new Map<string, unknown>();
+  const shells = new Map<string, Awaited<ReturnType<typeof resolveMessageLayout<BrandSettings>>>>();
+  const load = (id: string) => loadCustomLayout(db, tenantId, id);
   for (const flowId of new Set(rows.filter((r) => r.body_html).map((r) => r.flow_id))) {
     const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: flowId });
     plans.set(flowId, flow?.compiledPlan ?? null);
+    shells.set(flowId, await resolveMessageLayout(brand, flow?.emailTemplate, load));
   }
   for (const r of rows) {
     if (!r.body_html) continue;
     const presentation = stepPresentation(plans.get(r.flow_id) ?? null, r.flow_step_order, r.brain_action_type);
     out.set(r.id, wrapInShell({
       bodyHtml: r.body_html,
-      brand,
+      brand: shells.get(r.flow_id)?.brand ?? brand,
       tenantName: tenant?.name ?? "Our Team",
       complianceFooterHtml: footer,
       eyebrow: presentation.eyebrow,
       preheader: presentation.preheader,
-      layout,
+      layout: shells.get(r.flow_id)?.layout ?? null,
     }));
   }
   return out;

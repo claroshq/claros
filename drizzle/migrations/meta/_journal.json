@@ -239,6 +239,13 @@
       "when": 1795615130528,
       "tag": "0033_email_layouts",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795618941277,
+      "tag": "0034_flow_email_template",
+      "breakpoints": true
     }
   ]
 }

@@ -256,6 +256,7 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         .select({
           flowClass: flows.flowClass,
           compiledPlan: flows.compiledPlan,
+          emailTemplate: flows.emailTemplate,
         })
         .from(flows)
         .where(eq(flows.id, flowId))

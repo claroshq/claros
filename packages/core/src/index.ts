@@ -218,6 +218,7 @@ export {
   layoutValues,
   renderLayout,
   resolveLayout,
+  resolveMessageLayout,
   tintHex,
   type LayoutWidth,
   type LayoutTemplate,

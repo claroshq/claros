@@ -20,6 +20,11 @@ import { WEBHOOK_EVENTS, ANALYTICS_SINKS } from "../webhooks.js";
 /** Slugs of flows, templates, topics and webhooks: 1-63 of [a-z0-9_-]. */
 export const CONFIG_SLUG = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const slug = z.string().regex(CONFIG_SLUG, { message: "slug: 1-63 characters of a-z, 0-9, _ and -, starting with a letter or digit" });
+
+/** A built-in email template key or a custom template id (UUID). */
+const emailTemplateRef = z
+  .string()
+  .regex(/^(?:[a-z][a-z0-9_-]{0,31}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
 const httpUrl = z.string().url().max(2000).refine((u) => /^https?:\/\//.test(u), { message: "must be an http(s) URL" });
 
 /**
@@ -146,6 +151,12 @@ export const configFlowSchema = z
       .optional(),
     /** Topic slug, or null for no topic. */
     topic: slug.nullable().optional(),
+    /**
+     * Email template of the flow's messages: a built-in key or the id of a
+     * template made on the Templates page; null or absent uses the
+     * product's template (settings.brand.template).
+     */
+    email_template: emailTemplateRef.nullable().optional(),
   })
   .strict()
   .superRefine((f, ctx) => {
@@ -259,9 +270,7 @@ export const configSettingsSchema = z
           .enum(BRAND_LAYOUTS)
           .describe('Email layout: "narrow" (default) is a centered card at most 600px wide; "wide" fills the reading pane and keeps paragraphs at most 680px wide.')
           .optional(),
-        template: z
-          .string()
-          .regex(/^(?:[a-z][a-z0-9_-]{0,31}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)
+        template: emailTemplateRef
           .describe('Email template the product sends with: a built-in key (classic, letter, banner, compact, wide, broadsheet, canvas) or the id of a template made on the Templates page. Wins over layout. A name that matches no template falls back to layout.')
           .optional(),
       })

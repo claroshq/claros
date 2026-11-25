@@ -115,8 +115,17 @@ Requested by the maintainer: a template library with built-in narrow and wide te
 
 - **Name.** The dashboard says "Templates"; the API is `/v1/layouts` and the table `email_layouts`, because `/v1/templates` (business-model templates) and `/v1/email-templates` (v0.6 content templates) already exist and stay as they are.
 - **A template is the whole document**, HTML with placeholders (`{{body}}`, `{{compliance_footer}}`, `{{logo}}`, ...), filled in one pass at send time. `{{body}}` and `{{compliance_footer}}` are required exactly once, so no template can drop the unsubscribe link and postal address. Built-in templates are code; `classic` and `wide` are the v0.8.7 narrow and wide shells, pinned byte for byte.
-- **Selection.** `settings.brand.template` (built-in key or custom id) wins over `brand.layout`; unset or naming a deleted template, `brand.layout` decides as before. One template per product; per-flow or per-topic templates are not built.
+- **Selection.** `settings.brand.template` (built-in key or custom id) wins over `brand.layout`; unset or naming a deleted template, `brand.layout` decides as before. One template per product at first; superseded the same day by per-flow templates (below).
 - **Third LLM place.** The studio calls the product's chat LLM at authoring time only (operator-initiated, dashboard), never on the send path. Architecture rule 2 in CLAUDE.md now names three places. Tokens are counted toward the daily LLM usage but the studio does not wait for the budget.
 - **Scope and client knowledge** are enforced in the prompt (off-topic answers get one sentence, breaking changes are proposed, not applied) and backed by deterministic checks in `@claros/core` (`validateLayoutSource` blocks saving, `lintLayoutSource` lists client issues). The model's template is validated before the operator sees it, with one repair round. Output is tagged text, not JSON.
 - **Stateless studio.** The working copy and chat live in the browser (sessionStorage per product and template); the server stores only saved templates. No chat history table.
+
+## 2026-11-25: Email template per flow
+
+Requested by the maintainer right after the template library shipped ("send this flow with that template"). Defaults taken:
+
+- **Per flow, not per step.** New nullable column `flows.email_template` (built-in key or `email_layouts` id), set in the flow editor's Delivery settings, on `POST/PATCH /v1/flows` and in config documents (`email_template`). Per step can extend it later.
+- **Resolution at send time** (`resolveMessageLayout` in core): the flow's template when it names a built-in or an existing stored template, else the product's `brand.template`, else `brand.layout`. A flow pointing at a deleted template therefore falls back to the product default, never to an error.
+- **Deleting** a custom template that a non-archived flow uses answers 409 with the flow names; the Templates list reports `flow_count`.
+- Config documents do not check that a custom template id exists (they hold no template list); an unknown id falls back at send time like a deleted one. Built-in keys are checked.
 

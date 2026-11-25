@@ -43,6 +43,8 @@ export interface WorkerDrainContact {
 export interface WorkerDrainFlowThrottleInfo {
   flowClass: string;
   compiledPlan: unknown;
+  /** The flow's email template (built-in key or custom id), or null for the product's. */
+  emailTemplate: string | null;
 }
 
 /** A contact's recent send history (status 'sending' or 'sent'). */

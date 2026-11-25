@@ -48,14 +48,14 @@ afterAll(async () => {
   await pool.end();
 });
 
-async function sendOne(brand: Record<string, unknown>): Promise<string> {
+async function sendOne(brand: Record<string, unknown>, flowTemplate: string | null = null): Promise<string> {
   await db.update(tenants).set({ settings: { postal_address: "1 Test Street, Testville", brand: { brand_name: "Acme", accent_color: "#ff5500", ...brand } } }).where(eq(tenants.id, tenantId));
   const ext = randomUUID().slice(0, 8);
   const [c] = await db.insert(contacts).values({ tenantId, externalId: ext, email: `${ext}@example.com`, lifecycleState: "engaged" }).returning({ id: contacts.id });
   const [f] = await db
     .insert(flows)
     .values({
-      tenantId, name: "Welcome", slug: `welcome-${ext}`, triggerType: "manual", triggerConfig: {}, status: "paused",
+      tenantId, name: "Welcome", slug: `welcome-${ext}`, triggerType: "manual", triggerConfig: {}, status: "paused", emailTemplate: flowTemplate,
       steps: [{ order: 1, action_type: "welcome", delay: "0m", window_policy: "immediate" }],
       compiledPlan: { trigger: { type: "manual", condition: {} }, steps: [{ order: 1, action_type: "welcome", delay: "0m", window_policy: "immediate" }] },
     })
@@ -89,5 +89,19 @@ describe("drain email template", () => {
     const html = await sendOne({ template: randomUUID(), layout: "wide" });
     expect(html).toContain('<td align="center" style="padding:24px 12px 40px 12px;">');
     expect(html).not.toContain("custom-shell");
+  });
+
+  it("sends in the flow's template over the product's", async () => {
+    const [row] = await db.insert(emailLayouts).values({ tenantId, name: "Flow", width: "narrow", source: CUSTOM.replace("custom-shell", "flow-shell") }).returning({ id: emailLayouts.id });
+    const custom = await sendOne({ template: "letter" }, row!.id);
+    expect(custom).toContain('<div id="flow-shell"');
+    const builtin = await sendOne({ template: "letter" }, "compact");
+    expect(builtin).toContain("max-width:520px");
+    expect(builtin).not.toContain("Georgia");
+  });
+
+  it("falls back to the product's template when the flow's template is gone", async () => {
+    const html = await sendOne({ template: "letter" }, randomUUID());
+    expect(html).toContain("Georgia,'Times New Roman',Times,serif");
   });
 });

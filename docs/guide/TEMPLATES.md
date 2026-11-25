@@ -2,7 +2,7 @@
 
 An email template is the HTML document every email of a product is sent in: the page background, the header with the logo, the card or column the message sits in, and the footer with the unsubscribe link and postal address. The message text itself comes from your flows and arrives in the template's `{{body}}`.
 
-Each product sends with one template. Claros ships seven built-in templates, and you can change any of them, or your own copies, by describing what you want in the template studio.
+Each product has a default template, and a flow can choose its own. Claros ships seven built-in templates, and you can change any of them, or your own copies, by describing what you want in the template studio.
 
 ![Templates page](assets/templates.png)
 
@@ -37,6 +37,20 @@ The choice is stored as `settings.brand.template`: a built-in key or the id of o
 Without `brand.template`, `brand.layout` decides as before: `"wide"` sends with `wide`, anything else with `classic`. A product that never chose a template sends exactly the HTML it sent before templates existed. If the template named in `brand.template` was deleted, the product falls back to `brand.layout` the same way.
 
 The change applies to every email sent after it, including mail already approved and waiting to be sent: the template is applied at send time, around the stored message.
+
+## A template per flow
+
+A flow can send in a template other than the product's: open the flow, **Delivery settings**, **Email template**, and pick one. **Product default** (the first entry) follows the product's template, including later changes to it. The Templates page shows on each card how many flows use it.
+
+Over the API, set `email_template` on `POST /v1/flows` or `PATCH /v1/flows/:id`: a built-in key or the id of one of the product's templates; `null` goes back to the product default. Other values answer `400`. In a config document the flow key is `email_template` (absent keeps the flow's current template, `null` clears it).
+
+The template a message is sent in, at send time:
+
+1. the flow's `email_template`, when it names a built-in template or a template of the product that still exists;
+2. else the product's `settings.brand.template`;
+3. else `brand.layout` (`wide`, or `classic`).
+
+A custom template that a flow uses cannot be deleted (`409`, naming the flows); choose another template for those flows first. The Approvals preview renders each draft in the template its flow resolves to.
 
 ## The template studio
 
@@ -102,11 +116,11 @@ All routes take the product from the session or the `X-Claros-Product` header li
 
 | Route | Role | Does |
 |---|---|---|
-| `GET /v1/layouts` | member, admin key `config` | Every template (`ref`, `kind`, `name`, `description`, `width`, `based_on`, `in_use`) and `active`, the ref in use. `?previews=true` adds `preview_html` per template. |
+| `GET /v1/layouts` | member, admin key `config` | Every template (`ref`, `kind`, `name`, `description`, `width`, `based_on`, `in_use`, `flow_count`) and `active`, the product's default ref. `?previews=true` adds `preview_html` per template. |
 | `GET /v1/layouts/:ref` | member, admin key `config` | One template with its `source`, its `findings` and a `preview_html`. |
 | `POST /v1/layouts` | owner, admin key `config` | Create a template: `name`, `width` (`narrow` or `wide`), `source`, optional `description` and `based_on`. `422` with `findings` when it cannot be saved. |
 | `PUT /v1/layouts/:id` | owner, admin key `config` | Change `name`, `description`, `width` or `source` of a custom template. Built-in templates answer `409`. |
-| `DELETE /v1/layouts/:id` | owner, admin key `config` | Delete a custom template. The template in use answers `409`. |
+| `DELETE /v1/layouts/:id` | owner, admin key `config` | Delete a custom template. The template in use, and one a flow uses, answer `409`. |
 | `PUT /v1/layouts/active` | owner, admin key `config` | `{"template": ref}`: use this template for the product. |
 | `POST /v1/layouts/preview` | member | `{"source", "width"}`: the rendered sample and the findings, without saving. |
 | `POST /v1/layouts/assist` | owner | One studio turn: `{"source", "width", "message", "history"}` where `history` is the earlier `{role, content}` turns. Answers `decision` (`applied`, `proposed`, `answered`, `off_topic` or `failed`), `reply`, the new `source` when applied, `findings`, `new_findings` and `preview_html`. `422` without an LLM provider. Nothing is stored. |
