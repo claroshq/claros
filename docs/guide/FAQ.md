@@ -85,11 +85,35 @@ Fixed constraints: the drain sweep runs every 15 minutes (approvals and enrollme
 
 Look at the message status on the contact or in Sent: `skipped` (the brain's decide step said wait/skip, or a step condition was false), `value_gated` (the assess step judged the draft not worth sending), `suppressed`, `rejected`, or `failed` (with the reason attached). All of these are terminal and deliberate; none of them retry on their own. Generation failures can be retried from the Approvals screen.
 
+## People
+
+### How do I delete a person (for example a GDPR erasure request)?
+
+On the person's page (People, then the person), an owner uses **Actions**, **Delete person** and types the person's email (or user id when there is no email) to confirm. This erases the person from the product: events, lifecycle transitions, flow memberships, messages and their delivery events, topic statuses, notes and pending webhook deliveries about them. The suppression of the address stays, so it is not mailed again. It cannot be undone, and if your app sends the person again, they come back as a new contact.
+
+Over the API: `DELETE /v1/contacts/:external_id` (owner session or an admin key with `contacts:delete`) for one product, `DELETE /v1/instance/people/:email` (instance admin or an instance key with `people:erase`) for every product at once. See [API_KEYS.md](./API_KEYS.md#suppression-api).
+
+### How do I stop mailing one person but keep their history?
+
+**Exclude from mail** on the person's page (any member) or in Approvals: the address is suppressed and every message not sent yet is cancelled. Undo by removing the suppression (Sent Mail, Suppressions, or `DELETE /v1/suppressions/:email`). To stop only some kinds of mail, switch their topics on the same page; see [TOPICS.md](./TOPICS.md#setting-consent-from-the-dashboard).
+
+### Can my team keep notes on a person?
+
+Yes. The Notes card on the person's page keeps free-text notes with author and time, newest first. Any member can add and delete them. Notes are for the team only: the engine does not read them, they are not sent to the LLM, and they are erased with the person.
+
+### Why can't I change a person's plan or tags in the dashboard?
+
+The plan (`payment_status`, shown under Profile) and the person's properties come from your app's identify calls (`plan` or `payment_status`, and traits). Flows trigger on them, and the next identify would overwrite an edit made in the dashboard, so they are read-only there. Change them in your app and send identify. There are no manual tags; use traits for anything a flow should act on and notes for context your team writes by hand.
+
+### Where do I see the email a person actually received?
+
+On the person's page, each message in the timeline links (by its subject) to the mail as it was sent, under Sent Mail. That page shows the stored content, delivery events and, under **Made from**, the flow step and the template the step uses. The template link opens its current version, which may have changed since the mail was sent.
+
 ## Operations
 
 ### How do I back this up?
 
-One Postgres database holds everything. `docker compose exec postgres pg_dump -U claros claros > backup.sql`, plus a copy of `ENCRYPTION_KEY` and `UNSUBSCRIBE_SIGNING_KEY`. Details in [INSTALLATION.md](./INSTALLATION.md#backups).
+On Docker + Postgres, one Postgres database holds everything. `docker compose exec postgres pg_dump -U claros claros > backup.sql`, plus a copy of `ENCRYPTION_KEY` and `UNSUBSCRIBE_SIGNING_KEY`. Details in [INSTALLATION.md](./INSTALLATION.md#backups). On Cloudflare Workers + D1, `npx @claroshq/claros upgrade` backs up D1 before every upgrade (a Time Travel bookmark and an SQL export); see [Upgrade backups](../install/cloudflare.md#upgrade-backups).
 
 ### What data leaves my server?
 
@@ -143,7 +167,11 @@ Set `PORT` in `.env` (compose maps `${PORT:-3000}:3000`) and restart. If the app
 
 ### How do I update to a new release?
 
-`git pull && docker compose up -d --build`. Migrations run on boot in the compose stack. Back up first, and read the release notes. Details in [INSTALLATION.md](./INSTALLATION.md#upgrading).
+Docker + Postgres: `git pull && docker compose up -d --build`. Migrations run on boot in the compose stack. Back up first, and read the release notes.
+
+Cloudflare Workers + D1: `npx @claroshq/claros upgrade` (add `--name <instance>` for an instance other than `default`). It backs up D1, applies pending migrations, deploys the new version and rolls the Worker back if it does not come up.
+
+Details in [INSTALLATION.md](./INSTALLATION.md#upgrading).
 
 ### Where are the logs?
 
