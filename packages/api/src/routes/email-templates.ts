@@ -15,8 +15,7 @@
 import { z } from "zod";
 import { RoleRouter, validatedBody } from "../http/router.js";
 import { validateBody, coerceString } from "../http/validate.js";
-import { eq, and } from "drizzle-orm";
-import { templates } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 
 /**
@@ -60,21 +59,7 @@ export default function emailTemplatesRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select({
-        id: templates.id,
-        name: templates.name,
-        slug: templates.slug,
-        subject: templates.subject,
-        bodyHtml: templates.bodyHtml,
-        bodyText: templates.bodyText,
-        variables: templates.variables,
-        category: templates.category,
-        isActive: templates.isActive,
-        createdAt: templates.createdAt,
-      })
-      .from(templates)
-      .where(eq(templates.tenantId, tenantId));
+    const rows = await storeFor(db).apiEmailTemplates.listTemplates({ tenantId });
 
     return c.json({
       templates: rows.map((r) => ({
@@ -102,27 +87,12 @@ export default function emailTemplatesRoutes() {
     const tenantId = c.var.tenant!.id;
     const id = c.req.param("id")!;
 
-    const rows = await db
-      .select({
-        id: templates.id,
-        name: templates.name,
-        slug: templates.slug,
-        subject: templates.subject,
-        bodyHtml: templates.bodyHtml,
-        bodyText: templates.bodyText,
-        variables: templates.variables,
-        category: templates.category,
-        isActive: templates.isActive,
-        createdAt: templates.createdAt,
-      })
-      .from(templates)
-      .where(and(eq(templates.id, id), eq(templates.tenantId, tenantId)));
+    const r = await storeFor(db).apiEmailTemplates.getTemplate({ tenantId, id });
 
-    if (rows.length === 0) {
+    if (r === null) {
       return c.json({ error: "Template not found." }, 404);
     }
 
-    const r = rows[0]!;
     return c.json({
       template: {
         id: r.id,
@@ -173,33 +143,17 @@ export default function emailTemplatesRoutes() {
       }
 
       // Build update set
-      const updates: Record<string, unknown> = {};
+      const updates: { subject?: string; bodyHtml?: string; bodyText?: string | null } = {};
       if (subject !== undefined) updates.subject = subject.trim();
       if (body_html !== undefined) updates.bodyHtml = body_html.trim();
       if (body_text !== undefined) updates.bodyText = body_text?.trim() || null;
 
-      const result = await db
-        .update(templates)
-        .set(updates)
-        .where(and(eq(templates.id, id), eq(templates.tenantId, tenantId)))
-        .returning({
-          id: templates.id,
-          name: templates.name,
-          slug: templates.slug,
-          subject: templates.subject,
-          bodyHtml: templates.bodyHtml,
-          bodyText: templates.bodyText,
-          variables: templates.variables,
-          category: templates.category,
-          isActive: templates.isActive,
-          createdAt: templates.createdAt,
-        });
+      const r = await storeFor(db).apiEmailTemplates.updateTemplate({ tenantId, id, updates });
 
-      if (result.length === 0) {
+      if (r === null) {
         return c.json({ error: "Template not found." }, 404);
       }
 
-      const r = result[0]!;
       return c.json({
         template: {
           id: r.id,

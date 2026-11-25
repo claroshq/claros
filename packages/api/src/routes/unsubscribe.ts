@@ -62,8 +62,7 @@
  *   This implementation requires migration 0015 (recipient_address column on
  *   lifecycle_messages). That migration must be applied before this code runs.
  */
-import { eq, and, sql } from "drizzle-orm";
-import { lifecycleMessages, suppressions } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import { verifyUnsubscribeToken } from "@claros/adapters";
 import type { Db } from "../plugins/db.js";
 import { createRouter, parseBody } from "../http/router.js";
@@ -127,27 +126,15 @@ async function resolveAndSuppress(
   // have a recipient_address set. recipient_address is written before the send
   // attempt, so it may be present on messages that failed or are still in
   // transit. The status = 'sent' check is the authoritative proof of delivery.
-  const messageRows = await db
-    .select({
-      recipientAddress: lifecycleMessages.recipientAddress,
-      status: lifecycleMessages.status,
-    })
-    .from(lifecycleMessages)
-    .where(
-      and(
-        eq(lifecycleMessages.id, messageId),
-        eq(lifecycleMessages.tenantId, tenantId),
-      ),
-    )
-    .limit(1);
+  const messageRow = await storeFor(db).apiUnsubscribe.getMessageRecipient({ tenantId, messageId });
 
-  if (messageRows.length === 0) {
+  if (messageRow === null) {
     // Message row does not exist (purged, or token forged with a non-existent ID).
     // Return the same opaque failure - no enumeration.
     return { ok: false };
   }
 
-  const { recipientAddress, status } = messageRows[0]!;
+  const { recipientAddress, status } = messageRow;
 
   if (status !== "sent") {
     // Message exists but was not successfully delivered. This covers:
@@ -170,11 +157,12 @@ async function resolveAndSuppress(
   const normalizedEmail = recipientAddress.toLowerCase();
 
   // Step 3: write the suppression - idempotent via ON CONFLICT DO NOTHING
-  await db.execute(sql`
-    INSERT INTO suppressions (tenant_id, email, reason, source)
-    VALUES (${tenantId}::uuid, ${normalizedEmail}, ${UNSUBSCRIBE_REASON}, ${source})
-    ON CONFLICT (tenant_id, lower(email)) DO NOTHING
-  `);
+  await storeFor(db).apiUnsubscribe.suppressAddress({
+    tenantId,
+    email: normalizedEmail,
+    reason: UNSUBSCRIBE_REASON,
+    source,
+  });
 
   return { ok: true, email: normalizedEmail };
 }

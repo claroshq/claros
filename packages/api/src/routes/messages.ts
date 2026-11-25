@@ -19,7 +19,7 @@
  *
  * Tenant isolation: messages belonging to another tenant return 404.
  */
-import { sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter } from "../http/router.js";
 import { QUEUE } from "@claros/core";
@@ -169,44 +169,12 @@ export default function messagesRoutes() {
       cursor = decodeCursor(query.after);
     }
 
-    let rows: MessageListRow[];
-
-    if (cursor) {
-      const result = await db.execute<MessageListRow>(sql`
-        SELECT m.id, m.tenant_id, m.contact_id, m.flow_id, m.flow_step_order,
-               m.status, m.subject, m.body_html, m.body_text,
-               m.brain_reasoning, m.brain_action_type, m.created_at, m.updated_at,
-               m.scheduled_send_at,
-               c.email AS contact_email, c.name AS contact_name,
-               c.external_id AS contact_external_id
-        FROM lifecycle_messages m
-        LEFT JOIN contacts c
-          ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
-        WHERE m.tenant_id = ${tenantId}
-          AND m.status = ${statusFilter}
-          AND ROW(m.created_at, m.id) > ROW(${cursor.created_at}::timestamptz, ${cursor.id}::uuid)
-        ORDER BY m.created_at ASC, m.id ASC
-        LIMIT ${fetchLimit}
-      `);
-      rows = result.rows;
-    } else {
-      const result = await db.execute<MessageListRow>(sql`
-        SELECT m.id, m.tenant_id, m.contact_id, m.flow_id, m.flow_step_order,
-               m.status, m.subject, m.body_html, m.body_text,
-               m.brain_reasoning, m.brain_action_type, m.created_at, m.updated_at,
-               m.scheduled_send_at,
-               c.email AS contact_email, c.name AS contact_name,
-               c.external_id AS contact_external_id
-        FROM lifecycle_messages m
-        LEFT JOIN contacts c
-          ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
-        WHERE m.tenant_id = ${tenantId}
-          AND m.status = ${statusFilter}
-        ORDER BY m.created_at ASC, m.id ASC
-        LIMIT ${fetchLimit}
-      `);
-      rows = result.rows;
-    }
+    const rows = await storeFor(db).apiMessages.listMessages({
+      tenantId,
+      status: statusFilter,
+      after: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+      limit: fetchLimit,
+    });
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
@@ -247,16 +215,7 @@ export default function messagesRoutes() {
     }
 
     const now = new Date();
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'approved', approved_at = ${now}, updated_at = ${now}
-      WHERE tenant_id = ${tenantId}
-        AND status = 'pending_approval'
-        AND id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])
-      RETURNING id
-    `);
-
-    const approved = casResult.rows.map((r) => r.id);
+    const approved = await storeFor(db).apiMessages.approveMessages({ tenantId, ids, now });
 
     const enqueue = c.var.enqueue;
     if (enqueue) {
@@ -295,16 +254,7 @@ export default function messagesRoutes() {
     }
 
     const now = new Date();
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'rejected', updated_at = ${now}
-      WHERE tenant_id = ${tenantId}
-        AND status = 'pending_approval'
-        AND id = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])
-      RETURNING id
-    `);
-
-    const rejected = casResult.rows.map((r) => r.id);
+    const rejected = await storeFor(db).apiMessages.rejectMessages({ tenantId, ids, now });
     const rejectedSet = new Set(rejected);
     return c.json({
       rejected,
@@ -335,16 +285,7 @@ export default function messagesRoutes() {
     const now = new Date();
 
     // Attempt CAS: pending_approval -> approved
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'approved', approved_at = ${now}, updated_at = ${now}
-      WHERE id = ${messageId}
-        AND tenant_id = ${tenantId}
-        AND status = 'pending_approval'
-      RETURNING id
-    `);
-
-    if (casResult.rows.length > 0) {
+    if (await storeFor(db).apiMessages.approveMessage({ tenantId, messageId, now })) {
       // Transition succeeded - enqueue targeted drain for immediate send
       const enqueue = c.var.enqueue;
       if (enqueue) {
@@ -358,16 +299,11 @@ export default function messagesRoutes() {
     }
 
     // CAS did not match. Determine why: not found, wrong tenant, or different status.
-    const existing = await db.execute<{ id: string; status: string }>(sql`
-      SELECT id, status FROM lifecycle_messages
-      WHERE id = ${messageId} AND tenant_id = ${tenantId}
-    `);
+    const currentStatus = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
 
-    if (existing.rows.length === 0) {
+    if (currentStatus === null) {
       return c.json({ error: "Message not found." }, 404);
     }
-
-    const currentStatus = existing.rows[0]!.status;
 
     // Idempotent: already approved is a no-op
     if (currentStatus === "approved") {
@@ -407,30 +343,16 @@ export default function messagesRoutes() {
     const now = new Date();
 
     // Attempt CAS: pending_approval -> rejected
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'rejected', updated_at = ${now}
-      WHERE id = ${messageId}
-        AND tenant_id = ${tenantId}
-        AND status = 'pending_approval'
-      RETURNING id
-    `);
-
-    if (casResult.rows.length > 0) {
+    if (await storeFor(db).apiMessages.rejectMessage({ tenantId, messageId, now })) {
       return c.json({ message: "Message rejected.", id: messageId, status: "rejected" });
     }
 
     // Determine cause of CAS failure
-    const existing = await db.execute<{ id: string; status: string }>(sql`
-      SELECT id, status FROM lifecycle_messages
-      WHERE id = ${messageId} AND tenant_id = ${tenantId}
-    `);
+    const currentStatus = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
 
-    if (existing.rows.length === 0) {
+    if (currentStatus === null) {
       return c.json({ error: "Message not found." }, 404);
     }
-
-    const currentStatus = existing.rows[0]!.status;
 
     // Idempotent: already rejected is a no-op
     if (currentStatus === "rejected") {
@@ -473,34 +395,21 @@ export default function messagesRoutes() {
 
     const now = new Date();
 
-    const casResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET status = 'pending_generation', retry_count = 0, updated_at = ${now}
-      WHERE id = ${messageId}
-        AND tenant_id = ${tenantId}
-        AND status = 'failed'
-        AND brain_reasoning LIKE 'generation_failed:%'
-      RETURNING id
-    `);
-
-    if (casResult.rows.length > 0) {
+    if (await storeFor(db).apiMessages.requeueFailedGeneration({ tenantId, messageId, now })) {
       return c.json({ message: "Message re-queued for generation.", id: messageId, status: "pending_generation" });
     }
 
-    const existing = await db.execute<{ id: string; status: string }>(sql`
-      SELECT id, status FROM lifecycle_messages
-      WHERE id = ${messageId} AND tenant_id = ${tenantId}
-    `);
+    const currentStatus = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
 
-    if (existing.rows.length === 0) {
+    if (currentStatus === null) {
       return c.json({ error: "Message not found." }, 404);
     }
 
     return c.json(
       {
-        error: `Cannot retry message in status '${existing.rows[0]!.status}'.`,
+        error: `Cannot retry message in status '${currentStatus}'.`,
         id: messageId,
-        status: existing.rows[0]!.status,
+        status: currentStatus,
       },
       409,
     );

@@ -12,7 +12,7 @@
  * explicitly activate the flow to start enrollment. No LLM is required.
  */
 import { RoleRouter } from "../http/router.js";
-import { sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import {
   LIBRARY_TEMPLATES,
@@ -65,74 +65,35 @@ export default function libraryRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    // Check if already installed (by flow name + source = library)
-    const existing = await db.execute<{ id: string }>(sql`
-      SELECT id FROM flows
-      WHERE tenant_id = ${tenantId}
-        AND name = ${LIBRARY_FLOW_WELCOME.name}
-        AND source = 'library'
-      LIMIT 1
-    `);
+    const store = storeFor(db).apiLibrary;
 
-    if (existing.rows.length > 0) {
+    // Check if already installed (by flow name + source = library)
+    const existingId = await store.findInstalledLibraryFlow({
+      tenantId,
+      name: LIBRARY_FLOW_WELCOME.name,
+    });
+
+    if (existingId !== null) {
       return c.json({
         error: "Library flow already installed.",
-        flowId: existing.rows[0]!.id,
+        flowId: existingId,
       }, 409);
     }
 
     // Install templates (idempotent via ON CONFLICT DO NOTHING on tenant_id + slug)
     let templatesCreated = 0;
     for (const tmpl of LIBRARY_TEMPLATES) {
-      const result = await db.execute<{ id: string }>(sql`
-        INSERT INTO templates (tenant_id, name, slug, subject, body_html, body_text, variables, category)
-        VALUES (
-          ${tenantId},
-          ${tmpl.name},
-          ${tmpl.slug},
-          ${tmpl.subject},
-          ${tmpl.bodyHtml},
-          ${tmpl.bodyText},
-          ${sql`ARRAY[${sql.join(tmpl.variables.map(v => sql`${v}`), sql`, `)}]::text[]`},
-          ${tmpl.category}
-        )
-        ON CONFLICT (tenant_id, slug) DO NOTHING
-        RETURNING id
-      `);
-      if (result.rows.length > 0) {
+      if (await store.insertTemplateIfAbsent({ tenantId, template: tmpl })) {
         templatesCreated++;
       }
     }
 
     // Create the flow with pre-compiled plan (compile_status = 'ready')
-    const flowResult = await db.execute<{ id: string }>(sql`
-      INSERT INTO flows (
-        tenant_id, name, description, trigger_type, trigger_config, steps,
-        source, status, approval_mode, flow_class, reentry_policy,
-        reentry_cooldown_days, priority, compiled_plan, compile_status, compiled_at
-      )
-      VALUES (
-        ${tenantId},
-        ${LIBRARY_FLOW_WELCOME.name},
-        ${LIBRARY_FLOW_WELCOME.description},
-        ${LIBRARY_FLOW_WELCOME.triggerType},
-        ${JSON.stringify(LIBRARY_FLOW_WELCOME.triggerConfig)}::jsonb,
-        ${JSON.stringify(LIBRARY_FLOW_WELCOME.steps)}::jsonb,
-        ${LIBRARY_FLOW_WELCOME.source},
-        'draft',
-        ${LIBRARY_FLOW_WELCOME.approvalMode},
-        ${LIBRARY_FLOW_WELCOME.flowClass},
-        ${LIBRARY_FLOW_WELCOME.reentryPolicy},
-        ${LIBRARY_FLOW_WELCOME.reentryCooldownDays},
-        ${LIBRARY_FLOW_WELCOME.priority},
-        ${JSON.stringify(LIBRARY_FLOW_WELCOME.compiledPlan)}::jsonb,
-        'ready',
-        ${new Date()}
-      )
-      RETURNING id
-    `);
-
-    const flowId = flowResult.rows[0]!.id;
+    const flowId = await store.createLibraryFlow({
+      tenantId,
+      flow: LIBRARY_FLOW_WELCOME,
+      compiledAt: new Date(),
+    });
 
     const result: InstallResult = {
       flowId,

@@ -33,14 +33,13 @@
  *   8. Returns the created flows for confirmation.
  */
 import { RoleRouter } from "../http/router.js";
-import { eq } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import {
   BUSINESS_MODEL_TEMPLATES,
   BUSINESS_MODEL_TEMPLATE_LIST,
   BUSINESS_MODEL_IDS,
   type BusinessModelId,
 } from "@claros/core";
-import { tenants, flows } from "@claros/db/schema";
 import type { Db } from "../plugins/db.js";
 
 // ---------------------------------------------------------------------------
@@ -88,17 +87,12 @@ export default function templatesRoutes() {
     const template = BUSINESS_MODEL_TEMPLATES[templateId];
 
     // Read the current tenant row
-    const tenantRows = await db
-      .select({ businessModel: tenants.businessModel, settings: tenants.settings })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
+    const store = storeFor(db).apiTemplates;
+    const tenant = await store.getTenantTemplateState({ tenantId });
 
-    if (tenantRows.length === 0) {
+    if (tenant === null) {
       return c.json({ error: "Tenant not found." }, 404);
     }
-
-    const tenant = tenantRows[0]!;
 
     // Reject if a template is already applied
     if (tenant.businessModel) {
@@ -128,13 +122,11 @@ export default function templatesRoutes() {
     };
 
     // Write the settings and business_model in a single UPDATE
-    await db
-      .update(tenants)
-      .set({
-        businessModel: template.id,
-        settings: updatedSettings,
-      })
-      .where(eq(tenants.id, tenantId));
+    await store.setBusinessModel({
+      tenantId,
+      businessModel: template.id,
+      settings: updatedSettings,
+    });
 
     // Create the template flows as drafts (no compilation).
     // Each flow gets source = 'library' to indicate it came from a template.
@@ -151,29 +143,19 @@ export default function templatesRoutes() {
         window_policy: templateFlow.window_policy,
       };
 
-      const [inserted] = await db
-        .insert(flows)
-        .values({
-          tenantId,
+      const inserted = await store.insertDraftFlow({
+        tenantId,
+        flow: {
           name: templateFlow.name,
           description: `Applied from "${template.name}" template.`,
-          priority: 0,
           triggerType: templateFlow.trigger_type,
           triggerConfig: templateFlow.trigger_config,
           steps: [placeholderStep],
-          source: "library",
-          status: "draft",
-          approvalMode: "require",
           flowClass: templateFlow.flow_class,
           reentryPolicy: templateFlow.reentry_policy,
-          reentryCooldownDays: 30,
           promptSource: templateFlow.prompt_source,
-          compiledPlan: null,
-          compiledAt: null,
-          compileStatus: null,
-          compileError: null,
-        })
-        .returning({ id: flows.id, name: flows.name, status: flows.status });
+        },
+      });
 
       if (inserted) {
         createdFlows.push({ id: inserted.id, name: inserted.name, status: inserted.status ?? "draft" });
