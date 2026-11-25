@@ -11,12 +11,17 @@
  * read). Postgres merges under a row lock instead.
  */
 import { and, eq, sql } from "drizzle-orm";
-import { tenants, topics, contactTopics, templates, flows, transportConfigs, webhookEndpoints, webhookOutbox } from "@claros/db/schema-sqlite";
+import { tenants, topics, contactTopics, templates, flows, transportConfigs, webhookEndpoints, webhookOutbox, llmConfigs } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import { d1ReindexContactDates } from "./contact-dates.js";
 import type { ApiConfigQueries } from "../areas/api-config.js";
 
 export function d1ApiConfig(db: D1Db): ApiConfigQueries {
   return {
+    reindexContactDates({ tenantId, properties, now }) {
+      return d1ReindexContactDates(db, tenantId, properties, now);
+    },
+
     async loadConfigState(tenantId) {
       const [t] = await db
         .select({ settings: tenants.settings, locale: tenants.locale, configVersion: tenants.configVersion })
@@ -30,7 +35,9 @@ export function d1ApiConfig(db: D1Db): ApiConfigQueries {
         db.select().from(transportConfigs).where(eq(transportConfigs.tenantId, tenantId)),
         db.select().from(webhookEndpoints).where(eq(webhookEndpoints.tenantId, tenantId)),
       ]);
+      const llm = await db.select({ id: llmConfigs.id }).from(llmConfigs).where(and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true))).limit(1);
       return {
+        hasLlm: llm.length > 0,
         settings: (t.settings as Record<string, unknown> | null) ?? {},
         locale: t.locale,
         configVersion: t.configVersion,

@@ -31,6 +31,7 @@
  * The budget machinery must be extended to cover the assessment path before the
  * worker is wired. See the next slice for the budget coverage requirement.
  */
+import { productSystemSuffix } from "./draft.js";
 import type { ChatMessage } from "../providers/types.js";
 import type { DraftPromptContext } from "./draft.js";
 
@@ -149,7 +150,7 @@ export function buildAssessMessages(ctx: AssessPromptContext): ChatMessage[] {
   userParts.push(`\n${body_markdown}`);
 
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: SYSTEM_PROMPT + productSystemSuffix(draftCtx) },
     { role: "user", content: userParts.join("\n") },
   ];
 }

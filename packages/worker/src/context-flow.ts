@@ -45,7 +45,7 @@
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
-import { compiledPlanSchema } from "@claros/core";
+import { compiledPlanSchema, planStepFor, type CompiledStep } from "@claros/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,6 +77,8 @@ export interface FlowStepSection {
    * Absent when the step carries no @template reference.
    */
   templateRef?: string;
+  /** The plan step itself (context, kb_select, choose and other step fields). */
+  step?: CompiledStep;
   /**
    * The sender display name from transport_configs.from_name.
    * Absent when no active transport config exists or from_name is null.
@@ -131,6 +133,7 @@ export async function buildFlowStepSection(
   let brainInstruction: string | undefined;
   let kbRef: string | undefined;
   let templateRef: string | undefined;
+  let stepDef: CompiledStep | undefined;
 
   if (flowRow.found) {
     const rawPlan = flowRow.compiledPlan;
@@ -141,7 +144,8 @@ export async function buildFlowStepSection(
       // safeParse returns success=false and we treat instruction as absent.
       const parsed = compiledPlanSchema.safeParse(rawPlan);
       if (parsed.success) {
-        const step = parsed.data.steps.find((s) => s.order === stepOrder);
+        const step = planStepFor(parsed.data, stepOrder);
+        stepDef = step;
         // step may be undefined (stepOrder beyond end of plan) - that is
         // handled by the optional chain: fields stay undefined.
         if (step?.brain_instruction) {
@@ -212,6 +216,7 @@ export async function buildFlowStepSection(
   if (brainInstruction !== undefined) result.brainInstruction = brainInstruction;
   if (kbRef !== undefined) result.kbRef = kbRef;
   if (templateRef !== undefined) result.templateRef = templateRef;
+  if (stepDef !== undefined) result.step = stepDef;
   if (senderName !== undefined) result.senderName = senderName;
   if (productName !== undefined) result.productName = productName;
   if (brainContext !== undefined) result.brainContext = brainContext;

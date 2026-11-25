@@ -23,6 +23,37 @@ export interface ApiKbEntryRow {
   isActive: boolean | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  /** G18 / G15 (null or default on rows written before P5). */
+  category?: string | null;
+  externalKey?: string | null;
+  data?: unknown;
+  pinned?: boolean | null;
+  importedAt?: Date | null;
+}
+
+/** One entry of a KB import (G15), already validated. */
+export interface KbImportEntry {
+  externalKey: string;
+  title: string;
+  content: string;
+  contentType: string;
+  category: string | null;
+  tags: string[] | null;
+  data: unknown;
+  pinned: boolean;
+  isActive: boolean;
+  sourceUrl: string | null;
+}
+
+export interface KbImportResult {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped_edited: number;
+  /** external keys of rows that were skipped because they were edited since their last import. */
+  skipped_keys: string[];
+  /** Ids of rows whose content was written (new embedding needed). */
+  contentChangedIds: string[];
 }
 
 /** Fields a PATCH may set on an entry; absent keys are left unchanged. */
@@ -35,6 +66,10 @@ export interface ApiKbEntryPatch {
   sourceUrl?: string;
   tags?: string[];
   isActive?: boolean;
+  category?: string | null;
+  externalKey?: string | null;
+  data?: unknown;
+  pinned?: boolean;
   embeddingStatus?: string;
   embeddingError?: null;
 }
@@ -54,6 +89,10 @@ export interface ApiKbQueries {
     tags: string[] | null;
     embeddingStatus?: "pending";
     isActive: boolean;
+    category?: string | null;
+    externalKey?: string | null;
+    data?: unknown;
+    pinned?: boolean;
   }): Promise<ApiKbEntryRow | undefined>;
   /**
    * One page of the tenant's entries ordered by (created_at truncated to ms, id),
@@ -79,4 +118,23 @@ export interface ApiKbQueries {
   listReEmbedCandidateIds(args: { tenantId: string; orphanThresholdMinutes: number }): Promise<string[]>;
   /** Set embedding_status = 'pending', clear embedding_error for the tenant's given entries. */
   markEntriesPendingEmbedding(args: { tenantId: string; ids: string[]; now: Date }): Promise<void>;
+  /** The tenant's entry with this external key, or null. */
+  findEntryByExternalKey(args: { tenantId: string; externalKey: string }): Promise<ApiKbEntryRow | null>;
+  /**
+   * G15 import: upsert by (tenant, external_key). A new key is created
+   * (source 'import'); an existing row is overwritten only when it is
+   * untouched since its last import (updated_at <= imported_at) or `force`
+   * is set, else counted as skipped_edited; a row whose fields already equal
+   * the entry is unchanged and not written. Never deletes. With dryRun
+   * nothing is written. With markPending, rows whose content is written get
+   * embedding_status 'pending'.
+   */
+  importEntries(args: {
+    tenantId: string;
+    entries: KbImportEntry[];
+    force: boolean;
+    dryRun: boolean;
+    markPending: boolean;
+    now: Date;
+  }): Promise<KbImportResult>;
 }

@@ -51,6 +51,8 @@ import { d1WorkerReap } from "./worker-reap.js";
 import { d1WorkerScanEngagementDepth } from "./worker-scan-engagement-depth.js";
 import { d1WorkerScanEnrollment } from "./worker-scan-enrollment.js";
 import { d1WorkerScanSegmentEnrollment } from "./worker-scan-segment-enrollment.js";
+import { d1WorkerDates } from "./worker-dates.js";
+import { d1ApiImport } from "./api-import.js";
 import { d1WorkerScanStepAdvancement } from "./worker-scan-step-advancement.js";
 import { d1WorkerScanTimeTransitions } from "./worker-scan-time-transitions.js";
 import { d1WorkerSnapshotRetentionGrid } from "./worker-snapshot-retention-grid.js";
@@ -113,6 +115,8 @@ export function createD1Store(db: D1Db): Store {
     workerScanEngagementDepth: d1WorkerScanEngagementDepth(db),
     workerScanEnrollment: d1WorkerScanEnrollment(db),
     workerScanSegmentEnrollment: d1WorkerScanSegmentEnrollment(db),
+    workerDates: d1WorkerDates(db),
+    apiImport: d1ApiImport(db),
     workerScanStepAdvancement: d1WorkerScanStepAdvancement(db),
     workerScanTimeTransitions: d1WorkerScanTimeTransitions(db),
     workerSnapshotRetentionGrid: d1WorkerSnapshotRetentionGrid(db),

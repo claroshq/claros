@@ -47,6 +47,7 @@ import {
 } from "../shared/api-ingest.js";
 import { topics as topicsTable } from "@claros/db/schema-sqlite";
 import { upsertContactTopicSql } from "./contact-topics.js";
+import { d1SyncContactDates } from "./contact-dates.js";
 import { rawBatch as rawBatchShared } from "./raw-batch.js";
 
 interface IngestEventInput {
@@ -333,6 +334,20 @@ export function d1ApiIngest(db: D1Db): ApiIngestQueries {
         traitPlan: input.traitPlan,
       });
       return { deduplicated: result.deduplicated };
+    },
+
+    async syncContactDates({ tenantId, externalId, changedKeys, now }) {
+      const t = await db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+      const declared = (t[0]?.settings as { date_traits?: unknown } | null | undefined)?.date_traits;
+      const properties = Array.isArray(declared) ? declared.filter((k): k is string => typeof k === "string") : [];
+      if (properties.length === 0 || !changedKeys.some((k) => properties.includes(k))) return 0;
+      const rows = await db
+        .select({ id: contacts.id, properties: contacts.properties })
+        .from(contacts)
+        .where(and(eq(contacts.tenantId, tenantId), eq(contacts.externalId, externalId)))
+        .limit(1);
+      if (rows.length === 0) return 0;
+      return d1SyncContactDates(db, tenantId, rows, properties, now);
     },
 
     async applyContactTopics({ tenantId, externalId, topics: wanted, source, now }) {

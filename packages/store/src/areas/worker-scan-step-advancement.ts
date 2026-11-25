@@ -18,6 +18,8 @@ export interface WorkerStepAdvancementMembershipRow {
   currentStep: number;
   enteredAt: Date;
   conditionError: string | null;
+  /** Date triggers (G3): the anchor date of this enrollment, or null. */
+  anchorAt: Date | null;
 }
 
 /** A scan checkpoint row. */
@@ -105,5 +107,9 @@ export interface WorkerScanStepAdvancementQueries extends ContactConditionQuerie
     membershipId: string;
     stepOrder: number;
     actionType: string;
+    /** Earliest send time (G3 schedules); null/absent = as soon as approved. */
+    scheduledSendAt?: Date | null;
+    /** Step expires_after (G3): cancel the message if still unsent after this time. */
+    expiresAt?: Date | null;
   }): Promise<string | null>;
 }

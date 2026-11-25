@@ -151,3 +151,48 @@ describe("PUT /v1/config", () => {
     expect(reapply.json().changes).toEqual([]);
   });
 });
+
+describe("PUT /v1/config: P5 settings", () => {
+  it("stores data source secrets encrypted, keeps applies idempotent and never exports them", async () => {
+    const q = await newProduct(db, "config-p5");
+    const k = await newKey(db, q.tenantId, "admin", ["config"]);
+    const a = await app();
+    const docP5 = {
+      settings: {
+        data_sources: { leads: { url: "https://app.example/internal/context/leads", secret: "whsec_context_secret_value_1", timeout_ms: 5000, modes: ["normal", "inferred"] } },
+        date_traits: ["trial_ends_at"],
+      },
+      flows: [
+        {
+          slug: "nudge", name: "Nudge",
+          trigger: { type: "date_schedule", anchor: "trial_ends_at", offsets: ["1d"], max_sends: 1 },
+          steps: [{ order: 1, action_type: "nudge", delay: "0m", context: [{ source: "leads", mode: "inferred" }], on_empty: "skip" }],
+        },
+      ],
+    };
+    try {
+      const res = await a.inject({ method: "PUT", url: "/v1/config", headers: bearer(k), payload: docP5 });
+      expect(res.statusCode).toBe(200);
+      const [t] = await db.select().from(tenants).where(eq(tenants.id, q.tenantId));
+      const src = (t!.settings as any).data_sources.leads;
+      expect(src.secret).toBeUndefined();
+      expect(decrypt(src.secret_enc, parseEncryptionKey(ENCRYPTION_KEY))).toBe("whsec_context_secret_value_1");
+      const again = await a.inject({ method: "PUT", url: "/v1/config", headers: bearer(k), payload: docP5 });
+      expect(again.json().changes).toEqual([]);
+      const exported = await a.inject({ method: "GET", url: "/v1/config", headers: bearer(k) });
+      expect(JSON.stringify(exported.json())).not.toContain("secret_enc");
+
+      const badMode = structuredClone(docP5);
+      (badMode.flows[0]!.steps[0] as any).context[0].mode = "bogus";
+      const bad = await a.inject({ method: "PUT", url: "/v1/config", headers: bearer(k), payload: badMode });
+      expect(bad.statusCode).toBe(400);
+      const unknownKey = structuredClone(docP5);
+      (unknownKey.flows[0]!.steps[0] as any).surprise = true;
+      const strict = await a.inject({ method: "PUT", url: "/v1/config", headers: bearer(k), payload: unknownKey });
+      expect(strict.statusCode).toBe(400);
+      expect(JSON.stringify(strict.json())).toContain("surprise");
+    } finally {
+      await dropProduct(db, q.tenantId);
+    }
+  });
+});

@@ -31,6 +31,8 @@ import { pgWorkerEnroll } from "./worker-enroll.js";
 import { pgApiIngestion } from "./api-ingestion.js";
 import { pgWorkerScanEngagementDepth } from "./worker-scan-engagement-depth.js";
 import { pgWorkerScanSegmentEnrollment } from "./worker-scan-segment-enrollment.js";
+import { pgWorkerDates } from "./worker-dates.js";
+import { pgApiImport } from "./api-import.js";
 import { pgWorkerReap } from "./worker-reap.js";
 import { pgWorkerContextFlow } from "./worker-context-flow.js";
 import { pgApiInvite } from "./api-invite.js";
@@ -93,6 +95,8 @@ export function createPgStore(db: PgDb): Store {
     apiIngestion: pgApiIngestion(db),
     workerScanEngagementDepth: pgWorkerScanEngagementDepth(db),
     workerScanSegmentEnrollment: pgWorkerScanSegmentEnrollment(db),
+    workerDates: pgWorkerDates(db),
+    apiImport: pgApiImport(db),
     workerReap: pgWorkerReap(db),
     workerContextFlow: pgWorkerContextFlow(db),
     apiInvite: pgApiInvite(db),

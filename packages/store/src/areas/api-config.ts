@@ -18,4 +18,10 @@ export interface ApiConfigQueries {
     expectedVersion: number;
     now: Date;
   }): Promise<{ ok: true; configVersion: number } | { ok: false; conflict: true }>;
+  /**
+   * G3: rebuild the product's contact_dates index from contact properties for
+   * the declared date traits (after settings.date_traits changed). Idempotent,
+   * paged; not one atomic unit. Returns the number of date rows written.
+   */
+  reindexContactDates(input: { tenantId: string; properties: readonly string[]; now: Date }): Promise<number>;
 }

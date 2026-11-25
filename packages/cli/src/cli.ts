@@ -7,6 +7,8 @@
  *   claros doctor [--name <instance>]
  *   claros claim-url [--name <instance>]
  *   claros apply -f claros.config.json [--dry-run] [--url <url>] [--key <admin key>] [--name <instance>]
+ *   claros kb import <file.jsonl> [--dry-run] [--force] [--url <url>] [--key <admin key>] [--name <instance>]
+ *   claros import messages <file.jsonl> [--dry-run] [--url <url>] [--key <admin key>] [--name <instance>]
  */
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
@@ -15,6 +17,7 @@ import { claimUrlCommand, defaultContextParts, deploy, doctor, setProductHost, u
 import { defaultConfigDir } from "./state.js";
 import { spawnRunner, Wrangler, type Runner } from "./wrangler.js";
 import { applyConfig } from "./apply.js";
+import { kbImport, importMessages } from "./import.js";
 
 export const USAGE = `Usage: claros <command> [options]
 
@@ -30,6 +33,11 @@ Commands:
   apply -f <file>              Apply a product config document (PUT /v1/config);
                                --dry-run lists the changes. URL: --url, CLAROS_URL or
                                the instance --name; key: --key or CLAROS_ADMIN_KEY
+  kb import <file>             Import knowledge base entries (JSONL or a JSON array)
+                               by external_key (POST /v1/kb/import); --dry-run,
+                               --force overwrites entries edited since their import
+  import messages <file>       Import sent-message history (JSONL; POST
+                               /v1/import/messages); --dry-run
 
 Options:
   --name <instance>            Instance name (default "default"); resources are claros-<name>
@@ -37,7 +45,8 @@ Options:
   --account <id>               Cloudflare account id or name
   --non-interactive            Never prompt (CI)
   --dry-run                    deploy, apply: list the changes without making them
-  --force                      deploy: deploy the Worker even when nothing changed
+  --force                      deploy: deploy the Worker even when nothing changed;
+                               kb import: overwrite entries edited since their import
   -h, --help                   This help
   -v, --version                The Claros version this package deploys
 
@@ -137,6 +146,18 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     case "claim-url":
       await claimUrlCommand(ctx, common);
       return 0;
+    case "kb":
+      if (sub !== "import") {
+        console.error(`Unknown command "kb ${sub ?? ""}".\n\n${USAGE}`);
+        return 2;
+      }
+      return kbImport(ctx, { file: rest[0] ?? values.file, dryRun: values["dry-run"], force: values.force, url: values.url, key: values.key, name: values.name });
+    case "import":
+      if (sub !== "messages") {
+        console.error(`Unknown command "import ${sub ?? ""}".\n\n${USAGE}`);
+        return 2;
+      }
+      return importMessages(ctx, { file: rest[0] ?? values.file, dryRun: values["dry-run"], url: values.url, key: values.key, name: values.name });
     case "apply":
       return applyConfig(ctx, { file: values.file, dryRun: values["dry-run"], url: values.url, key: values.key, name: values.name });
     default:

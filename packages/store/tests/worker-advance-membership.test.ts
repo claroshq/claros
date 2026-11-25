@@ -29,6 +29,7 @@ for (const factory of testBackends()) {
         currentStep: 3,
         enteredAt,
         conditionError: null,
+        anchorAt: null,
         status: "active",
       });
       expect(

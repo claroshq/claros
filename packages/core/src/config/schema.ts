@@ -9,6 +9,7 @@ import { z } from "zod";
 import { compiledStepSchema, planExitConditionSchema } from "../flow/compiled-plan.js";
 import { contactConditionSchema } from "../conditions.js";
 import { linkTrackingSchema } from "../link-tracking.js";
+import { datePropertyTriggerSchema, dateScheduleTriggerSchema } from "../dates.js";
 import { TOPIC_KINDS } from "../topics-transports.js";
 import { WEBHOOK_EVENTS, ANALYTICS_SINKS } from "../webhooks.js";
 
@@ -16,6 +17,13 @@ import { WEBHOOK_EVENTS, ANALYTICS_SINKS } from "../webhooks.js";
 export const CONFIG_SLUG = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const slug = z.string().regex(CONFIG_SLUG, { message: "slug: 1-63 characters of a-z, 0-9, _ and -, starting with a letter or digit" });
 const httpUrl = z.string().url().max(2000).refine((u) => /^https?:\/\//.test(u), { message: "must be an http(s) URL" });
+
+/**
+ * A flow step in a config document: the compiled step shape, strict. An
+ * unknown key is an error (it would otherwise be dropped silently); stored
+ * plans and LLM-compiled plans keep the lenient compiledStepSchema.
+ */
+export const configStepSchema = compiledStepSchema.strict();
 
 export const configTopicSchema = z
   .object({
@@ -40,7 +48,7 @@ export const configTemplateSchema = z
 
 export const configTriggerSchema = z
   .object({
-    type: z.enum(["event", "lifecycle_transition", "segment", "manual"]),
+    type: z.enum(["event", "lifecycle_transition", "segment", "manual", "date_property", "date_schedule"]),
     /** event: the event name. */
     event: z.string().min(1).max(200).optional(),
     /** event: conditions that must hold for the contact (trait, history, first_contact). */
@@ -48,11 +56,26 @@ export const configTriggerSchema = z
     /** lifecycle_transition: from (optional) and to. */
     from: z.string().min(1).optional(),
     to: z.string().min(1).optional(),
+    /** date_property (G3): the date trait and the signed offset from it ("-3d"). */
+    property: z.string().min(1).max(64).optional(),
+    offset: z.string().optional(),
+    /** date_schedule (G3): the anchor date trait, offsets, repeat interval and cap. */
+    anchor: z.string().min(1).max(64).optional(),
+    offsets: z.array(z.string()).optional(),
+    repeat: z.string().optional(),
+    max_sends: z.number().int().optional(),
+    /** Date triggers: send at this local time ("09:00") on the due day. */
+    send_at_local: z.string().optional(),
   })
   .passthrough()
   .superRefine((t, ctx) => {
     if (t.type === "event" && !t.event) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "event triggers need 'event'" });
     if (t.type === "lifecycle_transition" && !t.to) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycle_transition triggers need 'to'" });
+    if (t.type === "date_property" || t.type === "date_schedule") {
+      const schema = t.type === "date_property" ? datePropertyTriggerSchema : dateScheduleTriggerSchema;
+      const r = schema.safeParse(t);
+      if (!r.success) for (const issue of r.error.issues) ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
+    }
   });
 
 export const configFlowSchema = z
@@ -64,7 +87,7 @@ export const configFlowSchema = z
     status: z.enum(["active", "paused", "draft"]).optional(),
     trigger: configTriggerSchema,
     /** Explicit steps (compiled plan steps). Either steps or prompt. */
-    steps: z.array(compiledStepSchema).min(1).max(50).optional(),
+    steps: z.array(configStepSchema).min(1).max(50).optional(),
     exit_conditions: z.array(planExitConditionSchema).max(20).optional(),
     /** A natural-language flow, compiled by the LLM after apply. */
     prompt: z.string().min(1).max(20_000).optional(),
@@ -89,6 +112,18 @@ export const configFlowSchema = z
     if (f.steps) {
       const orders = f.steps.map((s) => s.order);
       if (new Set(orders).size !== orders.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "step orders must be unique" });
+      for (const s of f.steps) {
+        if (s.type === "choose" && (!s.candidates || s.candidates.length === 0)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `step ${s.order}: a choose step needs candidates` });
+        }
+        if (s.type !== "choose" && (s.candidates !== undefined || s.allow_none !== undefined)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `step ${s.order}: candidates and allow_none belong to choose steps (type: "choose")` });
+        }
+        if (s.candidates) {
+          const types = s.candidates.map((c) => c.action_type);
+          if (new Set(types).size !== types.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `step ${s.order}: candidate action types must be unique` });
+        }
+      }
     }
   });
 
@@ -114,6 +149,36 @@ export const configAnalyticsSchema = z
   })
   .strict();
 
+/**
+ * G11: a context data source. The request is signed (Standard Webhooks)
+ * with `secret` (write-only: stored encrypted, never returned) or the
+ * environment variable / Worker secret named by `secret_ref`
+ * (`secret_env` is accepted as an alias).
+ */
+export const configDataSourceSchema = z
+  .object({
+    url: httpUrl.refine((u) => /^https:\/\//.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(u), {
+      message: "must be an absolute https URL (http only for localhost)",
+    }),
+    secret: z.string().min(16).max(500).optional(),
+    secret_ref: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/, { message: "secret_ref names an environment variable (A-Z, 0-9, _)" }).optional(),
+    secret_env: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/, { message: "secret_env names an environment variable (A-Z, 0-9, _)" }).optional(),
+    timeout_ms: z.number().int().min(100).max(30_000).optional(),
+    /** The signature scheme; only Standard Webhooks exists. */
+    signature: z.literal("standard-webhooks").optional(),
+    /** Modes the source accepts; when listed, steps may only use these. */
+    modes: z.array(z.string().min(1).max(64)).max(20).optional(),
+    /** Free-form description of the response, for people reading the config. */
+    response_shape: z.string().max(2000).optional(),
+  })
+  .strict();
+
+export const textRuleSchema = z.union([
+  z.string().min(1).max(500),
+  z.object({ find: z.string().min(1).max(500), replace: z.string().max(500) }).strict(),
+  z.object({ forbid: z.string().min(1).max(500) }).strict(),
+]);
+
 const LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
 export const configSettingsSchema = z
@@ -127,11 +192,17 @@ export const configSettingsSchema = z
     brain: z
       .object({
         guidelines: z.string().max(20_000).optional(),
-        text_rules: z.array(z.string().max(500)).max(100).optional(),
+        /**
+         * G19: a string is a writing rule given to the drafting model; an
+         * object is applied to every draft after drafting: {find, replace}
+         * replaces text (find is a literal string, or /pattern/flags), {forbid}
+         * fails the draft when the text appears.
+         */
+        text_rules: z.array(textRuleSchema).max(100).optional(),
       })
       .strict()
       .optional(),
-    data_sources: z.record(z.string().regex(/^[a-z0-9_]{1,64}$/), z.record(z.unknown())).optional(),
+    data_sources: z.record(z.string().regex(/^[a-z0-9_]{1,64}$/), configDataSourceSchema).optional(),
     date_traits: z.array(z.string().min(1).max(64)).max(50).optional(),
     activation_events: z.array(z.string().min(1).max(200)).max(50).optional(),
     analytics: configAnalyticsSchema.nullable().optional(),

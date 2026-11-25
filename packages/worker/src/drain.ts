@@ -630,8 +630,8 @@ export async function processOneMessage(
   // Step 8: Wrap body in branded email shell with compliance footer.
   // The shell is the complete HTML document; compliance is structural, placed
   // inside the shell footer. Stored row is NOT modified.
-  const shellComplianceHtml = buildShellComplianceHtml(compliance.unsubscribeUrl, postalAddress);
-  const shellComplianceText = buildShellComplianceText(compliance.unsubscribeUrl, postalAddress);
+  const shellComplianceHtml = buildShellComplianceHtml(compliance.unsubscribeUrl, postalAddress, tenantSettings?.locale);
+  const shellComplianceText = buildShellComplianceText(compliance.unsubscribeUrl, postalAddress, tenantSettings?.locale);
 
   const tenantName = tenantSettings?.tenantName ?? "Our Team";
   const brand = tenantSettings?.brand ?? {};
@@ -881,6 +881,8 @@ interface TenantDrainSettings {
   publicHost: string | null;
   /** G6 link tagging, when configured. */
   linkTracking?: LinkTracking | null;
+  /** G22: product locale for the footer strings. */
+  locale?: string | null;
 }
 
 /**
@@ -906,6 +908,7 @@ async function resolveTenantDrainSettings(db: Db, tenantId: string): Promise<Ten
     brand,
     publicHost: tenantRow.publicHost ?? null,
     linkTracking: resolveLinkTracking(settings),
+    locale: tenantRow.locale ?? null,
   };
 }
 

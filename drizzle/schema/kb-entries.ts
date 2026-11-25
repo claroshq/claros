@@ -5,8 +5,11 @@ import {
   timestamp,
   boolean,
   index,
+  uniqueIndex,
+  jsonb,
   customType,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { tenants } from "./tenants.js";
 
 // pgvector column type - vector(1536) for OpenAI-compatible embeddings
@@ -50,6 +53,16 @@ export const kbEntries = pgTable(
     embeddingStatus: text("embedding_status"), // null|pending|failed
     embeddingError: text("embedding_error"),   // human-readable reason when failed
     isActive: boolean("is_active").default(true),
+    /** G18: free-form grouping used by kb_select. */
+    category: text("category"),
+    /** G15: stable key from the source system; unique per product. */
+    externalKey: text("external_key"),
+    /** G18: the entry's structured source data (read-only reference). */
+    data: jsonb("data"),
+    /** G18: pinned entries always enter the brain context (within a budget). */
+    pinned: boolean("pinned").default(false).notNull(),
+    /** G15: when the import last wrote this row. */
+    importedAt: timestamp("imported_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
@@ -62,5 +75,9 @@ export const kbEntries = pgTable(
     ),
     // List endpoint cursor pagination: ORDER BY (created_at, id) per tenant.
     index("idx_kb_entries_tenant_created").on(table.tenantId, table.createdAt, table.id),
+    uniqueIndex("uq_kb_entries_external_key")
+      .on(table.tenantId, table.externalKey)
+      .where(sql`external_key IS NOT NULL`),
+    index("idx_kb_entries_category").on(table.tenantId, table.category),
   ]
 );

@@ -131,8 +131,8 @@ async function seed(b: Backend): Promise<Seeded> {
     })),
   );
   const messageIds = MESSAGES.map(() => randomUUID());
-  await b.db.insert(s.lifecycleMessages).values(
-    MESSAGES.map((m, i) => ({
+  // One row per statement: a multi-row insert would pass D1's limit of 100 bound parameters.
+  for (const row of MESSAGES.map((m, i) => ({
       id: messageIds[i],
       tenantId,
       contactId: contactIds[0],
@@ -143,8 +143,9 @@ async function seed(b: Backend): Promise<Seeded> {
       feedback: m.feedback,
       sentAt: m.sentAgo === null ? null : at(m.sentAgo),
       createdAt: at(m.createdAgo),
-    })),
-  );
+    }))) {
+    await b.db.insert(s.lifecycleMessages).values(row);
+  }
   await b.db.insert(s.messageEvents).values(
     MESSAGE_EVENTS.map((e) => ({
       id: randomUUID(),

@@ -7,6 +7,7 @@
  * folds ASCII only, Postgres lower() folds all of Unicode.
  */
 import { eq, and, sql } from "drizzle-orm";
+import { tenants as tenantsTbl } from "@claros/db/schema-sqlite";
 import { lifecycleMessages, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiUnsubscribeQueries } from "../areas/api-unsubscribe.js";
@@ -46,6 +47,11 @@ export function d1ApiUnsubscribe(db: D1Db): ApiUnsubscribeQueries {
       const endpoints = await d1OutboxEndpoints(db, tenantId, outbox);
       const inserts = d1OutboxInserts(db, tenantId, endpoints, outbox, now ?? new Date(), { afterChange: true });
       await rawBatch(db, [insert, ...inserts.map((i) => i.getSQL())]);
+    },
+
+    async getTenantLocale(tenantId) {
+      const rows = await db.select({ locale: tenantsTbl.locale }).from(tenantsTbl).where(eq(tenantsTbl.id, tenantId)).limit(1);
+      return rows[0]?.locale ?? null;
     },
 
     async findTenantIdByPublicHost(host) {

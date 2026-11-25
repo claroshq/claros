@@ -24,7 +24,6 @@ export function pgWorkerEmbedKb(db: PgDb): WorkerEmbedKbQueries {
           embedding: embedding,
           embeddingStatus: null,
           embeddingError: null,
-          updatedAt: new Date(),
         } as any)
         .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
     },
@@ -35,7 +34,6 @@ export function pgWorkerEmbedKb(db: PgDb): WorkerEmbedKbQueries {
         .set({
           embeddingStatus: "failed",
           embeddingError: reason,
-          updatedAt: new Date(),
         } as any)
         .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
     },

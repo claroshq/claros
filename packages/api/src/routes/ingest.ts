@@ -337,6 +337,10 @@ async function processIdentifyEvent(
   // the product, and non-boolean values, are ignored (the identify response
   // has no warnings field). The trait is also kept in properties like any other.
   if (!result.deduplicated) {
+    // G3: keep the contact's declared date traits indexed for date triggers.
+    if (traits && Object.keys(traits).length > 0) {
+      await storeFor(db).apiIngest.syncContactDates({ tenantId, externalId: body.userId, changedKeys: Object.keys(traits), now });
+    }
     const wanted = topicTrait(traits);
     if (wanted) {
       await storeFor(db).apiIngest.applyContactTopics({

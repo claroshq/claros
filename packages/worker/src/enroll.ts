@@ -62,6 +62,8 @@ export async function enrollContactInFlows(
   tenantId: string,
   candidateFlows: EnrollableFlow[],
   now: Date,
+  /** Date triggers (G3): the anchor value this enrollment is for. */
+  anchorAt: Date | null = null,
 ): Promise<EnrollmentResult[]> {
   if (candidateFlows.length === 0) return [];
 
@@ -70,5 +72,6 @@ export async function enrollContactInFlows(
     tenantId,
     candidateFlows,
     now,
+    anchorAt,
   });
 }

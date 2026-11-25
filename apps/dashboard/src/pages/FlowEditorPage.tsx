@@ -303,6 +303,25 @@ function TriggerSummary({ flow }: { flow: Flow }) {
         retention cell
       </>
     );
+  } else if (flow.trigger_type === "date_property") {
+    body = (
+      <>
+        The date trait <code className="font-mono text-[13px]">{cfg.property}</code>{" "}
+        is <code className="font-mono text-[13px]">{cfg.offset}</code> away
+        {cfg.send_at_local ? <>, at {cfg.send_at_local} local time</> : null}
+      </>
+    );
+  } else if (flow.trigger_type === "date_schedule") {
+    const raw = (flow.trigger_config ?? {}) as Record<string, unknown>;
+    const offsets = Array.isArray(raw.offsets) ? (raw.offsets as string[]).join(", ") : "";
+    body = (
+      <>
+        Scheduled from the date trait <code className="font-mono text-[13px]">{String(raw.anchor ?? "")}</code>{" "}
+        at <code className="font-mono text-[13px]">{offsets}</code>
+        {raw.repeat ? <>, then every <code className="font-mono text-[13px]">{String(raw.repeat)}</code></> : null}
+        , up to {String(raw.max_sends ?? "")} sends
+      </>
+    );
   } else {
     body = <code className="font-mono text-[13px]">{flow.trigger_type}</code>;
   }

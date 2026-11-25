@@ -93,13 +93,25 @@ export default function configRoutes() {
       return c.json({ dry_run: dryRun, changes: plan.changes, config_version: state.configVersion });
     }
 
-    const needsKey = plan.ops.some((op) => op.op === "upsertEndpoint" && op.secret !== undefined);
+    const needsKey =
+      plan.ops.some((op) => op.op === "upsertEndpoint" && op.secret !== undefined) ||
+      plan.ops.some((op) => op.op === "setSettings" && hasPlainSourceSecret(op.patch.data_sources));
     if (needsKey && !key) {
-      return c.json({ error: "ENCRYPTION_KEY is not configured. Set it before storing webhook or analytics secrets." }, 503);
+      return c.json({ error: "ENCRYPTION_KEY is not configured. Set it before storing webhook, analytics or data source secrets." }, 503);
     }
-    const ops: ConfigOp[] = plan.ops.map((op) =>
-      op.op === "upsertEndpoint" && op.secret !== undefined ? { ...op, secret: encrypt(op.secret, key!) } : op,
-    );
+    const ops: ConfigOp[] = plan.ops.map((op) => {
+      if (op.op === "upsertEndpoint" && op.secret !== undefined) return { ...op, secret: encrypt(op.secret, key!) };
+      if (op.op === "setSettings" && hasPlainSourceSecret(op.patch.data_sources)) {
+        // G11: data source secrets are stored encrypted (secret_enc), never in plain text.
+        const sources: Record<string, Record<string, unknown>> = {};
+        for (const [name, src] of Object.entries(op.patch.data_sources as Record<string, Record<string, unknown>>)) {
+          const { secret, ...rest } = src;
+          sources[name] = typeof secret === "string" ? { ...rest, secret_enc: encrypt(secret, key!) } : rest;
+        }
+        return { ...op, patch: { ...op.patch, data_sources: sources } };
+      }
+      return op;
+    });
     const applied = await storeFor(db).apiConfig.applyConfigOps({
       tenantId,
       ops,
@@ -108,6 +120,13 @@ export default function configRoutes() {
     });
     if (!applied.ok) {
       return c.json({ error: "The configuration changed while this apply ran. Run it again." }, 409);
+    }
+
+    // G3: a changed list of date traits re-indexes the product's contact dates.
+    const datePatch = ops.find((op): op is Extract<ConfigOp, { op: "setSettings" }> => op.op === "setSettings" && "date_traits" in op.patch);
+    if (datePatch) {
+      const traits = Array.isArray(datePatch.patch.date_traits) ? (datePatch.patch.date_traits as string[]) : [];
+      await storeFor(db).apiConfig.reindexContactDates({ tenantId, properties: traits, now: new Date() });
     }
 
     // Prompt-defined flows that are new or changed get compiled.
@@ -131,12 +150,27 @@ export default function configRoutes() {
   return r.app;
 }
 
+function hasPlainSourceSecret(v: unknown): boolean {
+  if (!v || typeof v !== "object") return false;
+  return Object.values(v as Record<string, unknown>).some((src) => !!src && typeof src === "object" && typeof (src as { secret?: unknown }).secret === "string");
+}
+
 /** The product's state as a config document (secrets left out). */
 function exportConfig(state: ConfigState): Record<string, unknown> {
   const s = state.settings;
   const settings: Record<string, unknown> = {};
   for (const k of ["brand", "throttle", "postal_address", "links", "link_tracking", "brain", "data_sources", "date_traits", "activation_events"]) {
-    if (s[k] !== undefined && s[k] !== null) settings[k] = s[k];
+    if (s[k] === undefined || s[k] === null) continue;
+    if (k === "data_sources" && typeof s[k] === "object") {
+      settings[k] = Object.fromEntries(
+        Object.entries(s[k] as Record<string, Record<string, unknown>>).map(([n, src]) => {
+          const { secret_enc: _enc, ...rest } = src ?? {};
+          return [n, rest];
+        }),
+      );
+      continue;
+    }
+    settings[k] = s[k];
   }
   if (state.locale) settings.locale = state.locale;
   const analytics = state.endpoints.find((e) => e.kind === "analytics");

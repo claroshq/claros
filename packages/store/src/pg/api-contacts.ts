@@ -198,6 +198,7 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
         await tx.execute(sql`DELETE FROM lifecycle_messages WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM flow_memberships WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM contact_topics WHERE tenant_id = ${t} AND contact_id = ${c}`);
+        await tx.execute(sql`DELETE FROM contact_dates WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM contact_conflicts WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM lifecycle_transitions WHERE tenant_id = ${t} AND contact_id = ${c}`);
         await tx.execute(sql`DELETE FROM events WHERE tenant_id = ${t} AND contact_id = ${c}`);

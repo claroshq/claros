@@ -48,6 +48,7 @@ async function attemptEnrollment(
   db: PgDb,
   candidate: EnrollmentCandidate,
   now: Date,
+  anchorAt: Date | null = null,
 ): Promise<WorkerEnrollResult> {
   const { flow, tenantId, contactId } = candidate;
 
@@ -166,6 +167,7 @@ async function attemptEnrollment(
       : null;
 
   if (
+    anchorAt === null &&
     !isReentryAllowed(
       flow.reentryPolicy as "once" | "cooldown" | "every_time",
       flow.reentryCooldownDays,
@@ -188,6 +190,7 @@ async function attemptEnrollment(
       currentStep: 1,
       status: "active",
       enteredAt: now,
+      anchorAt,
     })
     .onConflictDoNothing()
     .returning({ id: flowMemberships.id });
@@ -206,7 +209,7 @@ async function attemptEnrollment(
 
 export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
   return {
-    async enrollContactInFlows({ contactId, tenantId, candidateFlows, now }) {
+    async enrollContactInFlows({ contactId, tenantId, candidateFlows, now, anchorAt = null }) {
       return db.transaction(async (txHandle) => {
         const tx = txHandle as unknown as PgDb;
         if (candidateFlows.length === 0) return [];
@@ -231,6 +234,7 @@ export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
             tx,
             { flow, tenantId, contactId },
             now,
+            anchorAt,
           );
           results.push(result);
         }
@@ -248,6 +252,7 @@ export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
             tx,
             { flow, tenantId, contactId },
             now,
+            anchorAt,
           );
           results.push(result);
           if (result.enrolled) {

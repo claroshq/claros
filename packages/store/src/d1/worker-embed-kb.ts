@@ -22,14 +22,14 @@ export function d1WorkerEmbedKb(db: D1Db): WorkerEmbedKbQueries {
     async saveEmbedding(tenantId, kbEntryId, embedding) {
       await db
         .update(kbEntries)
-        .set({ embedding, embeddingStatus: null, embeddingError: null, updatedAt: new Date() })
+        .set({ embedding, embeddingStatus: null, embeddingError: null })
         .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
     },
 
     async markEmbeddingFailed(tenantId, kbEntryId, reason) {
       await db
         .update(kbEntries)
-        .set({ embeddingStatus: "failed", embeddingError: reason, updatedAt: new Date() })
+        .set({ embeddingStatus: "failed", embeddingError: reason })
         .where(and(eq(kbEntries.id, kbEntryId), eq(kbEntries.tenantId, tenantId)));
     },
   };

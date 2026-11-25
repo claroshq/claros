@@ -35,12 +35,18 @@ export const flowMemberships = sqliteTable(
     // flow is recompiled with a valid condition vocabulary. Self-clears when the
     // condition becomes parseable on a subsequent scan pass.
     conditionError: text("condition_error"),
+    /** Date triggers (G3): the anchor date this membership was enrolled for. */
+    anchorAt: integer("anchor_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     // [v2] Only ONE ACTIVE membership per flow per contact
     uniqueIndex("uq_flow_membership_active")
       .on(table.contactId, table.flowId)
       .where(sql`status = 'active'`),
+    // G3: one enrollment per (flow, contact, anchor date), whatever its status.
+    uniqueIndex("uq_flow_membership_anchor")
+      .on(table.tenantId, table.flowId, table.contactId, table.anchorAt)
+      .where(sql`anchor_at IS NOT NULL`),
     index("idx_flow_members_contact").on(table.contactId, table.status),
     index("idx_flow_members_flow").on(
       table.flowId,

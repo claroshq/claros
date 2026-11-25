@@ -127,8 +127,8 @@ The response lists each change:
 | Field | Default | Notes |
 |---|---|---|
 | `slug`, `name` | required | |
-| `trigger` | required | `{"type": "event", "event": "...", "where": [conditions]}`, `{"type": "lifecycle_transition", "from"?: "...", "to": "..."}`, `{"type": "segment", ...}`, `{"type": "manual"}` |
-| `steps` | | The plan, written out: `order`, `action_type`, `delay` (`0m`, `2h`, `3d`), `window_policy` (`immediate`, `respect_window`), `template_ref` (a template slug: fixed content) or `brain_instruction` (AI-drafted), `condition`, `exit_condition` |
+| `trigger` | required | `{"type": "event", "event": "...", "where": [conditions]}`, `{"type": "lifecycle_transition", "from"?: "...", "to": "..."}`, `{"type": "segment", ...}`, `{"type": "manual"}`, `{"type": "date_property", "property": "trial_ends_at", "offset": "-3d"}`, `{"type": "date_schedule", "anchor": "first_paid_at", "offsets": ["1d", "3d"], "repeat": "30d", "max_sends": 7}` (see [Flows](FLOWS.md#date-triggers)) |
+| `steps` | | The plan, written out: `order`, `action_type`, `delay` (`0m`, `2h`, `3d`), `window_policy` (`immediate`, `respect_window`), `template_ref` (a template slug: fixed content) or `brain_instruction` (AI-drafted), `condition`, `exit_condition`, `expires_after`, `context`, `on_empty`, `on_error`, `kb_select`, and for a choose step `type: "choose"`, `candidates`, `allow_none` (see [Flows](FLOWS.md)). An unknown step key is an error. |
 | `prompt` | | Instead of `steps`: a natural-language flow, compiled by your LLM after the apply (and again when the prompt changes) |
 | `exit_conditions` | none | Plan-level exits |
 | `status` | `active` for a new flow; unchanged otherwise | `active`, `paused`, `draft` |
@@ -148,6 +148,7 @@ Step `condition` (proceed only if true), step `exit_condition`, plan `exit_condi
 | `{"trait": {"key": "plan_tier", "op": "eq", "value": "pro"}}` | The contact's identify trait matches. `op`: `eq`, `neq`, `in` (value is a list), `exists`, `not_exists`, `gt`, `lt` (numbers or ISO dates). `key` may be a dotted path (`company.size`). |
 | `{"history": {"flow": "welcome", "within": "7d", "op": "none"}}` | Messages sent to the contact in this product, filtered by `flow` (slug), `action_type` or `topic` (slug), in the last `within` (`30m`, `12h`, `7d`; absent = ever): `none`, `any`, or `count_lt` with `value` |
 | `{"first_contact": true}` | Nothing was ever sent to the contact in this product (`false`: something was) |
+| `{"date_unchanged": true}` | Step conditions only: the date a date-triggered membership was enrolled for still equals the contact's date trait (always true on other flows) |
 
 An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true}}` exits the flow once the trait becomes true. Entries in `where` must all hold; an event trigger whose `where` is malformed never enrolls.
 
@@ -156,11 +157,13 @@ An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true
 | Key | Meaning |
 |---|---|
 | `brand`, `throttle`, `postal_address` | As in the dashboard settings |
-| `links` | Named links (`{"billing_url": "https://..."}`) |
+| `links` | Named links (`{"billing_url": "https://..."}`): `{{links.billing_url}}` in templates and brain instructions; the drafting model may use only these URLs (see [Flows](FLOWS.md#links-and-text-rules)) |
 | `link_tracking` | See below; `null` removes it |
-| `locale` | The product's locale (`en`, `de-AT`); `null` clears it |
-| `brain` | `guidelines` (text) and `text_rules` (list) for drafted content |
-| `data_sources`, `date_traits`, `activation_events` | Stored for the features that read them |
+| `locale` | The product's locale (`en`, `de-AT`); `null` clears it. The drafting language, and the language of the mail footer and the unsubscribe pages (English and Spanish; other languages fall back to English) |
+| `brain` | `guidelines` (markdown, given to the drafting and value-gate models, up to 12,000 characters are used) and `text_rules`: a string is a writing rule for the model, `{"find": "...", "replace": "..."}` rewrites every draft (`find` is literal text or `/pattern/flags`), `{"forbid": "..."}` blocks a draft containing it |
+| `data_sources` | Context sources for steps: `{"leads": {"url": "https://...", "secret": "...", "timeout_ms": 5000, "modes": ["normal", "inferred"]}}`. `secret` is write-only and stored encrypted (needs `ENCRYPTION_KEY`); `secret_ref` (alias `secret_env`) names an environment variable or Worker secret instead. See [Flows](FLOWS.md#context-sources) |
+| `date_traits` | Identify traits that hold dates (`["trial_ends_at", "first_paid_at"]`), indexed for date triggers. Changing the list re-indexes the product's contacts |
+| `activation_events` | Stored for the features that read them |
 | `analytics` | The [analytics sink](WEBHOOKS.md#analytics-sink): `sink` (`statsraven`, `webhook`), `endpoint`, `site_key`, `secret`; `null` removes it |
 
 A settings key in the document replaces that key; keys the document does not mention are kept.
@@ -172,3 +175,45 @@ With `link_tracking`, links in the body of each message that point to one of `do
 ## Webhooks
 
 `webhooks` lists signed webhook endpoints: `slug`, `url`, `events`, optional `enabled` (default `true`) and `secret`. See [Webhooks](WEBHOOKS.md) for the events, payloads and signature verification.
+
+## A product example (P5 features)
+
+A date schedule with a context source and an exit, a trial reminder at 09:00 local time, and a choose step over knowledge base categories (the `trial-ending` template and the topics are left out for brevity; a real document lists them):
+
+```json
+{
+  "settings": {
+    "locale": "en",
+    "date_traits": ["first_paid_at", "trial_ends_at"],
+    "links": { "icp_url": "https://app.example.com/icp" },
+    "link_tracking": { "domains": ["example.com"], "params": { "utm_source": "claros" } },
+    "brain": { "guidelines": "Write as the founder, first person.", "text_rules": ["No dashes.", { "forbid": "free trial" }] },
+    "data_sources": { "leads": { "url": "https://app.example.com/internal/claros/context/leads", "secret_ref": "CLAROS_SECRET_LEADS", "modes": ["normal", "inferred"] } }
+  },
+  "flows": [
+    {
+      "slug": "icp_setup_nudge", "name": "ICP setup nudge",
+      "trigger": { "type": "date_schedule", "anchor": "first_paid_at", "offsets": ["1d", "3d", "7d", "14d", "30d"], "repeat": "30d", "max_sends": 7,
+                   "where": [{ "trait": { "key": "payment_status", "op": "eq", "value": "paid" } }] },
+      "exit_conditions": [{ "trait": { "key": "icp_configured", "op": "eq", "value": true } }],
+      "steps": [{ "order": 1, "action_type": "icp_setup_nudge", "delay": "0m",
+                  "brain_instruction": "Show the examples and point to {{links.icp_url}}.",
+                  "context": [{ "source": "leads", "mode": "inferred", "limit": 3 }], "on_empty": "send" }]
+    },
+    {
+      "slug": "trial_ending", "name": "Trial ending", "flow_class": "critical", "approval_mode": "auto",
+      "trigger": { "type": "date_property", "property": "trial_ends_at", "offset": "-3d", "send_at_local": "09:00" },
+      "steps": [{ "order": 1, "action_type": "trial_ending", "delay": "0m", "template_ref": "trial-ending", "expires_after": "2d" }]
+    },
+    {
+      "slug": "nurture", "name": "Nurture",
+      "trigger": { "type": "event", "event": "active_day" },
+      "steps": [{ "order": 1, "action_type": "nurture", "delay": "0m", "type": "choose", "allow_none": true,
+                  "candidates": [
+                    { "action_type": "tip_trick", "kb_select": { "category": "tip_trick" }, "cooldown": "14d" },
+                    { "action_type": "feature_edu", "kb_select": { "category": "feature_edu", "tags_any_from_trait": "plan_tier" }, "cooldown": "14d" }
+                  ] }]
+    }
+  ]
+}
+```

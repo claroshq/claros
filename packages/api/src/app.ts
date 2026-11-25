@@ -40,6 +40,7 @@ import flowsRoutes from "./routes/flows.js";
 import contactsRoutes from "./routes/contacts.js";
 import analyticsRoutes from "./routes/analytics.js";
 import kbRoutes from "./routes/kb.js";
+import importRoutes from "./routes/import.js";
 import suppressionRoutes from "./routes/suppressions.js";
 import templatesRoutes from "./routes/templates.js";
 import messagesRoutes from "./routes/messages.js";
@@ -182,6 +183,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/contacts", contactsRoutes());
     app.route("/v1/analytics", analyticsRoutes());
     app.route("/v1/kb", kbRoutes());
+    app.route("/v1/import", importRoutes());
     app.route("/v1/suppressions", suppressionRoutes());
     app.route("/v1/templates", templatesRoutes());
     app.route("/v1/messages", messagesRoutes());

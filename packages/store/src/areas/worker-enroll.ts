@@ -31,5 +31,12 @@ export interface WorkerEnrollQueries {
     tenantId: string;
     candidateFlows: EnrollableFlow[];
     now: Date;
+    /**
+     * Date triggers (G3): the anchor date the enrollment is for. When set, the
+     * re-entry policy is not applied; instead the unique index on
+     * (tenant, flow, contact, anchor) admits one membership per anchor value
+     * (a second attempt returns reason 'concurrent_enrollment').
+     */
+    anchorAt?: Date | null;
   }): Promise<WorkerEnrollResult[]>;
 }

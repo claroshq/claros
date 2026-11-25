@@ -61,3 +61,14 @@ Defaults taken while implementing the instance layer; the maintainer may overrid
 - The request's product comes from `X-Claros-Product`, then `?product=`, then the session's product. Archived products are read-only (writes answer 409); workers keep running for them until a later release stops ingestion and sending.
 - Product slugs: 2 to 63 characters of `[a-z0-9-]`, fixed after creation. Instance settings keys: `^[a-z0-9][a-z0-9._-]{0,63}$`.
 - Admin and instance API keys can be stored but do not authenticate ingestion; their own authentication comes with the management API (P4).
+
+## 2026-11-25: Engine features for real products (P5, defaults)
+
+Defaults taken while implementing G3, G11, G15, G18, G19, G21, G22, G27 and G29; the maintainer may override:
+
+- **Date triggers.** A contact enrolls when a slot is due (not ahead of time), once per (flow, contact, anchor value) by a partial unique index on `flow_memberships.anchor_at`; re-entry policies do not apply to date flows. Slots older than 24 hours are never sent. A moved or removed date exits the enrollment (`date_changed`) and cancels its unsent messages. A schedule slot uses the plan step with the greatest order not above the slot number.
+- **Data source secrets.** `secret` is write-only and stored encrypted inside `settings.data_sources` (`secret_enc`); `secret_ref` (alias `secret_env`) names an environment variable or Worker secret. A source without a usable secret fails closed. `on_empty` defaults to `send`, `on_error` to `defer` (retried by reap).
+- **Link allowlist.** Active only once a product declares `links` or `link_tracking.domains` (earlier products keep their behaviour). URLs returned by a context source are allowed.
+- **KB import edits.** "Untouched since import" is `updated_at <= imported_at`; embedding writes no longer bump `updated_at`, and a re-embed keeps an untouched entry untouched. Entries without tags pass `tags_any_from_trait`. `best_match` is word overlap (the same on both backends).
+- **Choose filters.** Consent and throttle are checked flow-wide before per-candidate cooldown, `when`, KB availability and context. A forced action that is not a declared candidate records `none`.
+- **History import.** Each imported message gets its own completed membership (exit reason `imported`) so re-entry and step history see it; contacts are not created by the import.

@@ -4,6 +4,8 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
+  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -68,6 +70,20 @@ export const lifecycleMessages = pgTable(
     originalBodyText: text("original_body_text"),
     /** Action type forced by a regenerate request (G20); null = the step's own. */
     forcedActionType: text("forced_action_type"),
+    /** G18: the knowledge base entry this message used (kb_select). No FK: entries may be deleted. */
+    kbEntryId: uuid("kb_entry_id"),
+    /** G21: a historical message brought in by the history import. */
+    imported: boolean("imported").default(false).notNull(),
+    /** G21: idempotency key of an imported message. */
+    importKey: text("import_key"),
+    /** Step expires_after (G3): an unsent message is cancelled (reason 'expired') after this time. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /** G11: data returned by the step's context sources at render time. */
+    contextSnapshot: jsonb("context_snapshot"),
+    /** G27: the choose step's decision (choice, eligible, filtered out, reason). */
+    chooseDecision: jsonb("choose_decision"),
+    /** G29: the AI-drafted opening line of a fixed template. */
+    openingLine: text("opening_line"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
@@ -107,5 +123,17 @@ export const lifecycleMessages = pgTable(
     index("idx_messages_tenant_sent")
       .on(table.tenantId, table.sentAt)
       .where(sql`sent_at IS NOT NULL`),
+    // G21: one row per imported message key.
+    uniqueIndex("uq_messages_import_key")
+      .on(table.tenantId, table.importKey)
+      .where(sql`import_key IS NOT NULL`),
+    // G18: kb_select exclude_used (entries already sent to a contact).
+    index("idx_messages_kb_entry")
+      .on(table.tenantId, table.contactId, table.kbEntryId)
+      .where(sql`kb_entry_id IS NOT NULL`),
+    // G3: expiry sweep of unsent messages.
+    index("idx_messages_expires")
+      .on(table.tenantId, table.expiresAt)
+      .where(sql`expires_at IS NOT NULL`),
   ]
 );

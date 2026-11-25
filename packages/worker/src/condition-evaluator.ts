@@ -54,6 +54,11 @@ export interface EventChecker {
    * Absent: those conditions are reported as unknown shapes.
    */
   contact?: ContactConditionContext;
+  /**
+   * G3 `date_unchanged`: whether the membership's anchor date still equals
+   * the contact's date trait. Absent (memberships without an anchor): passes.
+   */
+  dateUnchanged?: () => Promise<boolean>;
 }
 
 async function contactCondition(condition: unknown, eventChecker: EventChecker): Promise<ConditionResult> {
@@ -101,6 +106,11 @@ export async function evaluateStepCondition(
 
   if (isContactCondition(cond)) {
     return contactCondition(cond, eventChecker);
+  }
+
+  if ("date_unchanged" in cond) {
+    const unchanged = eventChecker.dateUnchanged ? await eventChecker.dateUnchanged() : true;
+    return unchanged ? { outcome: "pass" } : { outcome: "fail" };
   }
 
   if ("lifecycle_state" in cond) {

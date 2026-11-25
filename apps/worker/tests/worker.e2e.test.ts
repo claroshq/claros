@@ -129,6 +129,11 @@ beforeAll(async () => {
         if (request.url.startsWith("https://hooks.workers-e2e.test/")) {
           return new Response(null, { status: 204 });
         }
+        // Fake OpenAI-compatible LLM (G27 choose): picks the eligible tip.
+        if (request.url === "https://llm.workers-e2e.test/v1/chat/completions") {
+          const content = body.includes("choose step") ? JSON.stringify({ choice: "tip_trick", reason: "a tip fits" }) : "{}";
+          return Response.json({ id: "x", choices: [{ message: { role: "assistant", content } }] });
+        }
         return new Response("unexpected outbound request", { status: 599 });
       },
       handleStructuredLogs: (log: { message: string }) => {
@@ -483,6 +488,75 @@ describe("Workers runtime: alerts", () => {
     await contentTick("2026-11-25T10:25:00Z");
     expect(alertMails().filter((m) => m.subject.includes("Resend webhooks are failing"))).toHaveLength(1);
   }, 60_000);
+});
+
+describe("Workers runtime: date schedules and choose (P5)", () => {
+  const DAY = 86_400_000;
+  /** Run 15-minute ticks (scan, content, drain) until the probe holds. */
+  async function tickUntil<T>(what: string, probe: () => Promise<T | null | undefined | false>): Promise<T> {
+    const worker = await mf.getWorker();
+    for (let i = 0; i < 20; i++) {
+      await worker.scheduled({ cron: "*/5 * * * *", scheduledTime: new Date(`2026-11-25T11:${String((i % 4) * 15).padStart(2, "0")}:00Z`) });
+      await new Promise((r) => setTimeout(r, 1200));
+      const v = await probe();
+      if (v) return v as T;
+    }
+    throw new Error(`timed out waiting for ${what}\nworker logs:\n${logs.join("\n")}`);
+  }
+  const resendTo = (email: string) =>
+    outbound.filter((c) => c.url === "https://api.resend.com/emails").map((c) => JSON.parse(c.body) as { to: string | string[]; subject: string }).filter((m) => ([] as string[]).concat(m.to).includes(email));
+
+  async function fixedFlow(name: string, triggerType: string, triggerConfig: Record<string, unknown>, step: Record<string, unknown>) {
+    const id = randomUUID();
+    await db.insert(schema.flows).values({
+      id, tenantId, name, triggerType, triggerConfig, steps: [step], contentMode: "fixed_content", approvalMode: "auto", flowClass: "critical",
+      status: "active", compileStatus: "ready", compiledAt: new Date(), compiledPlan: { trigger: { type: triggerType, condition: triggerConfig }, steps: [step] },
+    });
+    return id;
+  }
+
+  it("a date_schedule flow enrolls from contact_dates and sends its first slot", async () => {
+    await db.insert(schema.templates).values({ tenantId, name: "Nudge", slug: "p5-nudge", subject: "Set up your ICP", bodyHtml: "<p>Set it up.</p>" });
+    const flow = await fixedFlow("ICP nudge", "date_schedule", { anchor: "first_paid_at", offsets: ["1d", "3d"], max_sends: 2 }, {
+      order: 1, action_type: "icp_setup_nudge", delay: "0m", window_policy: "immediate", template_ref: "p5-nudge",
+    });
+    const contactId = randomUUID();
+    const paid = new Date(Date.now() - DAY - 10 * 60_000);
+    await db.insert(schema.contacts).values({ id: contactId, tenantId, externalId: "p5-dated", email: "dated@example.com", lifecycleState: "activated", properties: { first_paid_at: paid.toISOString() } });
+    await db.insert(schema.contactDates).values({ tenantId, contactId, property: "first_paid_at", value: paid });
+
+    await tickUntil("the scheduled mail", async () => resendTo("dated@example.com").length > 0);
+    const [m] = await db.select().from(schema.flowMemberships).where(eq(schema.flowMemberships.flowId, flow));
+    expect(m.anchorAt.getTime()).toBe(paid.getTime());
+    const msgs = await db.select().from(schema.lifecycleMessages).where(eq(schema.lifecycleMessages.flowId, flow));
+    expect(msgs.map((x: { flowStepOrder: number; status: string }) => [x.flowStepOrder, x.status])).toEqual([[1, "sent"]]);
+  }, 90_000);
+
+  it("a choose step asks the (fake) LLM, records the decision and sends the pick", async () => {
+    const envelope = encrypt(JSON.stringify({ apiKey: "sk-fake", baseUrl: "https://llm.workers-e2e.test/v1", model: "fake" }), parseEncryptionKey(ENCRYPTION_KEY));
+    await db.insert(schema.llmConfigs).values({ tenantId, provider: "openai", config: envelope, isActive: true });
+    await db.insert(schema.templates).values({ tenantId, name: "Tip", slug: "p5-tip", subject: "A tip", bodyHtml: "<p>Try saved searches.</p>" });
+    const step = {
+      order: 1, action_type: "nurture", delay: "0m", window_policy: "immediate", type: "choose", allow_none: true,
+      candidates: [
+        { action_type: "tip_trick", template_ref: "p5-tip" },
+        { action_type: "rescue", template_ref: "p5-tip", when: [{ trait: { key: "stage", op: "eq", value: "at_risk" } }] },
+      ],
+    };
+    const flow = await fixedFlow("Nurture", "event", { event: "p5_nurture" }, step);
+    const contactId = randomUUID();
+    await db.insert(schema.contacts).values({ id: contactId, tenantId, externalId: "p5-choose", email: "choose@example.com", lifecycleState: "engaged", properties: { stage: "fine" } });
+    const membershipId = randomUUID();
+    await db.insert(schema.flowMemberships).values({ id: membershipId, tenantId, contactId, flowId: flow, enteredAt: new Date(), status: "active" });
+    await db.insert(schema.lifecycleMessages).values({ tenantId, contactId, flowId: flow, membershipId, flowStepOrder: 1, status: "pending_generation", brainActionType: "nurture" });
+
+    await tickUntil("the chosen mail", async () => resendTo("choose@example.com").length > 0);
+    const [msg] = await db.select().from(schema.lifecycleMessages).where(eq(schema.lifecycleMessages.flowId, flow));
+    expect(msg.status).toBe("sent");
+    expect(msg.brainActionType).toBe("tip_trick");
+    expect(msg.chooseDecision).toMatchObject({ choice: "tip_trick", eligible: ["tip_trick"], filtered_out: [{ action_type: "rescue", reason: "when" }] });
+    expect(outbound.some((c) => c.url === "https://llm.workers-e2e.test/v1/chat/completions")).toBe(true);
+  }, 90_000);
 });
 
 // Keep the temporary bundle small enough for Workers (paid plan: 10 MB

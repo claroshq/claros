@@ -31,6 +31,7 @@ import {
   type ContactState,
   type EventChecker,
 } from "./condition-evaluator.js";
+import { stepDateMembership, stepExpiresAt, dateUnchangedCheck } from "./date-flows.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -160,6 +161,7 @@ export async function handleAdvanceMembership(
       countSends: (f) =>
         storeFor(db).workerAdvanceMembership.countSends({ tenantId, contactId: membership.contactId, ...f }),
     }),
+    dateUnchanged: dateUnchangedCheck(db, tenantId, membership, flowRow.compiledPlan),
   };
 
   // Evaluate plan-level exit conditions
@@ -192,6 +194,36 @@ export async function handleAdvanceMembership(
         events: exitEvent(tenantId, membership, "condition_met"),
       });
       result.exited = true;
+      return result;
+    }
+  }
+
+  // Date triggers (G3): stale anchors exit; schedules advance by slot.
+  if (membership.anchorAt) {
+    const dated = await stepDateMembership(db, {
+      tenantId,
+      membership,
+      compiledPlan: flowRow.compiledPlan,
+      steps,
+      now,
+      contactState,
+      eventChecker,
+      ops: storeFor(db).workerAdvanceMembership,
+    });
+    if (dated.kind !== "not_date") {
+      if (dated.kind === "stale_exited" || dated.kind === "exited") result.exited = true;
+      else if (dated.kind === "completed") result.completed = true;
+      else if (dated.kind === "skipped") {
+        if (dated.completed) result.completed = true;
+        else result.advanced = true;
+      } else if (dated.kind === "message") {
+        if (dated.messageId !== null) {
+          result.messageCreated = true;
+          result.messageId = dated.messageId;
+        }
+        result.completed = dated.completed;
+        result.advanced = dated.advanced;
+      } else result.skipped = true;
       return result;
     }
   }
@@ -337,6 +369,7 @@ export async function handleAdvanceMembership(
     membershipId: membership.id,
     stepOrder: membership.currentStep,
     actionType: currentStepDef.action_type,
+    expiresAt: stepExpiresAt(currentStepDef, now),
   });
 
   if (insertedId !== null) {

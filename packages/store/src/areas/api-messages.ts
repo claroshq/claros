@@ -43,6 +43,12 @@ export type MessageListRow = Record<string, unknown> & {
   original_body_html?: string | null;
   original_body_text?: string | null;
   forced_action_type?: string | null;
+  /** P5 additions. */
+  context_snapshot?: unknown;
+  choose_decision?: unknown;
+  opening_line?: string | null;
+  kb_entry_id?: string | null;
+  imported?: boolean | null;
 };
 
 /** Actor of an approval action: "user:<id>" or "api_key:<id>" (G20). */

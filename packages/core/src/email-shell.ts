@@ -42,6 +42,7 @@
  *   - Interactive elements (accordion, carousel, AMP)
  *   - Full-bleed hero images in the shell (body content can include images)
  */
+import { publicStrings } from "./i18n.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -261,9 +262,10 @@ export function wrapInTextShell(input: TextShellInput): string {
  * This is a stripped version of the old compliance.htmlFooter - no outer div,
  * no border-top (the shell handles that), just the link and address lines.
  */
-export function buildShellComplianceHtml(unsubscribeUrl: string, postalAddress: string): string {
+export function buildShellComplianceHtml(unsubscribeUrl: string, postalAddress: string, locale?: string | null): string {
+  const t = publicStrings(locale);
   return [
-    `<p style="margin:0 0 4px 0;"><a href="${esc(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from these emails.</p>`,
+    `<p style="margin:0 0 4px 0;"><a href="${esc(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;">${esc(t.footerUnsubscribeLink)}</a>${esc(t.footerUnsubscribeRest)}</p>`,
     `<p style="margin:0;">${esc(postalAddress)}</p>`,
   ].join("\n");
 }
@@ -273,9 +275,9 @@ export function buildShellComplianceHtml(unsubscribeUrl: string, postalAddress: 
  *
  * No leading separator - the text shell handles that.
  */
-export function buildShellComplianceText(unsubscribeUrl: string, postalAddress: string): string {
+export function buildShellComplianceText(unsubscribeUrl: string, postalAddress: string, locale?: string | null): string {
   return [
-    `Unsubscribe: ${unsubscribeUrl}`,
+    `${publicStrings(locale).footerTextUnsubscribe}: ${unsubscribeUrl}`,
     postalAddress,
   ].join("\n");
 }

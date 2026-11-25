@@ -79,6 +79,8 @@ export interface AssembledContext {
    * the template directly.
    */
   templateRef?: string;
+  /** The plan step of this message (G11 context, G18 kb_select, G27 choose). */
+  step?: import("@claros/core").CompiledStep;
   /**
    * Sections that were dropped during budget truncation.
    * Empty when no truncation was needed. Populated by the caller after
@@ -313,6 +315,7 @@ export async function assembleContext(
     draftCtx,
     lastSeen,
     templateRef: flowResult.templateRef,
+    step: flowResult.step,
     droppedSections: [],
   };
 }
