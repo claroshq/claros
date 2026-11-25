@@ -17,7 +17,7 @@
  */
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Workflow } from "lucide-react";
+import { Pause, Play, Plus, Workflow } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFlows, FLOWS_QUERY_KEY } from "../flows.js";
 import { updateFlow, type Flow, type FlowApiError } from "../api.js";
@@ -325,13 +325,18 @@ export default function FlowsPage() {
                   >
                     {action && (
                       <Button
-                        variant="ghost"
+                        variant={action.status === "paused" ? "ghost" : "outline"}
                         size="sm"
                         disabled={statusMutation.isPending}
                         onClick={() =>
                           statusMutation.mutate({ id: flow.id, status: action.status })
                         }
                       >
+                        {action.status === "paused" ? (
+                          <Pause size={16} strokeWidth={1.5} aria-hidden="true" />
+                        ) : (
+                          <Play size={16} strokeWidth={1.5} aria-hidden="true" />
+                        )}
                         {action.label}
                       </Button>
                     )}
