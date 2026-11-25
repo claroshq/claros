@@ -45,3 +45,6 @@ tmp/
 
 # compose dev container dependency stamp
 packages/.claros-lock-sha
+
+# Miniflare / wrangler local state
+.wrangler/
