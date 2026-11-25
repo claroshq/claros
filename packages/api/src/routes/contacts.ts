@@ -283,17 +283,7 @@ export default function contactsRoutes() {
 
     // Topic statuses (G8a): every topic of the product with the contact's
     // explicit status, or the topic default ("default": true) when none is set.
-    const topicRows = await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId: id });
-    const topics = topicRows.map((t) => ({
-      topic_id: t.topicId,
-      slug: t.slug,
-      name: t.name,
-      kind: t.kind,
-      status: t.status ?? (t.defaultSubscribed ? "subscribed" : "unsubscribed"),
-      default: t.status === null,
-      source: t.source,
-      updated_at: t.updatedAt,
-    }));
+    const topics = (await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId: id })).map(topicJson);
 
     return c.json({ contact, memberships, suppression, topics });
   });
@@ -394,6 +384,49 @@ export default function contactsRoutes() {
     return c.json({ id: contact.id, external_id: contact.externalId, suppressed: out.suppressed, cancelled: out.cancelled });
   });
 
+  /**
+   * PUT /v1/contacts/:id/topics - set the contact's topic subscriptions from
+   * the dashboard, keyed by topic slug: { "topics": { "product-news": false } }.
+   * Recorded with source "admin"; a change of effective status emits
+   * contact.subscribed or contact.unsubscribed (scope "topic", source
+   * "admin"). Transactional topics have no subscription (400). Product-wide
+   * unsubscribes stay on the suppression list.
+   */
+  router.put("/:id/topics", "member", validatedBody(topicsBodySchema), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const v = validateBody(c, topicsBodySchema);
+    if (!v.ok) return v.response;
+    const contactId = c.req.param("id")!;
+    if (!isUuid(contactId)) return c.json({ error: "Contact not found." }, 404);
+    const contact = await storeFor(db).apiContacts.getContact({ tenantId, contactId });
+    if (!contact) return c.json({ error: "Contact not found." }, 404);
+
+    const before = await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId });
+    const wanted = Object.entries(v.value.topics);
+    if (wanted.length === 0) return c.json({ error: "Name at least one topic." }, 400);
+    const statuses: Array<{ topicId: string; status: "subscribed" | "unsubscribed" }> = [];
+    const outbox: Array<{ event: string; payload: Record<string, unknown> }> = [];
+    const email = typeof contact.email === "string" ? contact.email : null;
+    for (const [slug, on] of wanted) {
+      const t = before.find((x) => x.slug === slug);
+      if (!t) return c.json({ error: `Unknown topic "${slug}".` }, 400);
+      if (t.kind === "transactional") return c.json({ error: `"${slug}" is a transactional topic; it has no subscription.` }, 400);
+      const next = on ? "subscribed" : "unsubscribed";
+      statuses.push({ topicId: t.topicId, status: next });
+      const was = t.status ?? (t.defaultSubscribed ? "subscribed" : "unsubscribed");
+      if (was !== next) {
+        outbox.push({
+          event: next === "subscribed" ? "contact.subscribed" : "contact.unsubscribed",
+          payload: { contact_id: contactId, email, scope: "topic", topic: slug, topic_id: t.topicId, source: "admin" },
+        });
+      }
+    }
+    await storeFor(db).apiUnsubscribe.setContactTopicStatuses({ tenantId, contactId, statuses, source: "admin", now: new Date(), outbox });
+    const topics = (await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId })).map(topicJson);
+    return c.json({ topics });
+  });
+
   /** GET /v1/contacts/:id/notes - the team's notes about the contact, newest first. */
   router.get("/:id/notes", "member", async (c) => {
     const db: Db = c.var.db;
@@ -441,6 +474,23 @@ export default function contactsRoutes() {
 }
 
 const NOTE_MAX_LENGTH = 5000;
+
+/** PUT /v1/contacts/:id/topics body: topic slug -> subscribed. */
+const topicsBodySchema = z.object({ topics: z.record(z.string(), z.boolean()) });
+
+/** A topic status as GET /v1/contacts/:id and PUT .../topics return it. */
+function topicJson(t: { topicId: string; slug: string; name: string; kind: string; status: string | null; defaultSubscribed: boolean; source: string | null; updatedAt: Date | null }) {
+  return {
+    topic_id: t.topicId,
+    slug: t.slug,
+    name: t.name,
+    kind: t.kind,
+    status: t.status ?? (t.defaultSubscribed ? "subscribed" : "unsubscribed"),
+    default: t.status === null,
+    source: t.source,
+    updated_at: t.updatedAt,
+  };
+}
 
 const noteBodySchema = z.object({
   body: z.string().max(NOTE_MAX_LENGTH, `A note is at most ${NOTE_MAX_LENGTH} characters.`),
