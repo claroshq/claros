@@ -58,6 +58,13 @@
  *   so callers cannot distinguish which part failed. No information about whether
  *   the underlying message or contact exists is revealed.
  *
+ * Product public hosts:
+ *   Mail of a product with a public_host links to https://<public_host>. A
+ *   request that arrives on a product's public host is answered only for
+ *   tokens of that product; any other token gets 404 there (before any
+ *   suppression is written). Requests on the instance host (BASE_URL) serve
+ *   every product, so links in mail sent before a host was set keep working.
+ *
  * Migration check:
  *   This implementation requires migration 0015 (recipient_address column on
  *   lifecycle_messages). That migration must be applied before this code runs.
@@ -67,6 +74,7 @@ import { verifyUnsubscribeToken } from "@claros/adapters";
 import type { Db } from "../plugins/db.js";
 import { createRouter, parseBody } from "../http/router.js";
 import { parseForm } from "../http/body.js";
+import { notFound } from "../http/errors.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -165,6 +173,36 @@ async function resolveAndSuppress(
   });
 
   return { ok: true, email: normalizedEmail };
+}
+
+/** Lowercase host name of the request (no port). */
+function requestHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * False when the request arrived on a product's public host and the token
+ * belongs to another product (the caller answers 404).
+ */
+async function hostAllowsTenant(db: Db, url: string, tenantId: string): Promise<boolean> {
+  const host = requestHost(url);
+  if (!host) return true;
+  const hostTenant = await storeFor(db).apiUnsubscribe.findTenantIdByPublicHost(host);
+  return hostTenant === null || hostTenant === tenantId;
+}
+
+/** Tenant id of a token whose signature verifies, or null (no throw). */
+function tokenTenant(token: string): string | null {
+  try {
+    const r = verifyUnsubscribeToken(token);
+    return r.ok ? r.payload.tenantId : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +330,9 @@ export default function unsubscribeRoutes() {
       return c.json({ error: "Invalid unsubscribe link." }, 400);
     }
 
+    const tenantOfToken = tokenTenant(token);
+    if (tenantOfToken && !(await hostAllowsTenant(db, c.req.url, tenantOfToken))) return notFound(c);
+
     const outcome = await resolveAndSuppress(db, token, SOURCE_ONE_CLICK);
 
     if (!outcome.ok) {
@@ -340,6 +381,10 @@ export default function unsubscribeRoutes() {
       return c.html(unsubscribeErrorHtml(), 400, HTML_HEADERS);
     }
 
+    if (c.var.db && !(await hostAllowsTenant(c.var.db, c.req.url, verifyResult.payload.tenantId))) {
+      return notFound(c);
+    }
+
     return c.html(unsubscribePageHtml(token), 200, HTML_HEADERS);
   });
 
@@ -365,6 +410,9 @@ export default function unsubscribeRoutes() {
       }
       return c.html(unsubscribeErrorHtml(), 400, HTML_HEADERS);
     }
+
+    const tenantOfToken = tokenTenant(token);
+    if (tenantOfToken && !(await hostAllowsTenant(db, c.req.url, tenantOfToken))) return notFound(c);
 
     const outcome = await resolveAndSuppress(db, token, SOURCE_PAGE);
 

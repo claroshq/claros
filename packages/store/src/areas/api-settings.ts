@@ -79,7 +79,7 @@ export interface ApiSettingsQueries {
   /** Replace the tenant's settings JSON. */
   updateTenantSettings(tenantId: string, settings: Record<string, unknown>): Promise<void>;
   /** The tenant's name and settings JSON, or null when the tenant does not exist. */
-  findTenantNameAndSettings(tenantId: string): Promise<{ name: string; settings: unknown } | null>;
+  findTenantNameAndSettings(tenantId: string): Promise<{ name: string; settings: unknown; publicHost: string | null } | null>;
   /** The tenant's active transport with its config as JSON text, or null. */
   findActiveTransportForSend(tenantId: string): Promise<SettingsSendTransportRow | null>;
 }

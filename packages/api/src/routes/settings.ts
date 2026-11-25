@@ -1047,7 +1047,10 @@ export default function settingsRoutes() {
       const testMessageId = `test-${Date.now()}`;
       const { generateUnsubscribeToken } = await import("@claros/adapters");
       const token = generateUnsubscribeToken(tenantId, testMessageId, signingKey);
-      const baseUrlForLinks = process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+      // Links in a product's mail use its public host when it has one.
+      const baseUrlForLinks = tenantRow.publicHost
+        ? `https://${tenantRow.publicHost}`
+        : process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
       const oneClickUrl = `${baseUrlForLinks}/unsubscribe/one-click?token=${token}`;
       const browserUrl = `${baseUrlForLinks}/unsubscribe?token=${token}`;
 

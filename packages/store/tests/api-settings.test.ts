@@ -101,18 +101,25 @@ for (const factory of testBackends()) {
       expect(tenant!.slug).toMatch(/^t-/);
       expect(tenant!.createdAt).toBeInstanceOf(Date);
       expect(await s().findTenantSettings(t)).toEqual({ settings: null });
-      expect(await s().findTenantNameAndSettings(t)).toEqual({ name: "Acme", settings: null });
+      expect(await s().findTenantNameAndSettings(t)).toEqual({ name: "Acme", settings: null, publicHost: null });
 
       const settings = { lifecycle: { activation_events: ["a"] }, throttle: { perDay: 2 }, flag: false, none: null };
       await s().updateTenantSettings(t, settings);
       expect(await s().findTenantSettings(t)).toEqual({ settings });
-      expect(await s().findTenantNameAndSettings(t)).toEqual({ name: "Acme", settings });
+      expect(await s().findTenantNameAndSettings(t)).toEqual({ name: "Acme", settings, publicHost: null });
       expect((await s().findTenant(t))!.settings).toEqual(settings);
 
       const missing = "00000000-0000-4000-8000-000000000000";
       expect(await s().findTenant(missing)).toBeNull();
       expect(await s().findTenantSettings(missing)).toBeNull();
       expect(await s().findTenantNameAndSettings(missing)).toBeNull();
+    });
+
+    it("findTenantNameAndSettings returns the public host", async () => {
+      const t = await b.newTenant("Hosted");
+      const host = `news-${t.slice(0, 8)}.example.com`;
+      await b.db.update(b.schema.tenants).set({ publicHost: host }).where(eq(b.schema.tenants.id, t));
+      expect(await b.store.apiSettings.findTenantNameAndSettings(t)).toEqual({ name: "Hosted", settings: null, publicHost: host });
     });
   });
 }

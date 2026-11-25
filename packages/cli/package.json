@@ -1,0 +1,39 @@
+{
+  "name": "claros",
+  "version": "0.7.0",
+  "description": "Deploy and operate Claros on Cloudflare Workers + D1",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/claroshq/claros.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/claroshq/claros/blob/main/docs/install/cloudflare.md",
+  "bin": {
+    "claros": "bin/claros.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "assets"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bundle-assets": "node scripts/bundle-assets.mjs",
+    "prepack": "node scripts/bundle-assets.mjs"
+  },
+  "dependencies": {
+    "wrangler": "^4.168.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  }
+}

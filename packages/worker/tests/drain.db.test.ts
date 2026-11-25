@@ -995,6 +995,32 @@ describe("drain worker", () => {
       expect(verifyResult.payload.tenantId).toBe(testTenantId);
     });
 
+    it("a product with a public_host links to https://<public_host>, also when BASE_URL is unusable in production", async () => {
+      if (!dbAvailable) return;
+
+      const host = `news-${Date.now().toString(36)}.drain-test.example.com`;
+      await db.update(tenants).set({ publicHost: host }).where(eq(tenants.id, testTenantId));
+      try {
+        const contactId = await insertContact("public-host-contact");
+        const flowId = await insertFlow({ name: "public-host-flow", windowPolicy: "immediate" });
+        const membershipId = await insertMembership(contactId, flowId);
+        await insertApprovedMessage({ contactId, flowId, membershipId });
+
+        const adapter = new LogTransportAdapter();
+        // TEST_BASE_URL is localhost: in production it would block the send,
+        // but this product's links do not use it.
+        const result = await runDrainTick(adapter, new Date("2026-07-21T10:00:00Z"), { isProduction: true });
+        expect(result.sent).toBe(1);
+        expect(result.skippedBadBaseUrl).toBe(0);
+        const sent = adapter.sends[0]!;
+        expect(sent.headers!["List-Unsubscribe"]).toContain(`<https://${host}/unsubscribe/one-click?token=`);
+        expect(sent.bodyHtml).toContain(`https://${host}/unsubscribe?token=`);
+        expect(sent.bodyHtml).not.toContain(TEST_BASE_URL);
+      } finally {
+        await db.update(tenants).set({ publicHost: null }).where(eq(tenants.id, testTenantId));
+      }
+    });
+
     it("HTML body ends with compliance footer; stored row body_html is unchanged", async () => {
       if (!dbAvailable) return;
 

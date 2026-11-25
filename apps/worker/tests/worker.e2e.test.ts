@@ -138,75 +138,68 @@ beforeAll(async () => {
   }
   db = drizzle(d1);
 
-  // Product with a postal address (the compliant footer needs one).
-  tenantId = randomUUID();
-  await db.insert(schema.tenants).values({
-    id: tenantId,
-    name: "Workers E2E",
-    slug: "workers-e2e",
-    settings: { postal_address: POSTAL_ADDRESS },
-  });
-
-  // Secret ingestion key.
-  rawApiKey = `cl_live_${randomBytes(32).toString("base64url")}`;
-  await db.insert(schema.apiKeys).values({
-    tenantId,
-    keyHash: createHash("sha256").update(rawApiKey).digest("hex"),
-    prefix: rawApiKey.slice(0, 8),
-    kind: "secret",
-  });
-
-  // Resend transport, credentials encrypted at rest. The envelope is JSON
-  // text; store it as JSON, the way the settings route does on D1.
-  const envelope = encrypt(JSON.stringify({ apiKey: "re_fake_workers_e2e" }), parseEncryptionKey(ENCRYPTION_KEY));
-  await db.insert(schema.transportConfigs).values({
-    tenantId,
-    provider: "resend",
-    config: sql`json(${envelope})`,
-    isActive: true,
-    fromEmail: "hello@workers-e2e.test",
-    fromName: "Workers E2E",
-  });
-
-  // Active fixed-content flow on an event trigger, auto-approved, one
-  // immediate step (what POST /v1/flows/:id/plan writes).
-  flowId = randomUUID();
-  const templateRef = `flow-${flowId}-step-1`;
-  await db.insert(schema.templates).values({
-    tenantId,
-    name: "Workers E2E - Step 1",
-    slug: templateRef,
-    subject: "Welcome {{contact.first_name|there}}",
-    bodyHtml: "<p>Hi {{contact.first_name|there}}, welcome to {{tenant.name}}.</p>",
-    bodyText: "Hi {{contact.first_name|there}}, welcome to {{tenant.name}}.",
-    variables: ["contact.first_name", "tenant.name"],
-  });
-  const step = {
-    order: 1,
-    action_type: "onboard_welcome",
-    delay: "0m",
-    window_policy: "immediate",
-    template_ref: templateRef,
-  };
-  await db.insert(schema.flows).values({
-    id: flowId,
-    tenantId,
-    name: "Workers E2E welcome",
-    triggerType: "event",
-    triggerConfig: { event: EVENT },
-    steps: [step],
-    contentMode: "fixed_content",
-    approvalMode: "auto",
-    status: "active",
-    compileStatus: "ready",
-    compiledAt: new Date(),
-    compiledPlan: { trigger: { type: "event", condition: { event: EVENT } }, steps: [step] },
-  });
 }, 120_000);
 
 afterAll(async () => {
   await mf?.dispose();
   if (tmp) rmSync(tmp, { recursive: true, force: true });
+});
+
+/** What the deploy CLI writes with `wrangler d1 execute` (see packages/cli/src/claim.ts). */
+async function mintClaimToken(): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await db.run(sql`INSERT INTO claim_tokens (id, token_hash, expires_at, created_at)
+    VALUES (${randomUUID()}, ${hash}, ${Date.now() + 24 * 60 * 60 * 1000}, ${Date.now()})`);
+  return token;
+}
+
+// Runs first: a fresh D1 database has no tenant and no user, like a new deploy.
+describe("Workers runtime: claim (no startup step)", () => {
+  it("an unknown token is refused with the CLI hint", async () => {
+    const res = await mf.dispatchFetch("http://localhost/claim?token=nope");
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain("npx claros claim-url");
+  });
+
+  it("a token minted in claim_tokens opens the form; the claim creates the default product and owner", async () => {
+    const token = await mintClaimToken();
+    const page = await mf.dispatchFetch(`http://localhost/claim?token=${token}`);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("Claim your account");
+
+    const res = await mf.dispatchFetch("http://localhost/claim", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `token=${token}&email=${encodeURIComponent("owner@example.com")}`,
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`${BASE_URL}/`);
+    expect(res.headers.get("set-cookie")).toMatch(/^claros_session=/);
+
+    const tenants = await db.select().from(schema.tenants);
+    expect(tenants.map((t: { slug: string }) => t.slug)).toEqual(["default"]);
+    const users = await db.select().from(schema.users);
+    expect(users).toEqual([expect.objectContaining({ email: "owner@example.com", role: "owner", instanceRole: "admin" })]);
+    const [row] = await db.select().from(schema.claimTokens);
+    expect(row.consumedAt).toBeInstanceOf(Date);
+  });
+
+  it("once a user exists the claim routes are gone, even with a fresh token", async () => {
+    const token = await mintClaimToken();
+    // Unmatched like any unknown path: GET gets the SPA, POST is not handled.
+    const page = await mf.dispatchFetch(`http://localhost/claim?token=${token}`);
+    expect(await page.text()).toContain("WORKER-SPA");
+    const res = await mf.dispatchFetch("http://localhost/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, email: "other@example.com" }),
+      redirect: "manual",
+    });
+    expect(res.status).toBe(404);
+    expect(await db.select().from(schema.users)).toHaveLength(1);
+  });
 });
 
 describe("Workers runtime: HTTP", () => {
@@ -248,6 +241,73 @@ describe("Workers runtime: HTTP", () => {
 });
 
 describe("Workers runtime: track -> queue -> sent", () => {
+  beforeAll(async () => {
+    // Product with a postal address (the compliant footer needs one).
+    tenantId = randomUUID();
+    await db.insert(schema.tenants).values({
+      id: tenantId,
+      name: "Workers E2E",
+      slug: "workers-e2e",
+      settings: { postal_address: POSTAL_ADDRESS },
+    });
+
+    // Secret ingestion key.
+    rawApiKey = `cl_live_${randomBytes(32).toString("base64url")}`;
+    await db.insert(schema.apiKeys).values({
+      tenantId,
+      keyHash: createHash("sha256").update(rawApiKey).digest("hex"),
+      prefix: rawApiKey.slice(0, 8),
+      kind: "secret",
+    });
+
+    // Resend transport, credentials encrypted at rest. The envelope is JSON
+    // text; store it as JSON, the way the settings route does on D1.
+    const envelope = encrypt(JSON.stringify({ apiKey: "re_fake_workers_e2e" }), parseEncryptionKey(ENCRYPTION_KEY));
+    await db.insert(schema.transportConfigs).values({
+      tenantId,
+      provider: "resend",
+      config: sql`json(${envelope})`,
+      isActive: true,
+      fromEmail: "hello@workers-e2e.test",
+      fromName: "Workers E2E",
+    });
+
+    // Active fixed-content flow on an event trigger, auto-approved, one
+    // immediate step (what POST /v1/flows/:id/plan writes).
+    flowId = randomUUID();
+    const templateRef = `flow-${flowId}-step-1`;
+    await db.insert(schema.templates).values({
+      tenantId,
+      name: "Workers E2E - Step 1",
+      slug: templateRef,
+      subject: "Welcome {{contact.first_name|there}}",
+      bodyHtml: "<p>Hi {{contact.first_name|there}}, welcome to {{tenant.name}}.</p>",
+      bodyText: "Hi {{contact.first_name|there}}, welcome to {{tenant.name}}.",
+      variables: ["contact.first_name", "tenant.name"],
+    });
+    const step = {
+      order: 1,
+      action_type: "onboard_welcome",
+      delay: "0m",
+      window_policy: "immediate",
+      template_ref: templateRef,
+    };
+    await db.insert(schema.flows).values({
+      id: flowId,
+      tenantId,
+      name: "Workers E2E welcome",
+      triggerType: "event",
+      triggerConfig: { event: EVENT },
+      steps: [step],
+      contentMode: "fixed_content",
+      approvalMode: "auto",
+      status: "active",
+      compileStatus: "ready",
+      compiledAt: new Date(),
+      compiledPlan: { trigger: { type: "event", condition: { event: EVENT } }, steps: [step] },
+    });
+  });
+
   it("an event enrolls the contact and the message is sent through the transport with List-Unsubscribe", async () => {
     const auth = { authorization: `Bearer ${rawApiKey}`, "content-type": "application/json" };
     const identify = await mf.dispatchFetch("http://localhost/v1/identify", {

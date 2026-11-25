@@ -2,6 +2,7 @@
  * Contract tests for the workerDrain store area (packages/worker/src/drain.ts).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
 import { testBackends, type Backend } from "./support/backends.js";
 import { getMessage, seedContact, seedFlow, seedMessage, sorted } from "./support/send-path-fixtures.js";
 
@@ -253,9 +254,16 @@ for (const factory of testBackends()) {
       expect(await b.store.workerDrain.getTenantSettings(t)).toEqual(settings);
       expect(await b.store.workerDrain.getTenantSettings(bare)).toBeNull();
       expect(await b.store.workerDrain.getTenantSettings(MISSING)).toBeNull();
-      expect(await b.store.workerDrain.getTenant(t)).toEqual({ name: "Settings Co", settings });
-      expect(await b.store.workerDrain.getTenant(bare)).toEqual({ name: "Bare", settings: null });
+      expect(await b.store.workerDrain.getTenant(t)).toEqual({ name: "Settings Co", settings, publicHost: null });
+      expect(await b.store.workerDrain.getTenant(bare)).toEqual({ name: "Bare", settings: null, publicHost: null });
       expect(await b.store.workerDrain.getTenant(MISSING)).toBeNull();
+    });
+
+    it("getTenant returns the product's public host", async () => {
+      const t = await b.newTenant("Hosted");
+      const host = `news-${t.slice(0, 8)}.example.com`;
+      await b.db.update(b.schema.tenants).set({ publicHost: host }).where(eq(b.schema.tenants.id, t));
+      expect(await b.store.workerDrain.getTenant(t)).toEqual({ name: "Hosted", settings: null, publicHost: host });
     });
 
     it("getRecentSends counts sending/sent messages in the last 24h and 7d", async () => {

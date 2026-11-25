@@ -169,6 +169,13 @@
       "when": 1795565488267,
       "tag": "0023_instance_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795568654585,
+      "tag": "0024_claim_tokens",
+      "breakpoints": true
     }
   ]
 }

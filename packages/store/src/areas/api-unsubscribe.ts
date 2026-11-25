@@ -15,4 +15,6 @@ export interface ApiUnsubscribeQueries {
   } | null>;
   /** Write a suppression; idempotent (no-op when the address is already suppressed, case-insensitive). */
   suppressAddress(input: { tenantId: string; email: string; reason: string; source: string }): Promise<void>;
+  /** Id of the product whose public_host is this host (lowercase), or null. */
+  findTenantIdByPublicHost(host: string): Promise<string | null>;
 }

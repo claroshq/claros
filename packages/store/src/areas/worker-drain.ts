@@ -49,6 +49,8 @@ export interface WorkerDrainSender {
 export interface WorkerDrainTenant {
   name: string;
   settings: unknown;
+  /** The product's public host (links in its mail use https://<publicHost>), or null. */
+  publicHost: string | null;
 }
 
 export interface WorkerDrainQueries {

@@ -325,3 +325,22 @@ describe("GET /version does NOT include startedAt", () => {
     expect("builtAt" in body).toBe(true);
   });
 });
+
+describe("GET /version: optional version field", () => {
+  it("is absent without CLAROS_VERSION (v0.6 shape) and reported when set", async () => {
+    const prev = process.env.CLAROS_VERSION;
+    try {
+      delete process.env.CLAROS_VERSION;
+      const app = await buildApp({ logger: false });
+      const plain = JSON.parse((await app.inject({ method: "GET", url: "/version" })).body) as Record<string, unknown>;
+      expect(Object.keys(plain).sort()).toEqual(["builtAt", "commit", "edition"]);
+
+      process.env.CLAROS_VERSION = "0.8.0";
+      const withVersion = JSON.parse((await app.inject({ method: "GET", url: "/version" })).body) as Record<string, unknown>;
+      expect(withVersion.version).toBe("0.8.0");
+    } finally {
+      if (prev === undefined) delete process.env.CLAROS_VERSION;
+      else process.env.CLAROS_VERSION = prev;
+    }
+  });
+});

@@ -1,0 +1,136 @@
+/**
+ * `claros`: deploy and operate Claros on Cloudflare Workers + D1.
+ *
+ *   claros deploy [--name <instance>] [--domain <host>] [--account <id>] [--non-interactive] [--dry-run] [--force]
+ *   claros upgrade [--name <instance>]
+ *   claros products set-host <slug> <host> [--name <instance>]
+ *   claros doctor [--name <instance>]
+ *   claros claim-url [--name <instance>]
+ */
+import { createInterface } from "node:readline/promises";
+import { parseArgs } from "node:util";
+import { resolveAssets, packageVersion, type Assets } from "./assets.js";
+import { claimUrlCommand, defaultContextParts, deploy, doctor, setProductHost, upgrade, type Context, type Io } from "./ops.js";
+import { defaultConfigDir } from "./state.js";
+import { spawnRunner, Wrangler, type Runner } from "./wrangler.js";
+
+export const USAGE = `Usage: claros <command> [options]
+
+Deploy and operate Claros on Cloudflare Workers + D1 (uses wrangler and your Cloudflare login).
+
+Commands:
+  deploy                       Create or update an instance (idempotent)
+  upgrade                      Back up D1, migrate and deploy this package's version
+  products set-host <slug> <host>
+                               Serve a product's links on its own host (custom domain)
+  doctor                       Check secrets, migrations, routes, /health and /version
+  claim-url                    Mint a new first-account claim link (no user yet)
+
+Options:
+  --name <instance>            Instance name (default "default"); resources are claros-<name>
+  --domain <host>              deploy: custom domain for the instance (default: workers.dev)
+  --account <id>               Cloudflare account id or name
+  --non-interactive            Never prompt (CI)
+  --dry-run                    deploy: list the changes without making them
+  --force                      deploy: deploy the Worker even when nothing changed
+  -h, --help                   This help
+  -v, --version                The Claros version this package deploys
+
+State: ~/.config/claros/<name>.json (mode 600) and ~/.config/claros/<name>/.
+`;
+
+export interface MainDeps {
+  runner?: Runner;
+  io?: Io;
+  fetch?: Context["fetch"];
+  configDir?: string;
+  assets?: () => Assets;
+}
+
+function terminalIo(interactive: boolean): Io {
+  return {
+    log: (line = "") => console.log(line),
+    warn: (line) => console.error(`warning: ${line}`),
+    prompt: interactive
+      ? async (question) => {
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          try {
+            return await rl.question(question);
+          } finally {
+            rl.close();
+          }
+        }
+      : undefined,
+  };
+}
+
+export async function main(argv: string[], deps: MainDeps = {}): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      options: {
+        name: { type: "string" },
+        domain: { type: "string" },
+        account: { type: "string" },
+        "non-interactive": { type: "boolean" },
+        "dry-run": { type: "boolean" },
+        force: { type: "boolean" },
+        help: { type: "boolean", short: "h" },
+        version: { type: "boolean", short: "v" },
+      },
+    });
+  } catch (err) {
+    console.error(`${(err as Error).message}\n\n${USAGE}`);
+    return 2;
+  }
+  const { values, positionals } = parsed;
+  if (values.version) {
+    console.log(packageVersion());
+    return 0;
+  }
+  const [command, sub, ...rest] = positionals;
+  if (values.help || !command) {
+    console.log(USAGE);
+    return command || values.help ? 0 : 2;
+  }
+
+  const nonInteractive = Boolean(values["non-interactive"]) || !process.stdin.isTTY;
+  let assets: Assets | null = null;
+  const ctx: Context = {
+    wrangler: new Wrangler(deps.runner ?? spawnRunner()),
+    fetch: deps.fetch ?? ((input, init) => fetch(input, init)),
+    io: deps.io ?? terminalIo(!nonInteractive),
+    configDir: deps.configDir ?? defaultConfigDir(),
+    assets: deps.assets ?? (() => (assets ??= resolveAssets())),
+    ...defaultContextParts(),
+  };
+  const common = { name: values.name, account: values.account, nonInteractive };
+
+  switch (command) {
+    case "deploy":
+      await deploy(ctx, { ...common, domain: values.domain, dryRun: values["dry-run"], force: values.force });
+      return 0;
+    case "upgrade":
+      await upgrade(ctx, common);
+      return 0;
+    case "products":
+      if (sub !== "set-host" || rest.length !== 2) {
+        console.error("Usage: claros products set-host <slug> <host> [--name <instance>]");
+        return 2;
+      }
+      await setProductHost(ctx, { ...common, slug: rest[0]!, host: rest[1]! });
+      return 0;
+    case "doctor": {
+      const checks = await doctor(ctx, common);
+      return checks.every((c) => c.ok) ? 0 : 1;
+    }
+    case "claim-url":
+      await claimUrlCommand(ctx, common);
+      return 0;
+    default:
+      console.error(`Unknown command "${command}".\n\n${USAGE}`);
+      return 2;
+  }
+}

@@ -13,15 +13,19 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 - Dashboard requests pick a product with the `X-Claros-Product: <slug>` header or `?product=<slug>`; without either they act on the session's product, as before. The dashboard shows a product switcher when you can act on more than one product, and a Settings, Products page for instance admins.
 - Archived products stay readable; dashboard API writes to them answer `409 {"error": "Product is archived."}`.
 - Inviting an address that already belongs to a user of another product adds the product to that user (one login per person).
+- `claros` npm package (`packages/cli`, unreleased, not published yet): `npx claros deploy` creates or updates a Claros instance on Cloudflare Workers + D1 (D1 database, queues, secrets, migrations, custom domains, first-account claim URL); also `upgrade`, `products set-host`, `doctor` and `claim-url`. Every step is idempotent and it never changes DNS records. See [Install on Cloudflare Workers + D1](docs/install/cloudflare.md).
+- Product public hosts in mail: a product with a `public_host` gets `https://<public_host>` in the unsubscribe links of its mail (and of the test email) instead of `BASE_URL`. On a product's public host the unsubscribe pages answer only for that product's links (404 otherwise); the instance host keeps serving every product, so links already sent keep working.
+- `GET /version` has an optional `version` field (the Claros release) when `CLAROS_VERSION` is set; `claros deploy` sets it. Without it the response is unchanged.
 - Cloudflare Workers runtime (in progress, not usable yet): `apps/worker` runs the same API and job handlers as one Worker on D1, with Cloudflare Queues for jobs and one Cron Trigger for the periodic jobs. Login and API key authentication on D1 are not finished, so it cannot serve a product yet. Local trial with `wrangler dev`: see [Install on Cloudflare Workers + D1](docs/install/cloudflare.md). The Postgres + Node install is unchanged.
 
 ### Changed
 
+- First-account claim: the token is stored hashed in the new `claim_tokens` table instead of in the server's memory, and expires after 24 hours. The server still prints the claim URL at startup while no user exists and mints a new one on every restart (older unconsumed links stop working). Any API instance behind a load balancer can now serve the claim. On Workers, `/claim` is open while no user exists and uses tokens minted by `claros deploy` / `claros claim-url`.
 - `GET /auth/me` reports the role and product (`tenantId`) of the product the request acts on. Without a product header this is the session's product, as before.
 
 ### Upgrade notes
 
-- One database migration (`0023_instance_layer`), applied on boot or with `scripts/migrate.sh`. It only adds: the `memberships` and `instance_settings` tables, new nullable `tenants` columns (`archived_at`, `public_host`, `locale`) and `config_version`, `users.instance_role`, and `api_keys.tenant_id` becomes nullable for future instance keys. It backfills one membership per existing user and the instance admins described above.
+- Two database migrations, applied on boot or with `scripts/migrate.sh`. `0024_claim_tokens` only adds the `claim_tokens` table. `0023_instance_layer` only adds the `memberships` and `instance_settings` tables, new nullable `tenants` columns (`archived_at`, `public_host`, `locale`) and `config_version`, `users.instance_role`, and `api_keys.tenant_id` becomes nullable for future instance keys. It backfills one membership per existing user and the instance admins described above.
 
 ## [0.7.0] - 2026-11-25
 

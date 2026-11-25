@@ -19,6 +19,7 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { storeFor } from "@claros/store";
 
 import type { AppEnv } from "./http/env.js";
 import type { Db, EnqueueFn } from "./plugins/db.js";
@@ -78,8 +79,19 @@ export interface BuildAppOptions {
    * adapter (./node.ts) and apps/worker provide one; absent means no SPA.
    */
   staticFallback?: (log: AppLogger) => StaticFallback | null;
-  /** One-time claim token for the first account; claim routes exist only while it is set. */
+  /**
+   * One-time claim token for the first account; claim routes exist only while
+   * it is set. The token is checked against the claim_tokens table: the Node
+   * server writes it there at boot, and the app writes it (hashed, 24 hour
+   * expiry) on the first claim request when it is missing.
+   */
   claimToken?: string | null;
+  /**
+   * Cloudflare Workers: mount the claim routes while no user exists, checked
+   * per request (cached briefly per isolate). Tokens come from claim_tokens
+   * (minted by the deploy CLI); the default product is created on claim.
+   */
+  claimFromDatabase?: boolean;
 }
 
 /** The running HTTP app. */
@@ -141,15 +153,17 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
   }
 
   if (opts.db && opts.claimToken != null) {
-    let activeClaimToken: string | null = opts.claimToken;
+    app.route("/claim", claimRoutes({ dashboardUrl, seedToken: opts.claimToken }));
+  } else if (opts.db && opts.claimFromDatabase) {
+    const gate = claimGate();
     app.route(
       "/claim",
       claimRoutes({
-        getClaimToken: () => activeClaimToken,
-        consumeClaimToken: () => {
-          activeClaimToken = null;
-        },
         dashboardUrl,
+        isOpen: gate.isOpen,
+        onClaimed: gate.close,
+        seedDefaultTenant: true,
+        newLinkHint: "cli",
       }),
     );
   }
@@ -212,6 +226,34 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     ready: async () => {},
     close: async () => {},
     routes: () => listRoutes(app),
+  };
+}
+
+/** How long "no user exists yet" is trusted before the claim gate asks again. */
+const CLAIM_GATE_TTL_MS = 5_000;
+
+/**
+ * The claim routes are open while no user exists. Once a user exists the
+ * answer never changes back, so it is kept for the life of the isolate; the
+ * "still open" answer is re-checked every few seconds.
+ */
+function claimGate(): { isOpen: (db: Db) => Promise<boolean>; close: () => void } {
+  let closed = false;
+  let openUntil = 0;
+  return {
+    async isOpen(db) {
+      if (closed) return false;
+      if (Date.now() < openUntil) return true;
+      if (await storeFor(db).apiClaim.anyUserExists()) {
+        closed = true;
+        return false;
+      }
+      openUntil = Date.now() + CLAIM_GATE_TTL_MS;
+      return true;
+    },
+    close() {
+      closed = true;
+    },
   };
 }
 

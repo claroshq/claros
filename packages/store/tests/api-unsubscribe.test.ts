@@ -70,6 +70,15 @@ for (const factory of testBackends()) {
       await b.close();
     });
 
+    it("findTenantIdByPublicHost maps a product public host to its id", async () => {
+      const t = await b.newTenant();
+      const host = `news-${randomUUID().slice(0, 8)}.example.com`;
+      expect(await b.store.apiUnsubscribe.findTenantIdByPublicHost(host)).toBeNull();
+      await b.db.update(b.schema.tenants).set({ publicHost: host }).where(eq(b.schema.tenants.id, t));
+      expect(await b.store.apiUnsubscribe.findTenantIdByPublicHost(host)).toBe(t);
+      expect(await b.store.apiUnsubscribe.findTenantIdByPublicHost(`other-${host}`)).toBeNull();
+    });
+
     it("getMessageRecipient returns address and status, tenant scoped", async () => {
       const t = await b.newTenant();
       const sent = await seedMessage(b, t, { status: "sent", recipientAddress: "ann@example.com" });

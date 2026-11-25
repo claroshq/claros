@@ -72,6 +72,9 @@ function app(env: Env): Promise<ClarosApp> {
       role: "all",
       db: rt.db,
       enqueue: rt.enqueue,
+      // No startup step on Workers: /claim is open while no user exists and
+      // checks tokens minted by the deploy CLI (`claros claim-url`).
+      claimFromDatabase: true,
       staticFallback: assets ? () => assetsFallback(assets) : undefined,
     });
   }

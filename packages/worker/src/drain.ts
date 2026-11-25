@@ -79,6 +79,7 @@ import {
   buildComplianceOutput,
   checkBaseUrl,
   resolveBaseUrl,
+  productLinkBaseUrl,
   resolveSigningKey,
 } from "./compliance.js";
 
@@ -408,7 +409,9 @@ export async function processOneMessage(
   //
   // Outside production (NODE_ENV !== 'production') the check is suppressed so
   // the self-host quickstart (http://localhost:3000) continues to work.
-  const baseUrlFault = checkBaseUrl(baseUrl, isProductionOverride);
+  // Links in a product's mail use its public host when it has one.
+  const linkBaseUrl = productLinkBaseUrl(baseUrl, tenantSettings?.publicHost);
+  const baseUrlFault = checkBaseUrl(linkBaseUrl, isProductionOverride);
   if (baseUrlFault !== null) {
     console.error(
       `[drain] BASE_URL is unusable in production: ${baseUrlFault} ` +
@@ -464,7 +467,7 @@ export async function processOneMessage(
     tenantId: candidate.tenantId,
     messageId: candidate.id,
     postalAddress,
-    baseUrl,
+    baseUrl: linkBaseUrl,
     signingKey,
   });
 
@@ -673,6 +676,7 @@ interface TenantDrainSettings {
   postalAddress: string | null;
   tenantName: string;
   brand: BrandSettings;
+  publicHost: string | null;
 }
 
 /**
@@ -696,5 +700,6 @@ async function resolveTenantDrainSettings(db: Db, tenantId: string): Promise<Ten
     postalAddress,
     tenantName: tenantRow.name,
     brand,
+    publicHost: tenantRow.publicHost ?? null,
   };
 }

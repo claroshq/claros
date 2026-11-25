@@ -42,7 +42,8 @@
     "packages/scheduler",
     "apps/server",
     "apps/dashboard",
-    "apps/worker"
+    "apps/worker",
+    "packages/cli"
   ],
   "packageManager": "npm@10.9.11"
 }

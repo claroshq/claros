@@ -54,6 +54,7 @@ export {
   injectHtmlFooter,
   injectTextFooter,
   resolveBaseUrl,
+  productLinkBaseUrl,
   resolveSigningKey,
   type ComplianceInput,
   type ComplianceOutput,

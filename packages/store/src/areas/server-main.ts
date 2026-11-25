@@ -27,4 +27,10 @@ export interface ServerMainQueries {
   bootstrapSeed(ownerEmail: string | null): Promise<BootstrapSeedResult>;
   /** True when at least one user exists. */
   hasAnyUser(): Promise<boolean>;
+  /**
+   * In one transaction: delete every unconsumed claim token, then insert the
+   * new one (SHA-256 hex hash). The boot of a server with no user mints a
+   * fresh token this way; earlier unconsumed tokens stop working.
+   */
+  replaceClaimToken(args: { tokenHash: string; expiresAt: Date }): Promise<void>;
 }

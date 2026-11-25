@@ -29,6 +29,13 @@
       "when": 1795565491394,
       "tag": "0003_suppressions_lower_email",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795568655297,
+      "tag": "0004_claim_tokens",
+      "breakpoints": true
     }
   ]
 }

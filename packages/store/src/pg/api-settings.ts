@@ -130,7 +130,7 @@ export function pgApiSettings(db: PgDb): ApiSettingsQueries {
 
     async findTenantNameAndSettings(tenantId) {
       const tenantRows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
+        .select({ name: tenants.name, settings: tenants.settings, publicHost: tenants.publicHost })
         .from(tenants)
         .where(eq(tenants.id, tenantId))
         .limit(1);

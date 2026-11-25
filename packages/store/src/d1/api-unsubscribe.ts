@@ -7,7 +7,7 @@
  * folds ASCII only, Postgres lower() folds all of Unicode.
  */
 import { eq, and, sql } from "drizzle-orm";
-import { lifecycleMessages } from "@claros/db/schema-sqlite";
+import { lifecycleMessages, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiUnsubscribeQueries } from "../areas/api-unsubscribe.js";
 
@@ -33,6 +33,11 @@ export function d1ApiUnsubscribe(db: D1Db): ApiUnsubscribeQueries {
           SELECT 1 FROM suppressions WHERE tenant_id = ${tenantId} AND lower(email) = lower(${email})
         )
       `);
+    },
+
+    async findTenantIdByPublicHost(host) {
+      const rows = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.publicHost, host)).limit(1);
+      return rows[0]?.id ?? null;
     },
   };
 }

@@ -61,5 +61,13 @@ export function d1ServerMain(db: D1Db): ServerMainQueries {
       const rows = await db.select({ id: users.id }).from(users).limit(1);
       return rows.length > 0;
     },
+
+    async replaceClaimToken({ tokenHash, expiresAt }) {
+      await rawBatch(db, [
+        sql`DELETE FROM claim_tokens WHERE consumed_at IS NULL`,
+        sql`INSERT INTO claim_tokens (id, token_hash, expires_at, created_at)
+            VALUES (${crypto.randomUUID()}, ${tokenHash}, ${expiresAt.getTime()}, ${Date.now()})`,
+      ]);
+    },
   };
 }
