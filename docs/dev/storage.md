@@ -47,3 +47,13 @@ const candidates = await storeFor(db).workerDrain.claimBatch({ limit, now });
 - Postgres: `drizzle/schema` and `drizzle/migrations` (`npm run db:generate`).
 - SQLite / D1: `drizzle/schema-sqlite` and `drizzle/migrations-sqlite` (`npm run db:generate:sqlite`). Same tables, columns and index names; `packages/store/tests/schema-parity.test.ts` fails when the two drift.
 - SQLite type mapping: uuid -> text (generated in code), timestamptz -> integer milliseconds (Drizzle `timestamp_ms`, so values are `Date` on both sides), jsonb and text[] -> JSON text, boolean -> integer 0/1, date -> `YYYY-MM-DD` text. The knowledge base gets an FTS5 table (`kb_fts`) kept in sync by triggers instead of a pgvector index; `events` is a plain table instead of monthly partitions.
+
+## Known differences on D1
+
+Each is covered by a contract test or documented in the module header:
+
+- Case-insensitive matching (`ILIKE`, `lower()`) folds ASCII letters only on SQLite; Postgres folds all of Unicode.
+- Timestamps that the Postgres code reads through raw SQL come back as Postgres text (`2026-05-09 00:12:08.198+00`); on D1 they are `Date` values and serialise as ISO-8601. Callers accept both.
+- There are no interactive transactions on D1. Multi-statement units are one `batch()` (atomic), and read-then-write guarantees are single guarded statements. Where Postgres decides inside a lock (enrollment, ingest lifecycle transition), D1 decides from a prior read and the guarded write refuses a stale decision: invariants (one event per messageId, one active nurture membership per contact, one transition per state change) always hold, but a request that loses a race may be refused where Postgres would have waited.
+- "Now" is the Worker clock, not the database clock.
+- Drizzle 0.45 cannot put raw `sql` statements inside `db.batch()` on D1; use builder queries (with `sql` fragments) or the module's raw batch helper.
