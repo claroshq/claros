@@ -3,7 +3,7 @@
  *
  * The claim is one guarded UPDATE ... RETURNING (CAS approved -> sending), atomic in SQLite.
  */
-import { and, eq, isNull, lte, or } from "drizzle-orm";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { lifecycleMessages } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { WorkerDrainMessageQueries } from "../areas/worker-drain-message.js";
@@ -20,6 +20,7 @@ export function d1WorkerDrainMessage(db: D1Db): WorkerDrainMessageQueries {
             eq(lifecycleMessages.tenantId, tenantId),
             eq(lifecycleMessages.status, "approved"),
             or(isNull(lifecycleMessages.scheduledSendAt), lte(lifecycleMessages.scheduledSendAt, now)),
+            sql`NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ${tenantId} AND t.archived_at IS NOT NULL)`,
           ),
         )
         .returning({

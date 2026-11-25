@@ -38,9 +38,13 @@ Instance admins manage products in Settings, Products, or through the API:
 | `POST /v1/products/:slug/unarchive` | Unarchive it |
 | `GET /v1/instance` | Instance settings and every user with their products |
 | `PUT /v1/instance/settings/:key` | Set an instance setting: `{ "value": <JSON> }` |
+| `GET/POST /v1/instance/keys`, `POST /v1/instance/keys/:id/revoke` | [Instance keys](API_KEYS.md#instance-keys) for scripts and CI |
+| `DELETE /v1/instance/people/:email` | Erase a person in every product |
+
+Scripts can do the same with an [instance key](API_KEYS.md#instance-keys) (`products:write`, `instance:read`) instead of a session.
 
 Slugs are 2 to 63 lowercase letters, digits or hyphens, and cannot be changed after creation.
 
 ## Archiving
 
-An archived product keeps its data readable in the dashboard and the API. Changes through the dashboard API answer `409 {"error": "Product is archived."}` until it is unarchived. Archiving does not stop ingestion or sending; pause the product's flows first if you want it fully quiet.
+An archived product keeps its data readable in the dashboard and the API. Changes through the dashboard API answer `409 {"error": "Product is archived."}` until it is unarchived. An archived product is quiet: `POST /v1/track`, `/v1/identify` and `/v1/batch` answer `403 {"error": "Product is archived."}`, the scan (lifecycle transitions, enrollments, new messages) skips it and the drain sends none of its approved messages. Unarchiving resumes all of it; approved messages that waited are sent by the next drain.

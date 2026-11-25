@@ -296,6 +296,7 @@ async function processTenantStepAdvancement(
             (await storeFor(db).workerScanStepAdvancement.getContactTraits({ tenantId, contactId: membership.contactId })) ?? {},
           countSends: (f) =>
             storeFor(db).workerScanStepAdvancement.countSends({ tenantId, contactId: membership.contactId, ...f }),
+          lifecycleState: () => storeFor(db).workerScanStepAdvancement.lookupLifecycleState({ tenantId, contactId: membership.contactId }),
         }),
         dateUnchanged: dateUnchangedCheck(db, tenantId, membership, flowInfo.compiledPlan),
       };

@@ -13,14 +13,15 @@ import { and, eq, sql, type SQL } from "drizzle-orm";
 import { webhookEndpoints, webhookOutbox } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pendingApprovalBatch, endpointBatchMinutes } from "@claros/core";
 
-export type OutboxEndpoints = ReadonlyArray<{ id: string; events: unknown }>;
+export type OutboxEndpoints = ReadonlyArray<{ id: string; events: unknown; config?: unknown }>;
 
 /** Endpoints of a product, read before building a batch. */
 export async function d1OutboxEndpoints(db: D1Db, tenantId: string, entries: readonly OutboxEntry[] | undefined): Promise<OutboxEndpoints> {
   if (!entries || entries.length === 0) return [];
   return db
-    .select({ id: webhookEndpoints.id, events: webhookEndpoints.events })
+    .select({ id: webhookEndpoints.id, events: webhookEndpoints.events, config: webhookEndpoints.config })
     .from(webhookEndpoints)
     .where(and(eq(webhookEndpoints.tenantId, tenantId), eq(webhookEndpoints.enabled, true)));
 }
@@ -43,8 +44,11 @@ export function d1OutboxInserts(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? (ep.events as string[]) : [];
       if (!events.includes(entry.event)) continue;
+      const batch = entry.batched ? pendingApprovalBatch(now, endpointBatchMinutes(ep.config)) : null;
+      const deliverAt = batch?.deliverAt ?? entry.deliverAt ?? now;
+      const dedupKey = batch?.dedupKey ?? entry.dedupKey ?? null;
       rows.push(
-        sql`(${crypto.randomUUID()}, ${tenantId}, ${ep.id}, ${entry.event}, ${JSON.stringify(entry.payload)}, 'pending', 0, ${(entry.deliverAt ?? now).getTime()}, NULL, ${entry.dedupKey ?? null}, ${now.getTime()}, NULL)`,
+        sql`(${crypto.randomUUID()}, ${tenantId}, ${ep.id}, ${entry.event}, ${JSON.stringify(entry.payload)}, 'pending', 0, ${deliverAt.getTime()}, NULL, ${dedupKey}, ${now.getTime()}, NULL)`,
       );
     }
   }

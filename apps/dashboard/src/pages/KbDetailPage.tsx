@@ -95,6 +95,8 @@ export default function KbDetailPage() {
   const [tags, setTags] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [content, setContent] = useState("");
+  const [category, setCategory] = useState("");
+  const [pinned, setPinned] = useState(false);
 
   const entry = entryQuery.data;
 
@@ -106,6 +108,8 @@ export default function KbDetailPage() {
       setTags(entry.tags.join(", "));
       setIsActive(entry.is_active);
       setContent(entry.content);
+      setCategory(entry.category ?? "");
+      setPinned(entry.pinned === true);
     }
   }, [entry, editing]);
 
@@ -152,6 +156,8 @@ export default function KbDetailPage() {
           .map((t) => t.trim())
           .filter((t) => t.length > 0),
         is_active: isActive,
+        category: category.trim() === "" ? null : category.trim(),
+        pinned,
       });
       setEditing(false);
       setSavedNotice(true);
@@ -188,6 +194,7 @@ export default function KbDetailPage() {
               {entry.title}
             </h1>
             {!entry.is_active && <Badge variant="muted">inactive</Badge>}
+            {entry.pinned && <Badge variant="neutral">pinned</Badge>}
             <Badge
               variant={embeddingVariant(entry.embedding_status)}
               pulse={entry.embedding_status === "pending"}
@@ -309,6 +316,19 @@ export default function KbDetailPage() {
             />
           </div>
           <div>
+            <label htmlFor="kb-category" className="mb-1.5 block text-[14px] font-medium text-foreground">
+              Category <span className="font-normal text-muted-foreground">(used by a step's kb_select)</span>
+            </label>
+            <Input
+              id="kb-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="tip_trick"
+              maxLength={120}
+              disabled={busy}
+            />
+          </div>
+          <div>
             <label htmlFor="kb-content" className="mb-1.5 block text-[14px] font-medium text-foreground">
               Content
             </label>
@@ -330,6 +350,16 @@ export default function KbDetailPage() {
               disabled={busy}
             />
             Active (inactive entries are not used by the AI)
+          </label>
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-[14px] text-foreground">
+            <input
+              type="checkbox"
+              checked={pinned}
+              onChange={(e) => setPinned(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--accent)]"
+              disabled={busy}
+            />
+            Pinned (always given to the drafting model)
           </label>
           <div className="flex items-center gap-3 border-t border-border pt-5">
             <Button type="submit" disabled={busy || title.trim().length === 0 || content.trim().length === 0}>
@@ -367,6 +397,16 @@ export default function KbDetailPage() {
               </div>
             )}
             <div>
+              <dt className="inline">Category: </dt>
+              <dd className="inline font-mono text-[13px]">{entry.category ?? "none"}</dd>
+            </div>
+            {entry.external_key && (
+              <div>
+                <dt className="inline">External key: </dt>
+                <dd className="inline font-mono text-[13px]">{entry.external_key}</dd>
+              </div>
+            )}
+            <div>
               <dt className="inline">Updated: </dt>
               <dd className="inline font-mono text-[13px]">{formatDateTime(entry.updated_at)}</dd>
             </div>
@@ -384,6 +424,16 @@ export default function KbDetailPage() {
             </div>
           )}
           <EntryContent entry={entry} />
+          {entry.data !== undefined && entry.data !== null && (
+            <div className="mt-8">
+              <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                Source data (read-only)
+              </p>
+              <pre className="max-h-96 overflow-auto rounded-md border border-border bg-sunken p-4 font-mono text-[12px] leading-relaxed text-foreground">
+                {JSON.stringify(entry.data, null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
       )}
     </div>

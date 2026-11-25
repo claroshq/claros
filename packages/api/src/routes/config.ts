@@ -25,6 +25,7 @@ import {
   clarosConfigSchema,
   generateWebhookSecret,
   planConfig,
+  SETTINGS_KEYS,
   type ConfigOp,
   type ConfigState,
 } from "@claros/core";
@@ -87,10 +88,10 @@ export default function configRoutes() {
       },
     });
     if (plan.errors.length > 0) {
-      return c.json({ error: "The configuration cannot be applied.", errors: plan.errors, changes: plan.changes }, 400);
+      return c.json({ error: "The configuration cannot be applied.", errors: plan.errors, warnings: plan.warnings, changes: plan.changes }, 400);
     }
     if (dryRun || plan.ops.length === 0) {
-      return c.json({ dry_run: dryRun, changes: plan.changes, config_version: state.configVersion });
+      return c.json({ dry_run: dryRun, changes: plan.changes, warnings: plan.warnings, config_version: state.configVersion });
     }
 
     const needsKey =
@@ -142,6 +143,7 @@ export default function configRoutes() {
     return c.json({
       dry_run: false,
       changes: plan.changes,
+      warnings: plan.warnings,
       config_version: applied.configVersion,
       ...(Object.keys(plan.generatedSecrets).length > 0 ? { webhook_secrets: plan.generatedSecrets } : {}),
     });
@@ -159,7 +161,7 @@ function hasPlainSourceSecret(v: unknown): boolean {
 function exportConfig(state: ConfigState): Record<string, unknown> {
   const s = state.settings;
   const settings: Record<string, unknown> = {};
-  for (const k of ["brand", "throttle", "postal_address", "links", "link_tracking", "brain", "data_sources", "date_traits", "activation_events"]) {
+  for (const k of SETTINGS_KEYS) {
     if (s[k] === undefined || s[k] === null) continue;
     if (k === "data_sources" && typeof s[k] === "object") {
       settings[k] = Object.fromEntries(
@@ -196,6 +198,7 @@ function exportConfig(state: ConfigState): Record<string, unknown> {
       kind: t.kind,
       ...(t.description ? { description: t.description } : {}),
       default_subscribed: t.defaultSubscribed,
+      ...(t.mirrorOnly ? { mirror_only: true } : {}),
     })),
     templates: state.templates
       .filter((t) => t.isActive !== false)
@@ -230,6 +233,12 @@ function exportConfig(state: ConfigState): Record<string, unknown> {
       }),
     webhooks: state.endpoints
       .filter((e) => e.kind === "webhook")
-      .map((e) => ({ slug: e.slug, url: e.url, events: e.events, enabled: e.enabled })),
+      .map((e) => ({
+        slug: e.slug,
+        url: e.url,
+        events: e.events,
+        enabled: e.enabled,
+        ...(typeof e.config?.batch_interval_minutes === "number" ? { batch_interval_minutes: e.config.batch_interval_minutes } : {}),
+      })),
   };
 }

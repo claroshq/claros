@@ -185,9 +185,21 @@ export function validateStatusTransition(
 // Flow class
 // ---------------------------------------------------------------------------
 
-export type FlowClass = "critical" | "nurture";
+/**
+ * Flow classes:
+ *   critical  - runs alongside other flows and bypasses frequency caps.
+ *   nurture   - at most one active nurture-class membership per contact.
+ *   scheduled - runs alongside other flows (does not take the nurture
+ *               slot) but respects the throttle and send windows (P5b).
+ */
+export type FlowClass = "critical" | "nurture" | "scheduled";
 
-export const FLOW_CLASSES: readonly FlowClass[] = ["critical", "nurture"];
+export const FLOW_CLASSES: readonly FlowClass[] = ["critical", "nurture", "scheduled"];
+
+/** Normalize a stored flow_class value (unknown values count as nurture). */
+export function toFlowClass(v: unknown): FlowClass {
+  return v === "critical" || v === "scheduled" ? v : "nurture";
+}
 
 // ---------------------------------------------------------------------------
 // Re-entry policy
@@ -267,9 +279,13 @@ export {
   stepContextSchema,
   kbSelectSchema,
   chooseCandidateSchema,
+  stepPresentation,
+  type StepPresentation,
   compiledTriggerSchema,
   planExitConditionSchema,
+  planExitLeafSchema,
   stepConditionSchema,
+  stepConditionLeafSchema,
   type CompiledPlan,
   type CompiledStep,
   type StepContext,

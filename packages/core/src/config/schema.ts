@@ -7,10 +7,13 @@
  */
 import { z } from "zod";
 import { compiledStepSchema, planExitConditionSchema } from "../flow/compiled-plan.js";
-import { contactConditionSchema } from "../conditions.js";
+import { audienceConditionOrListSchema } from "../conditions.js";
 import { linkTrackingSchema } from "../link-tracking.js";
 import { datePropertyTriggerSchema, dateScheduleTriggerSchema } from "../dates.js";
 import { TOPIC_KINDS } from "../topics-transports.js";
+import { RETENTION_TENURE_BUCKETS, RETENTION_RECENCY_BUCKETS } from "../lifecycle/retention-grid.js";
+import { LIFECYCLE_STATES } from "../lifecycle/states.js";
+import { ENGAGEMENT_DEPTHS } from "../lifecycle/engagement-depth.js";
 import { WEBHOOK_EVENTS, ANALYTICS_SINKS } from "../webhooks.js";
 
 /** Slugs of flows, templates, topics and webhooks: 1-63 of [a-z0-9_-]. */
@@ -32,6 +35,8 @@ export const configTopicSchema = z
     kind: z.enum(TOPIC_KINDS),
     description: z.string().max(500).nullable().optional(),
     default_subscribed: z.boolean().optional(),
+    /** P5b: the topic only mirrors a consent kept elsewhere; no flow may send on it. */
+    mirror_only: z.boolean().optional(),
   })
   .strict();
 
@@ -46,16 +51,36 @@ export const configTemplateSchema = z
   })
   .strict();
 
+/** Trigger keys each type reads; others are reported as warnings by planConfig. */
+export const TRIGGER_KEYS: Readonly<Record<string, readonly string[]>> = {
+  event: ["event", "where"],
+  lifecycle_transition: ["from", "to", "where"],
+  segment: ["tenure_bucket", "recency_bucket", "lifecycle_states", "engagement_depths", "where"],
+  manual: ["where"],
+  date_property: ["property", "offset", "send_at_local", "where"],
+  date_schedule: ["anchor", "offsets", "repeat", "max_sends", "send_at_local", "where"],
+};
+
 export const configTriggerSchema = z
   .object({
     type: z.enum(["event", "lifecycle_transition", "segment", "manual", "date_property", "date_schedule"]),
-    /** event: the event name. */
-    event: z.string().min(1).max(200).optional(),
-    /** event: conditions that must hold for the contact (trait, history, first_contact). */
-    where: z.array(contactConditionSchema).optional(),
+    /** event: the event name, or a list of names (any of them triggers). */
+    event: z.union([z.string().min(1).max(200), z.array(z.string().min(1).max(200)).min(1).max(20)]).optional(),
+    /**
+     * Every trigger type: audience conditions that must hold for the contact
+     * (trait, history, first_contact, lifecycle_state, combinators; a list
+     * must all hold).
+     */
+    where: audienceConditionOrListSchema.optional(),
     /** lifecycle_transition: from (optional) and to. */
     from: z.string().min(1).optional(),
     to: z.string().min(1).optional(),
+    /** segment: one retention-grid cell ... */
+    tenure_bucket: z.enum(RETENTION_TENURE_BUCKETS).optional(),
+    recency_bucket: z.enum(RETENTION_RECENCY_BUCKETS).optional(),
+    /** ... or contacts in any of these lifecycle states (and engagement depths). */
+    lifecycle_states: z.array(z.enum(LIFECYCLE_STATES)).min(1).max(LIFECYCLE_STATES.length).optional(),
+    engagement_depths: z.array(z.enum(ENGAGEMENT_DEPTHS)).min(1).max(ENGAGEMENT_DEPTHS.length).optional(),
     /** date_property (G3): the date trait and the signed offset from it ("-3d"). */
     property: z.string().min(1).max(64).optional(),
     offset: z.string().optional(),
@@ -71,6 +96,17 @@ export const configTriggerSchema = z
   .superRefine((t, ctx) => {
     if (t.type === "event" && !t.event) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "event triggers need 'event'" });
     if (t.type === "lifecycle_transition" && !t.to) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycle_transition triggers need 'to'" });
+    if (t.type === "segment") {
+      const cell = t.tenure_bucket !== undefined || t.recency_bucket !== undefined;
+      const states = t.lifecycle_states !== undefined || t.engagement_depths !== undefined;
+      if (cell && states) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "segment triggers take a grid cell (tenure_bucket, recency_bucket) or lifecycle_states / engagement_depths, not both" });
+      } else if (cell && (!t.tenure_bucket || !t.recency_bucket)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a grid-cell segment trigger needs both tenure_bucket and recency_bucket" });
+      } else if (!cell && !states) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "segment triggers need a grid cell (tenure_bucket, recency_bucket) or lifecycle_states / engagement_depths" });
+      }
+    }
     if (t.type === "date_property" || t.type === "date_schedule") {
       const schema = t.type === "date_property" ? datePropertyTriggerSchema : dateScheduleTriggerSchema;
       const r = schema.safeParse(t);
@@ -93,7 +129,12 @@ export const configFlowSchema = z
     prompt: z.string().min(1).max(20_000).optional(),
     content_mode: z.enum(["ai_drafted", "fixed_content"]).optional(),
     approval_mode: z.enum(["require", "auto"]).optional(),
-    flow_class: z.enum(["critical", "nurture"]).optional(),
+    /**
+     * critical: concurrent, bypasses frequency caps; nurture: one active per
+     * contact; scheduled: concurrent like critical, but throttled and
+     * windowed like nurture.
+     */
+    flow_class: z.enum(["critical", "nurture", "scheduled"]).optional(),
     priority: z.number().int().min(-1000).max(1000).optional(),
     reentry: z
       .object({
@@ -135,6 +176,8 @@ export const configWebhookSchema = z
     enabled: z.boolean().optional(),
     /** Signing secret (whsec_...). Omitted: generated on create (returned once), kept on update. */
     secret: z.string().min(16).max(200).optional(),
+    /** P5b: window of the batched message.pending_approval event, in minutes (default 15). */
+    batch_interval_minutes: z.number().int().min(1).max(1440).optional(),
   })
   .strict();
 
@@ -181,6 +224,25 @@ export const textRuleSchema = z.union([
 
 const LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
+/** P5b: lifecycle thresholds (the keys of LifecycleConfig). */
+export const configLifecycleSchema = z
+  .object({
+    activation_events: z.array(z.string().min(1).max(200)).max(50).optional(),
+    activation_window_days: z.number().int().min(1).max(365).optional(),
+    natural_frequency_days: z.number().int().min(1).max(365).optional(),
+    at_risk_missed_intervals: z.number().int().min(1).max(52).optional(),
+    dormant_days: z.number().int().min(1).max(3650).optional(),
+    churned_days: z.number().int().min(1).max(3650).optional(),
+    engagement_depth_window_days: z.number().int().min(1).max(365).optional(),
+    power_user_percentile: z.number().gt(0).lt(1).optional(),
+  })
+  .strict()
+  .superRefine((l, ctx) => {
+    if (l.dormant_days !== undefined && l.churned_days !== undefined && l.churned_days <= l.dormant_days) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "churned_days must be greater than dormant_days" });
+    }
+  });
+
 export const configSettingsSchema = z
   .object({
     brand: z.record(z.unknown()).optional(),
@@ -199,7 +261,28 @@ export const configSettingsSchema = z
          * fails the draft when the text appears.
          */
         text_rules: z.array(textRuleSchema).max(100).optional(),
+        /**
+         * P5b: the value gate. enabled false skips it (drafts go straight to
+         * approval); threshold (1-10) asks the gate for a score and holds
+         * back drafts that score below it.
+         */
+        assess: z
+          .object({
+            enabled: z.boolean().optional(),
+            threshold: z.number().int().min(1).max(10).optional(),
+          })
+          .strict()
+          .optional(),
       })
+      .strict()
+      .optional(),
+    /** P5b: lifecycle thresholds (tenants.settings.lifecycle). */
+    lifecycle: configLifecycleSchema.optional(),
+    /** P5b: LLM tokens a product may use per UTC day; over it, drafts wait (reason llm_budget). */
+    llm_daily_token_budget: z.number().int().min(1000).max(1_000_000_000).nullable().optional(),
+    /** P5b: approvals. daily_digest mails the product's owners the waiting approvals at 08:00 product time. */
+    approvals: z
+      .object({ daily_digest: z.boolean().optional() })
       .strict()
       .optional(),
     data_sources: z.record(z.string().regex(/^[a-z0-9_]{1,64}$/), configDataSourceSchema).optional(),

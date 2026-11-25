@@ -14,6 +14,7 @@ import {
   compileFlow,
   archiveFlow,
   saveFlowPlan,
+  saveFlowSteps,
   draftFlowStep,
   type CreateFlowInput,
   type UpdateFlowInput,
@@ -163,5 +164,20 @@ export function useSaveFlowPlan(id: string) {
 export function useDraftFlowStep(id: string) {
   return useMutation({
     mutationFn: (input: DraftStepInput) => draftFlowStep(id, input),
+  });
+}
+
+/**
+ * Save the plan as explicit steps (PUT /v1/flows/:id/steps). On success the
+ * flow has compile_status = 'ready' with exactly these steps.
+ */
+export function useSaveFlowSteps(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (plan: { steps: Record<string, unknown>[]; exit_conditions?: unknown[] }) => saveFlowSteps(id, plan),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: FLOWS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: flowQueryKey(id) });
+    },
   });
 }

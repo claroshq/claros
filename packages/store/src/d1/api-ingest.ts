@@ -49,6 +49,9 @@ import { topics as topicsTable } from "@claros/db/schema-sqlite";
 import { upsertContactTopicSql } from "./contact-topics.js";
 import { d1SyncContactDates } from "./contact-dates.js";
 import { rawBatch as rawBatchShared } from "./raw-batch.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
+import { identifyTopicEvents } from "../shared/topic-events.js";
+import { contactTopics as contactTopicsTable } from "@claros/db/schema-sqlite";
 
 interface IngestEventInput {
   tenantId: string;
@@ -366,6 +369,28 @@ export function d1ApiIngest(db: D1Db): ApiIngestQueries {
       const applied = slugs.filter((s) => knownSet.has(s));
       const unknown = slugs.filter((s) => !knownSet.has(s));
       if (applied.length > 0) {
+        // P5b: statuses before the change, for contact.subscribed / unsubscribed.
+        // D1 has no interactive transaction: the events are written right
+        // after the statuses (one batch); a crash in between loses events only.
+        const contact = (
+          await db
+            .select({ id: contacts.id, email: contacts.email })
+            .from(contacts)
+            .where(and(eq(contacts.tenantId, tenantId), eq(contacts.externalId, externalId)))
+            .limit(1)
+        )[0];
+        const before = contact
+          ? await db
+              .select({
+                topicId: topicsTable.id,
+                slug: topicsTable.slug,
+                defaultSubscribed: topicsTable.defaultSubscribed,
+                status: contactTopicsTable.status,
+              })
+              .from(topicsTable)
+              .leftJoin(contactTopicsTable, and(eq(contactTopicsTable.topicId, topicsTable.id), eq(contactTopicsTable.contactId, contact.id)))
+              .where(and(eq(topicsTable.tenantId, tenantId), inArray(topicsTable.slug, applied.slice(0, 90))))
+          : [];
         await rawBatchShared(
           db,
           applied.map((slug) =>
@@ -379,6 +404,12 @@ export function d1ApiIngest(db: D1Db): ApiIngestQueries {
             }),
           ),
         );
+        if (contact) {
+          const entries = identifyTopicEvents(contact, before.map((b) => ({ ...b, status: b.status ?? null })), wanted, applied);
+          const endpoints = await d1OutboxEndpoints(db, tenantId, entries);
+          const inserts = d1OutboxInserts(db, tenantId, endpoints, entries, now);
+          if (inserts.length > 0) await db.batch(inserts as never);
+        }
       }
       return { applied, unknown };
     },

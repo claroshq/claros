@@ -8,6 +8,7 @@
  */
 import { sql, type SQL } from "drizzle-orm";
 import type { PgDb } from "./db.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type {
   WorkerReapedMessage,
   WorkerReapQueries,
@@ -55,19 +56,33 @@ export function pgWorkerReap(db: PgDb): WorkerReapQueries {
 
     async failStuckMessages({ stuckStatus, threshold, now, maxRetryCount, tenantIds }) {
       const tenantFilter = tenantFilterFor(tenantIds);
-      // Fail: retry_count >= MAX_RETRY_COUNT -> terminal 'failed'
-      const result = await db.execute<WorkerReapedMessage & Record<string, unknown>>(sql`
-        UPDATE lifecycle_messages
-        SET
-          status = 'failed',
-          updated_at = ${now}
-        WHERE status = ${STATUS_LITERAL[stuckStatus]}
-          AND updated_at < ${threshold}
-          AND retry_count >= ${maxRetryCount}
-          ${tenantFilter}
-        RETURNING id, tenant_id
-      `);
-      return result.rows;
+      // Fail: retry_count >= MAX_RETRY_COUNT -> terminal 'failed', with a
+      // message.failed outbox row (P5b) in the same transaction.
+      return db.transaction(async (txHandle) => {
+        const tx = txHandle as unknown as PgDb;
+        const result = await tx.execute<WorkerReapedMessage & Record<string, unknown>>(sql`
+          UPDATE lifecycle_messages
+          SET
+            status = 'failed',
+            updated_at = ${now}
+          WHERE status = ${STATUS_LITERAL[stuckStatus]}
+            AND updated_at < ${threshold}
+            AND retry_count >= ${maxRetryCount}
+            ${tenantFilter}
+          RETURNING id, tenant_id
+        `);
+        const byTenant = new Map<string, string[]>();
+        for (const r of result.rows) byTenant.set(r.tenant_id, [...(byTenant.get(r.tenant_id) ?? []), r.id]);
+        for (const [tenantId, ids] of byTenant) {
+          await pgWriteOutbox(
+            tx,
+            tenantId,
+            ids.map((id) => ({ event: "message.failed", payload: { message_id: id, reason: `reap_${stuckStatus}` } })),
+            now,
+          );
+        }
+        return result.rows;
+      });
     },
   };
 }

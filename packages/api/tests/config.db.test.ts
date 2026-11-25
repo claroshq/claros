@@ -107,7 +107,7 @@ describe("PUT /v1/config", () => {
     expect((t!.settings as Record<string, unknown>).transport_routing).toEqual({ default: expect.any(String) });
 
     const again = await a.inject({ method: "PUT", url: "/v1/config", headers: bearer(key), payload: doc });
-    expect(again.json()).toEqual({ dry_run: false, changes: [], config_version: 1 });
+    expect(again.json()).toEqual({ dry_run: false, changes: [], warnings: [], config_version: 1 });
   });
 
   it("updates one field, prunes on request, reports errors without writing", async () => {

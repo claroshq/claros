@@ -8,11 +8,33 @@ A flow is a trigger and a list of steps. This page covers the trigger types, the
 
 | Type | Enrolls a contact when |
 |---|---|
-| `event` | The app sends the event (`{"event": "signed_up", "where": [conditions]}`) |
-| `lifecycle_transition` | The contact moves to a lifecycle state (`{"from"?: "engaged", "to": "at_risk"}`) |
-| `segment` | The contact is in a retention-grid cell |
+| `event` | The app sends the event (`{"event": "signed_up"}`), or one of several (`{"event": ["subscription_upgraded", "subscription_downgraded"]}`) |
+| `lifecycle_transition` | The contact moves to a lifecycle state (`{"from"?: "engaged", "to": "at_risk"}`; without `from`, from any state) |
+| `segment` | The contact is in a retention-grid cell (`{"tenure_bucket": "growing", "recency_bucket": "idle"}`), or in one of the listed lifecycle states and engagement depths (`{"lifecycle_states": ["engaged", "at_risk"], "engagement_depths"?: ["power", "regular"]}`). The scan checks segment flows every 15 minutes |
+| `manual` | You enroll contacts: `POST /v1/flows/:id-or-slug/enroll` (see [Manual enrollment](#manual-enrollment)) |
 | `date_property` | A date trait is due: `{"property": "trial_ends_at", "offset": "-3d", "send_at_local"?: "09:00", "where"?: [conditions]}` |
 | `date_schedule` | A date trait anchors a series of sends: `{"anchor": "first_paid_at", "offsets": ["1d", "3d", "7d"], "repeat"?: "30d", "max_sends": 7, "send_at_local"?: "09:00", "where"?: [conditions]}` |
+
+Every trigger type takes `where`: [audience conditions](CONFIG.md#conditions) the contact must meet when it would be enrolled (one condition, a combinator, or a list that must all hold). A malformed `where` never enrolls. Trigger keys a type does not read are reported as warnings by the config apply.
+
+### Flow classes
+
+| `flow_class` | Concurrency | Frequency caps and send windows |
+|---|---|---|
+| `nurture` (default) | At most one active nurture flow per contact; a higher-priority one takes the slot | Respected |
+| `critical` | Runs alongside every other flow | Bypassed (`critical_bypass_throttle`) |
+| `scheduled` | Runs alongside every other flow, never takes the nurture slot | Respected |
+
+`scheduled` is meant for long-running date schedules (a monthly nudge for months) that should not block the contact's other nurture flows but must still respect the product's caps.
+
+### Manual enrollment
+
+`POST /v1/flows/:id-or-slug/enroll` (a member session, or an [admin key](API_KEYS.md) with the `config` scope) enrolls contacts in an active `manual` flow:
+
+- `{"external_ids": ["u_1", "u_2"]}` (at most 500): these contacts.
+- `{"limit"?: 500, "cursor"?: "..."}`: every contact that meets the trigger's `where` (needed), one page per call (at most 1000); call again with `next_cursor` until it is `null`.
+
+Each contact goes through the trigger's `where` and the usual guards (suppression, class concurrency, re-entry). The answer counts them: `{"enrolled": 12, "skipped": {"where": 30, "already_enrolled": 1}, "next_cursor": "..."}` (`not_found` lists unknown external ids).
 
 ### Date triggers
 
@@ -23,7 +45,7 @@ Declare the identify traits that hold dates in `settings.date_traits` (ISO-8601 
 - **Once per date.** A contact is enrolled once per (flow, contact, date value), when the first slot is due. Re-entry policies do not apply to date flows; the date value does. A slot more than 24 hours old is never sent (a date backfilled far in the past sends nothing); the schedule moves on to its next slot.
 - **Moving the date.** When the trait changes or is removed, the enrollment for the old date exits with reason `date_changed` and its unsent messages are cancelled (`status_reason = date_changed`). The new date enrolls when its slot is due. The step condition `{"date_unchanged": true}` checks the same thing explicitly.
 - **Conditions at every send.** In a schedule, the step for slot k is the step with the highest `order` not above k (one step serves every slot). Its `condition` and the trigger's `where` are checked before each slot; a slot whose conditions fail is skipped. Plan `exit_conditions` end the series (for example "exit when `icp_configured` becomes true").
-- A nurture-class date flow holds the contact's one nurture slot for as long as the enrollment is active (a long schedule blocks other nurture flows for that contact); make long schedules `critical` or keep them short when that matters.
+- A nurture-class date flow holds the contact's one nurture slot for as long as the enrollment is active (a long schedule blocks other nurture flows for that contact). Use `flow_class: "scheduled"` for long schedules: they run alongside nurture flows and still respect caps and send windows. Date schedules may use any class; the config apply warns about nurture-class schedules.
 
 ## Step fields
 
@@ -33,7 +55,13 @@ Declare the identify traits that hold dates in `settings.date_traits` (ISO-8601 
 | `window_policy` | `immediate` or `respect_window` |
 | `template_ref` | A template slug: fixed content (no LLM call) |
 | `brain_instruction` | Instruction for AI-drafted content. Template variables work here too (`{{links.icp_url}}`, `{{contact.properties.plan_tier}}`, `{{context.leads...}}`) |
-| `condition`, `exit_condition` | See [conditions](CONFIG.md#conditions) |
+| `condition`, `exit_condition` | See [conditions](CONFIG.md#conditions): one condition, a combinator (`all`, `any`, `not`), or a list that must all hold |
+| `from_name` | Sender display name for this step's mail (a persona, "Sam from Acme"); the address stays the transport's verified sender |
+| `reply_to` | Reply-To address for this step's mail |
+| `eyebrow` | A short label above the message body ("QUICK TIP"), in the product's accent color; a choose candidate may set its own |
+| `preheader` | Hidden inbox preview text of the HTML mail |
+| `allowed_links` | Names from `settings.links` this step may use: the drafting model gets only these, and the [link allowlist](#links-and-text-rules) accepts only these (plus URLs a context source returned); a choose candidate may set its own |
+| `single_cta` | At most one link besides the footer and unsubscribe links: the model is told so, and a draft with more is blocked (`status_reason = single_cta`); a fixed template with more is refused by the config apply |
 | `expires_after` | `2d`, `12h`: a message of this step that is not sent this long after it was created is cancelled with reason `expired` (approval queue included) |
 | `context`, `on_empty`, `on_error` | [Context sources](#context-sources) |
 | `kb_select` | [Knowledge base selection](#knowledge-base-selection) |
@@ -69,11 +97,17 @@ signed with [Standard Webhooks](WEBHOOKS.md#verifying-signatures) headers (`webh
 
 The entry goes to the drafting model as the topic of the email; fixed templates can use `{{kb.title}}` and `{{kb.content}}`. Pinned entries always reach the drafting model (oldest first, about 2,000 tokens).
 
+## Template variables
+
+Fixed templates and brain instructions use Mustache-style variables: `{{contact.first_name}}` (with a default: `{{contact.first_name|there}}`), `{{contact.properties.plan_tier}}` (alias `{{traits.plan_tier}}`), `{{tenant.name}}`, `{{flow.name}}`, `{{links.billing_url}}`, `{{context.leads...}}`, `{{kb.title}}`, `{{brain.opening}}`, and `{{event.new_plan}}`: a property of the event that enrolled the contact (event-triggered flows; the properties are kept on the enrollment, up to 16 KB of JSON).
+
+Sections show a block only when a value is set (`{{#traits.founding_price}}Your founding price stays.{{/traits.founding_price}}`) or only when it is not (`{{^traits.founding_price}}...{{/traits.founding_price}}`); over a list they repeat for each item. One template with sections replaces per-variant templates picked by step conditions.
+
 ## Links and text rules
 
 `settings.links` names the product's URLs (`{"icp_url": "https://..."}`): templates and brain instructions use them as `{{links.icp_url}}`, and the drafting model gets the list and is told to use only those URLs.
 
-Once a product declares `links` or `link_tracking.domains`, every AI draft is checked after drafting: an http(s) URL that is not one of the named links (extra query parameters allowed), not on a tracked domain (or subdomain) and not returned by a context source blocks the draft. The message fails with `status_reason = link_not_allowed`; the draft and the offending URLs stay visible in approvals. Products without either keep the earlier behaviour.
+Once a product declares `links` or `link_tracking.domains` (or the step sets `allowed_links`), every AI draft is checked after drafting: an http(s) URL that is not one of the named links (extra query parameters allowed), not on a tracked domain (or subdomain) and not returned by a context source blocks the draft. The message fails with `status_reason = link_not_allowed`; the draft and the offending URLs stay visible in approvals. Products without either keep the earlier behaviour.
 
 `settings.brain.text_rules` run on every AI draft after drafting and before the value gate: `{"find": "...", "replace": "..."}` rewrites the subject and body, `{"forbid": "..."}` fails the message with `status_reason = text_rule_forbidden`. Plain string rules are writing rules given to the model. `settings.brain.guidelines` is appended to the drafting and value-gate instructions; `locale` sets the drafting language.
 
@@ -103,3 +137,7 @@ A candidate has `action_type` and optionally `when` (conditions), `kb_select`, `
 5. **Regenerate with a forced action** (`POST /v1/messages/:id/regenerate {"action_type": ...}`) may force any declared candidate; its filter result is shown as a warning.
 
 A product without an LLM configuration cannot use choose steps: the config apply refuses them.
+
+## Editing flows in the dashboard
+
+The flow editor edits every trigger type (with `where`), the flow class, and the plan: steps with the fields above, choose candidates, context sources, `kb_select`, `expires_after`, conditions with `all` / `any` / `not` (or as JSON), and plan exits. It saves through `PUT /v1/flows/:id/steps` (a member session, or an admin key with the `config` scope), which validates the steps like a config document and stores them as the compiled plan.

@@ -61,6 +61,7 @@ export async function applyConfig(ctx: Context, opts: ApplyOptions, env: NodeJS.
   const body = (await res.json().catch(() => ({}))) as {
     error?: string;
     errors?: string[];
+    warnings?: string[];
     issues?: Array<{ path: string; message: string }>;
     changes?: Change[];
     config_version?: number;
@@ -72,6 +73,7 @@ export async function applyConfig(ctx: Context, opts: ApplyOptions, env: NodeJS.
     for (const i of body.issues ?? []) ctx.io.log(`  - ${i.path || "(document)"}: ${i.message}`);
     return 1;
   }
+  for (const w of body.warnings ?? []) ctx.io.warn(w);
   const changes = body.changes ?? [];
   if (changes.length === 0) {
     ctx.io.log(`No changes (config version ${body.config_version}).`);

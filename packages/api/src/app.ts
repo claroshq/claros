@@ -58,12 +58,20 @@ import productsRoutes from "./routes/products.js";
 import instanceRoutes from "./routes/instance.js";
 import topicsRoutes from "./routes/topics.js";
 import configRoutes from "./routes/config.js";
+import capabilitiesRoutes from "./routes/capabilities.js";
+import webhookEndpointRoutes from "./routes/webhook-endpoints.js";
+import flowStepsRoutes from "./routes/flow-steps.js";
 
 export { API_PATH_PREFIXES } from "./http/spa.js";
 
 export interface BuildAppOptions {
   /** Process role reported in /health. Defaults to "all". */
   role?: string;
+  /**
+   * Runtime reported by GET /v1/capabilities. Default: "node" on Postgres,
+   * "workers" on D1. apps/worker passes "workers".
+   */
+  runtime?: "node" | "workers";
   /** Edition label reported in /health and /version. Always "community"; kept for v0.6 compatibility. */
   edition?: string;
   /** Logger: false silences, { level } configures, or pass an object with debug/info/warn/error. */
@@ -180,6 +188,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
   // --- Dashboard routes (session cookie, per-route minimum role) --------------
   if (opts.db) {
     app.route("/v1/flows", flowsRoutes());
+    app.route("/v1/flows", flowStepsRoutes());
     app.route("/v1/contacts", contactsRoutes());
     app.route("/v1/analytics", analyticsRoutes());
     app.route("/v1/kb", kbRoutes());
@@ -199,6 +208,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/instance", instanceRoutes());
     app.route("/v1/topics", topicsRoutes());
     app.route("/v1/config", configRoutes());
+    app.route("/v1/capabilities", capabilitiesRoutes({ runtime: opts.runtime }));
+    app.route("/v1/webhooks", webhookEndpointRoutes());
   }
   app.route("/v1/diagnostics", diagnosticsRoutes());
 

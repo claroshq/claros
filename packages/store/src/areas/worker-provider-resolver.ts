@@ -21,4 +21,8 @@ export interface WorkerActiveLlmConfig {
 export interface WorkerProviderResolverQueries {
   /** The tenant's active LLM config, or null when none is active. */
   getActiveLlmConfig(tenantId: string): Promise<WorkerActiveLlmConfig | null>;
+  /** P5b: add LLM tokens to the product's usage of a UTC day ("YYYY-MM-DD"); one atomic upsert. */
+  addLlmTokens(input: { tenantId: string; day: string; tokens: number }): Promise<void>;
+  /** P5b: LLM tokens the product used on a UTC day (0 when none). */
+  getLlmTokens(input: { tenantId: string; day: string }): Promise<number>;
 }

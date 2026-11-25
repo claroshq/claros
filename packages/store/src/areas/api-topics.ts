@@ -17,6 +17,8 @@ export interface TopicRow {
   kind: string;
   description: string | null;
   defaultSubscribed: boolean;
+  /** P5b: consent mirror only; no flow may send on it. */
+  mirrorOnly: boolean;
   createdAt: Date | null;
 }
 
@@ -27,6 +29,7 @@ export interface NewTopic {
   kind: string;
   description: string | null;
   defaultSubscribed: boolean;
+  mirrorOnly?: boolean;
 }
 
 /** Fields a PATCH may set; absent keys are left unchanged. The slug is fixed. */
@@ -35,6 +38,7 @@ export interface TopicPatch {
   kind?: string;
   description?: string | null;
   defaultSubscribed?: boolean;
+  mirrorOnly?: boolean;
 }
 
 export interface ApiTopicsQueries {

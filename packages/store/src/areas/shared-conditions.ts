@@ -24,4 +24,6 @@ export interface ContactConditionQueries {
    * at or after `since` when given.
    */
   countSends(input: SendCountInput): Promise<number>;
+  /** The contact's lifecycle state, null when the contact does not exist (P5b audience conditions). */
+  lookupLifecycleState(input: { tenantId: string; contactId: string }): Promise<string | null>;
 }

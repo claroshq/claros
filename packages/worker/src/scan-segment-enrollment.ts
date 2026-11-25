@@ -24,6 +24,8 @@ import { storeFor } from "@claros/store";
 import {
   resolveLifecycleConfig,
   isSegmentTriggerConfig,
+  isLifecycleSegmentTriggerConfig,
+  toFlowClass,
   tenureBucketRange,
   recencyBucketRange,
   type EnrollableFlow,
@@ -31,6 +33,7 @@ import {
   type SegmentTriggerConfig,
 } from "@claros/core";
 import { enrollContactInFlows } from "./enroll.js";
+import { passesTriggerWhere } from "./audience.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -100,7 +103,9 @@ export async function phaseSegmentEnrollment(
       await storeFor(db).workerScanSegmentEnrollment.listActiveSegmentFlows(tenant.id);
 
     for (const flow of segmentFlows) {
-      if (!isSegmentTriggerConfig(flow.triggerConfig)) continue;
+      const byCell = isSegmentTriggerConfig(flow.triggerConfig);
+      const byState = !byCell && isLifecycleSegmentTriggerConfig(flow.triggerConfig);
+      if (!byCell && !byState) continue;
       stats.flowsEvaluated++;
 
       const enrollable: EnrollableFlow = {
@@ -109,19 +114,12 @@ export async function phaseSegmentEnrollment(
         priority: flow.priority ?? 0,
         triggerType: "segment",
         triggerConfig: flow.triggerConfig,
-        flowClass: (flow.flowClass ?? "nurture") as "critical" | "nurture",
+        flowClass: toFlowClass(flow.flowClass),
         reentryPolicy: (flow.reentryPolicy ?? "cooldown") as "once" | "cooldown" | "every_time",
         reentryCooldownDays: flow.reentryCooldownDays ?? 30,
       };
 
-      const flowStats = await processSegmentFlow(
-        db,
-        tenant.id,
-        enrollable,
-        flow.triggerConfig,
-        config,
-        now,
-      );
+      const flowStats = await processSegmentFlow(db, tenant.id, enrollable, config, now);
 
       stats.enrollmentsAttempted += flowStats.attempted;
       stats.enrollmentsSucceeded += flowStats.succeeded;
@@ -148,15 +146,16 @@ async function processSegmentFlow(
   db: Db,
   tenantId: string,
   flow: EnrollableFlow,
-  triggerConfig: SegmentTriggerConfig,
   config: LifecycleConfig,
   now: Date,
 ): Promise<SegmentFlowResult> {
-  const tenure = tenureBucketRange(triggerConfig.tenure_bucket);
-  const recency = recencyBucketRange(
-    triggerConfig.recency_bucket,
-    config.natural_frequency_days,
-  );
+  const store = storeFor(db).workerScanSegmentEnrollment;
+  // A grid cell (tenure x recency) or, P5b, lifecycle states / engagement depths.
+  const triggerConfig = flow.triggerConfig;
+  const cell = isSegmentTriggerConfig(triggerConfig) ? (triggerConfig as SegmentTriggerConfig) : null;
+  const byState = cell ? null : (triggerConfig as { lifecycle_states?: string[]; engagement_depths?: string[] });
+  const tenure = cell ? tenureBucketRange(cell.tenure_bucket) : null;
+  const recency = cell ? recencyBucketRange(cell.recency_bucket, config.natural_frequency_days) : null;
 
   const result: SegmentFlowResult = { attempted: 0, succeeded: 0, capped: false };
   let lastId: string | null = null;
@@ -170,20 +169,27 @@ async function processSegmentFlow(
 
     // Contacts whose tenure and recency ages fall inside the cell, excluding
     // anyone already actively enrolled in this flow. Keyset pagination by id.
-    const batch = await storeFor(db).workerScanSegmentEnrollment.listCellContactsPage({
-      tenantId,
-      flowId: flow.id,
-      now,
-      tenure,
-      recency,
-      afterId: lastId,
-      limit: Math.min(BATCH_SIZE, SEGMENT_ENROLLMENT_CAP - result.attempted),
-    });
+    const limit = Math.min(BATCH_SIZE, SEGMENT_ENROLLMENT_CAP - result.attempted);
+    const batch: { id: string }[] = cell
+      ? await store.listCellContactsPage({ tenantId, flowId: flow.id, now, tenure: tenure!, recency: recency!, afterId: lastId, limit })
+      : await store.listStateContactsPage({
+          tenantId,
+          flowId: flow.id,
+          states: byState?.lifecycle_states ?? null,
+          depths: byState?.engagement_depths ?? null,
+          afterId: lastId,
+          limit,
+        });
 
     if (batch.length === 0) break;
 
     for (const contact of batch) {
       result.attempted++;
+      // P5b: the trigger's `where` must hold for the contact.
+      if (!(await passesTriggerWhere(store, triggerConfig, tenantId, contact.id, now))) {
+        if (result.attempted >= SEGMENT_ENROLLMENT_CAP) break;
+        continue;
+      }
       // enrollContactInFlows opens the transaction (advisory lock inside)
       const results = await enrollContactInFlows(
         db,

@@ -22,7 +22,8 @@ import type { LifecycleConfig } from "./states.js";
 // Types
 // ---------------------------------------------------------------------------
 
-export type EngagementDepth = "power" | "regular" | "casual" | "minimal";
+export const ENGAGEMENT_DEPTHS = ["power", "regular", "casual", "minimal"] as const;
+export type EngagementDepth = (typeof ENGAGEMENT_DEPTHS)[number];
 
 /**
  * Parameters for assigning a depth bucket to a single contact.

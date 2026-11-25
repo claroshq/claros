@@ -14,6 +14,8 @@ The knowledge base holds what the drafting model may say about your product. Ent
 
 `POST /v1/kb` and `PATCH /v1/kb/:id` accept `category`, `external_key`, `data` and `pinned`; `GET /v1/kb` returns them.
 
+In the dashboard (Knowledge Base), an entry shows its category, pinned state and external key, and its source `data` read-only below the content. Editing an entry changes its category and the pinned flag; the external key and data are written by the API and the import only. The list shows each entry's category and a pinned badge.
+
 ## Import
 
 ```bash

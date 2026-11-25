@@ -31,5 +31,12 @@ export function pgContactConditions(db: PgDb): ContactConditionQueries {
       `);
       return Number(res.rows[0]?.n ?? 0);
     },
+
+    async lookupLifecycleState({ tenantId, contactId }) {
+      const res = await db.execute<{ lifecycle_state: string }>(sql`
+        SELECT lifecycle_state FROM contacts WHERE id = ${contactId}::uuid AND tenant_id = ${tenantId}::uuid
+      `);
+      return res.rows[0]?.lifecycle_state ?? null;
+    },
   };
 }

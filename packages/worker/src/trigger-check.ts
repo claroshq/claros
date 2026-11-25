@@ -13,7 +13,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
 import {
   matchesEventTrigger,
-  evaluateAllContactConditions,
+  evaluateAudienceCondition,
+  toFlowClass,
+  boundedEventProperties,
   cachedConditionContext,
   type EnrollableFlow,
   type TriggerCheckJobData,
@@ -64,16 +66,13 @@ export async function handleTriggerCheck(
     now,
     traits: async () => (await storeFor(db).workerTriggerCheck.getContactTraits({ tenantId: tenant_id, contactId: contact_id })) ?? {},
     countSends: (f) => storeFor(db).workerTriggerCheck.countSends({ tenantId: tenant_id, contactId: contact_id, ...f }),
+    lifecycleState: () => storeFor(db).workerTriggerCheck.lookupLifecycleState({ tenantId: tenant_id, contactId: contact_id }),
   });
   const passing: typeof named = [];
   for (const f of named) {
     const where = (f.triggerConfig as { where?: unknown } | null)?.where;
-    if (where === undefined || where === null) {
-      passing.push(f);
-      continue;
-    }
-    if (!Array.isArray(where)) continue;
-    if ((await evaluateAllContactConditions(where, ctx)) === true) passing.push(f);
+    // P5b: one condition (with combinators) or a list; malformed never enrolls.
+    if ((await evaluateAudienceCondition(where, ctx)) === true) passing.push(f);
   }
   const matchingFlows: EnrollableFlow[] = passing
     .map((f) => ({
@@ -82,7 +81,7 @@ export async function handleTriggerCheck(
       priority: f.priority ?? 0,
       triggerType: f.triggerType as "event",
       triggerConfig: f.triggerConfig,
-      flowClass: (f.flowClass ?? "nurture") as "critical" | "nurture",
+      flowClass: toFlowClass(f.flowClass),
       reentryPolicy: (f.reentryPolicy ?? "cooldown") as "once" | "cooldown" | "every_time",
       reentryCooldownDays: f.reentryCooldownDays ?? 30,
     }));
@@ -97,6 +96,8 @@ export async function handleTriggerCheck(
     tenant_id,
     matchingFlows,
     now,
+    null,
+    boundedEventProperties(data.event_properties),
   );
 
   // Collect successfully enrolled membership IDs
@@ -106,3 +107,4 @@ export async function handleTriggerCheck(
 
   return { enrolledMembershipIds };
 }
+

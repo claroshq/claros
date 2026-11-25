@@ -141,7 +141,12 @@ export async function assess(
     };
   }
 
-  const assessment = validation.data;
+  let assessment = validation.data;
+  // P5b: a score below the product's threshold fails the gate; a missing
+  // score with a threshold set leaves the verdict as given.
+  if (ctx.threshold && typeof assessment.score === "number" && assessment.score < ctx.threshold && assessment.verdict === "pass") {
+    assessment = { ...assessment, verdict: "fail", reasoning: `score ${assessment.score} is below the threshold ${ctx.threshold}: ${assessment.reasoning}` };
+  }
 
   // Log the verdict and reasoning at info level.
   // Pass/fail rates and reasoning distributions are the primary calibration

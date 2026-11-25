@@ -7,6 +7,7 @@
 import { and, eq, gte, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { lifecycleMessages } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 import type { WorkerReapQueries, WorkerReapStuckInput } from "../areas/worker-reap.js";
 
 /** Optional tenant scope; the list is bound as one JSON array to stay under D1's parameter limit. */
@@ -38,11 +39,24 @@ export function d1WorkerReap(db: D1Db): WorkerReapQueries {
     },
 
     async failStuckMessages(input) {
-      return db
+      const rows = await db
         .update(lifecycleMessages)
         .set({ status: "failed", updatedAt: input.now })
         .where(and(...stuck(input), gte(lifecycleMessages.retryCount, input.maxRetryCount)))
         .returning({ id: lifecycleMessages.id, tenant_id: lifecycleMessages.tenantId });
+      // P5b: message.failed per failed message. D1 has no interactive
+      // transaction, so the outbox rows are written right after the update
+      // (one batch per product); a crash in between loses the event, never
+      // the state change.
+      const byTenant = new Map<string, string[]>();
+      for (const r of rows) byTenant.set(r.tenant_id, [...(byTenant.get(r.tenant_id) ?? []), r.id]);
+      for (const [tenantId, ids] of byTenant) {
+        const entries = ids.map((id) => ({ event: "message.failed", payload: { message_id: id, reason: `reap_${input.stuckStatus}` } }));
+        const endpoints = await d1OutboxEndpoints(db, tenantId, entries);
+        const inserts = d1OutboxInserts(db, tenantId, endpoints, entries, input.now);
+        if (inserts.length > 0) await db.batch(inserts as never);
+      }
+      return rows;
     },
   };
 }

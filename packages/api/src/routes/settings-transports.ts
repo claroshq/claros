@@ -25,6 +25,9 @@
  *
  * The v0.6 endpoints PUT/GET /v1/settings/transport keep working on the
  * default transport.
+ *
+ * Every route here also accepts an instance key with the transports:write
+ * scope, acting on the product named by X-Claros-Product or ?product=.
  */
 import { z } from "zod";
 import { storeFor, type SettingsTransportDetailRow } from "@claros/store";
@@ -48,7 +51,7 @@ import {
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import type { AppContext } from "../http/env.js";
-import type { RoleRouter } from "../http/router.js";
+import { allowInstanceKey, type RoleRouter } from "../http/router.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -366,7 +369,7 @@ function escapeHtml(s: string): string {
 
 /** Register the multi-transport routes on the settings router. */
 export function registerTransportRoutes(r: RoleRouter): void {
-  r.get("/transports", "member", async (c) => {
+  r.get("/transports", "member", allowInstanceKey("transports:write"), async (c) => {
     const db: Db = c.var.db;
     const setup = await loadTransportSetup(db, c.var.tenant!.id);
     return c.json({
@@ -379,7 +382,7 @@ export function registerTransportRoutes(r: RoleRouter): void {
     });
   });
 
-  r.post("/transports", "owner", async (c) => {
+  r.post("/transports", "owner", allowInstanceKey("transports:write"), async (c) => {
     const parsed = createSchema.safeParse(c.var.body);
     if (!parsed.success) return validationError(c, parsed.error.issues);
     const body = parsed.data;
@@ -404,7 +407,7 @@ export function registerTransportRoutes(r: RoleRouter): void {
     return c.json({ transport: serializeTransport(inserted!) }, 201);
   });
 
-  r.patch("/transports/:id", "owner", async (c) => {
+  r.patch("/transports/:id", "owner", allowInstanceKey("transports:write"), async (c) => {
     const id = c.req.param("id") ?? "";
     if (!UUID_RE.test(id)) return c.json({ error: "Transport not found." }, 404);
     const parsed = patchSchema.safeParse(c.var.body ?? {});
@@ -441,7 +444,7 @@ export function registerTransportRoutes(r: RoleRouter): void {
     return c.json({ transport: serializeTransport(updated) });
   });
 
-  r.delete("/transports/:id", "owner", async (c) => {
+  r.delete("/transports/:id", "owner", allowInstanceKey("transports:write"), async (c) => {
     const id = c.req.param("id") ?? "";
     if (!UUID_RE.test(id)) return c.json({ error: "Transport not found." }, 404);
     const db: Db = c.var.db;
@@ -467,7 +470,7 @@ export function registerTransportRoutes(r: RoleRouter): void {
     return c.json({ deleted: true, id: target.id });
   });
 
-  r.post("/transports/:id/test", "owner", async (c) => {
+  r.post("/transports/:id/test", "owner", allowInstanceKey("transports:write"), async (c) => {
     const id = c.req.param("id") ?? "";
     if (!UUID_RE.test(id)) return c.json({ error: "Transport not found." }, 404);
     const parsed = testSchema.safeParse(c.var.body);
@@ -479,7 +482,7 @@ export function registerTransportRoutes(r: RoleRouter): void {
     return sendTestEmail(c, db, tenantId, parsed.data.to, row);
   });
 
-  r.put("/transport-routing", "owner", async (c) => {
+  r.put("/transport-routing", "owner", allowInstanceKey("transports:write"), async (c) => {
     const parsed = routingSchema.safeParse(c.var.body ?? {});
     if (!parsed.success) return validationError(c, parsed.error.issues);
     const body = parsed.data;

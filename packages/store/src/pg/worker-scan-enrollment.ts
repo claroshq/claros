@@ -4,10 +4,12 @@
 import { eq, and, sql } from "drizzle-orm";
 import { flows } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
+import { pgContactConditions } from "./contact-conditions.js";
 import type { WorkerScanEnrollmentQueries } from "../areas/worker-scan-enrollment.js";
 
 export function pgWorkerScanEnrollment(db: PgDb): WorkerScanEnrollmentQueries {
   return {
+    ...pgContactConditions(db),
     async listActiveLifecycleTransitionFlows(tenantId) {
       // Load all active, compiled lifecycle-transition flows for this tenant.
       // Small cardinality: a tenant typically has < 50 flows total.

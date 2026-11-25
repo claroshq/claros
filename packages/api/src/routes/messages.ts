@@ -571,7 +571,7 @@ export default function messagesRoutes() {
       tenantId,
       messageId,
       now,
-      outbox: [{ event: "message.pending_approval", payload: { message_id: messageId }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt }],
+      outbox: [{ event: "message.pending_approval", payload: { message_id: messageId }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt, batched: true }],
     });
     if (!ok) return stale(c, db, tenantId, messageId, "unapprove");
     return c.json({ message: "Message back in review.", id: messageId, status: "pending_approval" });

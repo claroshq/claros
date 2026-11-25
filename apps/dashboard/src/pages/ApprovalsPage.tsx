@@ -44,8 +44,8 @@ import {
   removeFromQueue,
 } from "../messages.js";
 import { useFlows } from "../flows.js";
-import { useQueryClient } from "@tanstack/react-query";
-import type { Message, MessageActionError } from "../api.js";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchMessages, type Message, type MessageActionError } from "../api.js";
 import { Badge } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
@@ -555,6 +555,13 @@ export default function ApprovalsPage() {
 
   const totalWaiting = messages.length;
   const hasMore = queue.hasNextPage;
+  // P5b: drafts held back because the product's daily LLM token budget is spent.
+  const waitingForBudget = useQuery({
+    queryKey: ["messages", "pending_generation", "llm_budget"],
+    queryFn: () => fetchMessages(undefined, "pending_generation"),
+    select: (page) => page.messages.filter((m) => m.status_reason === "llm_budget").length,
+    refetchInterval: 60_000,
+  });
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -569,6 +576,14 @@ export default function ApprovalsPage() {
               : `${totalWaiting}${hasMore ? "+" : ""} ${totalWaiting === 1 ? "draft" : "drafts"} waiting for review`
         }
       />
+
+      {(waitingForBudget.data ?? 0) > 0 && (
+        <p className="mb-4 rounded-md border border-border bg-muted px-4 py-3 text-[14px] text-foreground" role="status">
+          {waitingForBudget.data} {waitingForBudget.data === 1 ? "draft waits" : "drafts wait"} for tomorrow&apos;s LLM budget
+          (status reason <code className="font-mono text-[13px]">llm_budget</code>): the product&apos;s daily token budget
+          (settings.llm_daily_token_budget) is spent. They are drafted after midnight UTC.
+        </p>
+      )}
 
       {queue.isLoading && <QueueSkeleton />}
 

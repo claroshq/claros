@@ -86,7 +86,7 @@ beforeAll(async () => {
 
   // Clean up from any prior run
   for (const tbl of [
-    "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
+    "tenant_daily_usage", "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
     "events", "contacts", "api_keys", "flows", "templates", "sessions", "users",
   ]) {
     await db.execute(sql.raw(
@@ -137,7 +137,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (dbAvailable) {
     for (const tbl of [
-      "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
+      "tenant_daily_usage", "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
       "events", "contacts", "api_keys", "flows", "templates", "sessions", "users",
     ]) {
       await db.execute(sql.raw(

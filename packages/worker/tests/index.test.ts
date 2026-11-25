@@ -8,6 +8,7 @@
  * - a throwing handler propagates its error (pg-boss uses this to call fail())
  * - fromDrizzle is re-exported for transactional job enqueue in API routes
  */
+import { registerStore } from "@claros/store";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QUEUE } from "@claros/core";
 import { CLAROS_WORKER_VERSION, startWorker, createBoss, fromDrizzle } from "../src/index.js";
@@ -45,6 +46,8 @@ vi.mock("pg-boss", async () => {
 // The scan handler calls phaseTimeTransitions(db, now) which queries tenants table.
 // In this unit test, we mock the module to prevent actual DB calls.
 const mockDb = {} as never;
+// The scan reads the non-archived products first (P5b); a Store for the mock handle answers it.
+registerStore(mockDb as object, { workerIndex: { listActiveTenantIds: async () => ["t1"], getAnyTenantSettings: async () => null } } as never);
 
 // Mock scan-time-transitions module to avoid DB calls in unit tests
 vi.mock("../src/scan-time-transitions.js", () => ({

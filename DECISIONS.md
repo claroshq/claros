@@ -72,3 +72,18 @@ Defaults taken while implementing G3, G11, G15, G18, G19, G21, G22, G27 and G29;
 - **KB import edits.** "Untouched since import" is `updated_at <= imported_at`; embedding writes no longer bump `updated_at`, and a re-embed keeps an untouched entry untouched. Entries without tags pass `tags_any_from_trait`. `best_match` is word overlap (the same on both backends).
 - **Choose filters.** Consent and throttle are checked flow-wide before per-candidate cooldown, `when`, KB availability and context. A forced action that is not a declared candidate records `none`.
 - **History import.** Each imported message gets its own completed membership (exit reason `imported`) so re-entry and step history see it; contacts are not created by the import.
+
+## 2026-11-25: First-product readiness (P5b, defaults)
+
+Defaults taken while implementing P5b; the maintainer may override:
+
+- **Combinators.** `all`, `any`, `not`, nested at most 4 deep, at most 20 entries per list; a list where one condition is expected means `all`. Plan `exit_conditions` stays an any-list. Audience conditions (`where`, `when`) gain `lifecycle_state` / `lifecycle_state_not` leaves; `event_since_step` and `date_unchanged` stay step-only.
+- **Manual triggers** enroll through `POST /v1/flows/:ref/enroll` (listed external ids, or the trigger's `where` audience one page per call), synchronously, with the normal guards. No background job.
+- **`{{event.*}}`** reads the enrolling event's properties, stored on the membership (`trigger_properties`) when the JSON is at most 16 KB (larger: not stored, the variables render empty).
+- **Persona fields** are read from the flow's current plan at send time (not stored on the message), so editing a step changes mail still waiting to be sent.
+- **`allowed_links`** narrows both what the model is told and the allowlist: only the named links (and context URLs) pass, tracked-domain URLs outside them do not.
+- **LLM budget** counts every LLM call's tokens per product and UTC day (compile included); only content generation waits for it. A message that waits goes back to `pending_generation` with `status_reason = llm_budget`.
+- **Value gate threshold** asks the gate for a 1-10 score; a draft that passes with a score below the threshold is `value_gated`. A gate answer without a score keeps its verdict.
+- **Approvals digest** runs on the content tick, from 08:00 local (product timezone), to owners (memberships with role owner), only when something waits; a day is claimed once (`tenant_daily_usage.digest_sent_at`) before sending.
+- **Config warnings** do not block an apply.
+- **Events on D1**: reap give-ups and identify topic changes write their outbox rows right after the state change (no interactive transaction); a crash in between can lose the event, never the change.

@@ -6,11 +6,12 @@ import { and, eq } from "drizzle-orm";
 import { webhookEndpoints, webhookOutbox } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pendingApprovalBatch, endpointBatchMinutes } from "@claros/core";
 
 export async function pgWriteOutbox(tx: PgDb, tenantId: string, entries: readonly OutboxEntry[] | undefined, now: Date): Promise<number> {
   if (!entries || entries.length === 0) return 0;
   const endpoints = await tx
-    .select({ id: webhookEndpoints.id, events: webhookEndpoints.events })
+    .select({ id: webhookEndpoints.id, events: webhookEndpoints.events, config: webhookEndpoints.config })
     .from(webhookEndpoints)
     .where(and(eq(webhookEndpoints.tenantId, tenantId), eq(webhookEndpoints.enabled, true)));
   const rows = outboxRows(tenantId, endpoints, entries, now);
@@ -21,7 +22,7 @@ export async function pgWriteOutbox(tx: PgDb, tenantId: string, entries: readonl
 
 export function outboxRows(
   tenantId: string,
-  endpoints: ReadonlyArray<{ id: string; events: unknown }>,
+  endpoints: ReadonlyArray<{ id: string; events: unknown; config?: unknown }>,
   entries: readonly OutboxEntry[],
   now: Date,
 ) {
@@ -30,6 +31,7 @@ export function outboxRows(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? (ep.events as string[]) : [];
       if (!events.includes(entry.event)) continue;
+      const batch = entry.batched ? pendingApprovalBatch(now, endpointBatchMinutes(ep.config)) : null;
       rows.push({
         id: crypto.randomUUID(),
         tenantId,
@@ -38,8 +40,8 @@ export function outboxRows(
         payload: entry.payload,
         status: "pending",
         attempts: 0,
-        nextAttemptAt: entry.deliverAt ?? now,
-        dedupKey: entry.dedupKey ?? null,
+        nextAttemptAt: batch?.deliverAt ?? entry.deliverAt ?? now,
+        dedupKey: batch?.dedupKey ?? entry.dedupKey ?? null,
         createdAt: now,
       });
     }

@@ -57,7 +57,18 @@ export function matchesLifecycleTransition(
   if (flow.triggerType !== "lifecycle_transition") return false;
   const config = flow.triggerConfig as Record<string, unknown> | null;
   if (!config || typeof config !== "object") return false;
-  return config.from === fromState && config.to === toState;
+  // `from` is optional: absent (or null), any previous state matches.
+  const fromOk = config.from === undefined || config.from === null || config.from === "" || config.from === fromState;
+  return fromOk && config.to === toState;
+}
+
+/** The event names of an event trigger config: `event` is one name or a list. */
+export function triggerEventNames(config: unknown): string[] {
+  if (!config || typeof config !== "object") return [];
+  const ev = (config as Record<string, unknown>).event;
+  if (typeof ev === "string") return ev ? [ev] : [];
+  if (Array.isArray(ev)) return ev.filter((e): e is string => typeof e === "string" && e.length > 0);
+  return [];
 }
 
 /**
@@ -70,9 +81,7 @@ export function matchesEventTrigger(
   eventName: string,
 ): boolean {
   if (flow.triggerType !== "event") return false;
-  const config = flow.triggerConfig as Record<string, unknown> | null;
-  if (!config || typeof config !== "object") return false;
-  return config.event === eventName;
+  return triggerEventNames(flow.triggerConfig).includes(eventName);
 }
 
 // ---------------------------------------------------------------------------

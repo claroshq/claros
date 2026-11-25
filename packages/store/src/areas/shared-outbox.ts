@@ -14,4 +14,10 @@ export interface OutboxEntry {
   dedupKey?: string | null;
   /** First delivery attempt; default now. */
   deliverAt?: Date;
+  /**
+   * P5b: batch per endpoint (message.pending_approval): dedupKey and
+   * deliverAt come from the endpoint's batch_interval_minutes window and
+   * override the two fields above.
+   */
+  batched?: boolean;
 }

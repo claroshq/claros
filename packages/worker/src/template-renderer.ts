@@ -48,6 +48,8 @@ export interface TemplateContext {
   brain?: { opening?: string };
   /** G18: the knowledge base entry picked by kb_select ({{kb.title}}, {{kb.content}}, {{kb.data.*}}). */
   kb?: { title: string; content: string; data?: unknown };
+  /** P5b: properties of the event that enrolled the contact ({{event.plan}}); event-triggered flows only. */
+  event?: Record<string, unknown> | null;
 }
 
 export interface RenderResult {
@@ -104,6 +106,8 @@ export const SUPPORTED_VARIABLE_PREFIXES = [
   "links.",
   "brain.opening",
   "kb.",
+  "event.",
+  "traits.",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -181,11 +185,25 @@ function resolveVariable(path: string, ctx: TemplateContext): string | null {
     return null;
   }
 
-  if (parts[0] === "context" || parts[0] === "links" || parts[0] === "brain" || parts[0] === "kb") {
-    return scalar(lookupPath({ context: ctx.context ?? {}, links: ctx.links ?? {}, brain: ctx.brain ?? {}, kb: ctx.kb ?? {} }, parts));
+  if (EXTRA_ROOTS.has(parts[0]!)) {
+    return scalar(lookupPath(extraRoots(ctx), parts));
   }
 
   return null;
+}
+
+/** Variable roots resolved by path lookup; `traits` is an alias of contact.properties (P5b). */
+const EXTRA_ROOTS = new Set(["context", "links", "brain", "kb", "event", "traits"]);
+
+function extraRoots(ctx: TemplateContext): Record<string, unknown> {
+  return {
+    context: ctx.context ?? {},
+    links: ctx.links ?? {},
+    brain: ctx.brain ?? {},
+    kb: ctx.kb ?? {},
+    event: ctx.event ?? {},
+    traits: ctx.contact.properties ?? {},
+  };
 }
 
 /** Value at a dotted path of an object, or undefined. */
@@ -213,8 +231,8 @@ function sectionValue(path: string, ctx: TemplateContext, scopes: unknown[]): un
     if (v !== undefined) return v;
   }
   if (parts[0] === "contact" && parts[1] === "properties") return ctx.contact.properties?.[parts.slice(2).join(".")];
-  if (parts[0] === "context" || parts[0] === "links" || parts[0] === "brain" || parts[0] === "kb") {
-    return lookupPath({ context: ctx.context ?? {}, links: ctx.links ?? {}, brain: ctx.brain ?? {}, kb: ctx.kb ?? {} }, parts);
+  if (EXTRA_ROOTS.has(parts[0]!)) {
+    return lookupPath(extraRoots(ctx), parts);
   }
   return resolveVariable(path, ctx) ?? undefined;
 }

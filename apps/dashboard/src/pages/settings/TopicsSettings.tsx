@@ -68,7 +68,7 @@ function TopicRow({ topic }: { topic: Topic }) {
   const patch = usePatchTopic();
   const [err, setErr] = useState<string | null>(null);
 
-  async function update(input: { kind?: TopicKind; default_subscribed?: boolean }) {
+  async function update(input: { kind?: TopicKind; default_subscribed?: boolean; mirror_only?: boolean }) {
     setErr(null);
     try {
       await patch.mutateAsync({ id: topic.id, input });
@@ -84,6 +84,7 @@ function TopicRow({ topic }: { topic: Topic }) {
           <span className="text-[15px] font-medium text-foreground">{topic.name}</span>
           <span className="font-mono text-[13px] text-muted-foreground">{topic.slug}</span>
           {!topic.default_subscribed && <Badge variant="muted">opt-in</Badge>}
+          {topic.mirror_only && <Badge variant="muted">mirror only</Badge>}
         </div>
         {topic.description && <p className="mt-0.5 text-[13px] text-muted-foreground">{topic.description}</p>}
         <FormError message={err} />
@@ -108,6 +109,19 @@ function TopicRow({ topic }: { topic: Topic }) {
             className="rounded border-input"
           />
           Subscribed by default
+        </label>
+        <label
+          className="flex items-center gap-2 text-[14px] text-foreground"
+          title="The topic only mirrors consent (for example a newsletter tool's list). No flow may send on it."
+        >
+          <input
+            type="checkbox"
+            checked={topic.mirror_only === true}
+            onChange={(e) => void update({ mirror_only: e.target.checked })}
+            disabled={patch.isPending}
+            className="rounded border-input"
+          />
+          Mirror only
         </label>
       </div>
     </li>

@@ -123,10 +123,12 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
 
     async listTenantsWithDueMessages(now) {
       const rows = await db.all<{ tenant_id: string }>(sql`
-        SELECT DISTINCT tenant_id
-        FROM lifecycle_messages
-        WHERE status = 'approved'
-          AND (scheduled_send_at IS NULL OR scheduled_send_at <= ${now.getTime()})
+        SELECT DISTINCT m.tenant_id
+        FROM lifecycle_messages m
+        JOIN tenants t ON t.id = m.tenant_id
+        WHERE m.status = 'approved'
+          AND (m.scheduled_send_at IS NULL OR m.scheduled_send_at <= ${now.getTime()})
+          AND t.archived_at IS NULL
       `);
       return rows.map((r) => r.tenant_id);
     },
@@ -227,6 +229,15 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
     async getFlowLabel(flowId) {
       const rows = await db.select({ slug: flows.slug, name: flows.name }).from(flows).where(eq(flows.id, flowId)).limit(1);
       return rows[0] ?? null;
+    },
+
+    async getMessageActionType({ tenantId, messageId }) {
+      const rows = await db
+        .select({ actionType: lifecycleMessages.brainActionType })
+        .from(lifecycleMessages)
+        .where(and(eq(lifecycleMessages.tenantId, tenantId), eq(lifecycleMessages.id, messageId)))
+        .limit(1);
+      return rows[0]?.actionType ?? null;
     },
 
     async getFlowThrottleInfo(flowId) {

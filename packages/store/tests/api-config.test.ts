@@ -38,7 +38,7 @@ for (const factory of testBackends()) {
       const flowId = randomUUID();
       const epId = randomUUID();
       const ops: ConfigOp[] = [
-        { op: "upsertTopic", id: topicId, create: true, values: { slug: "account", name: "Account", kind: "transactional", description: null, defaultSubscribed: true } },
+        { op: "upsertTopic", id: topicId, create: true, values: { slug: "account", name: "Account", kind: "transactional", description: null, defaultSubscribed: true, mirrorOnly: false } },
         { op: "upsertTemplate", id: randomUUID(), create: true, values: { slug: "t1", name: "T1", subject: "S", bodyHtml: "<p>b</p>", bodyText: null, category: null } },
         { op: "upsertFlow", id: flowId, create: true, values: flowValues("dunning", { topicId, flowClass: "critical" }), compile: false },
         { op: "upsertEndpoint", id: epId, create: true, values: { slug: "app", kind: "webhook", url: "http://127.0.0.1:9/h", events: ["message.sent"], enabled: true, config: null }, secret: "enc-1" },
@@ -52,7 +52,7 @@ for (const factory of testBackends()) {
       expect(s.configVersion).toBe(1);
       expect(s.settings).toEqual({ keep: 1, links: { a: "https://a.example" } });
       expect(s.locale).toBe("en");
-      expect(s.topics).toEqual([{ id: topicId, slug: "account", name: "Account", kind: "transactional", description: null, defaultSubscribed: true }]);
+      expect(s.topics).toEqual([{ id: topicId, slug: "account", name: "Account", kind: "transactional", description: null, defaultSubscribed: true, mirrorOnly: false }]);
       expect(s.templates.map((x) => [x.slug, x.isActive])).toEqual([["t1", true]]);
       expect(s.flows).toEqual([expect.objectContaining({ id: flowId, slug: "dunning", status: "active", flowClass: "critical", topicId, triggerConfig: { event: "x" } })]);
       expect(s.endpoints).toEqual([{ id: epId, slug: "app", kind: "webhook", url: "http://127.0.0.1:9/h", events: ["message.sent"], enabled: true, secret: "enc-1", config: null }]);
@@ -83,7 +83,7 @@ for (const factory of testBackends()) {
 
     it("refuses a stale version without writing; concurrent applies: exactly one wins", async () => {
       const t = await b.newTenant();
-      const op = (slug: string): ConfigOp => ({ op: "upsertTopic", id: randomUUID(), create: true, values: { slug, name: slug, kind: "marketing", description: null, defaultSubscribed: true } });
+      const op = (slug: string): ConfigOp => ({ op: "upsertTopic", id: randomUUID(), create: true, values: { slug, name: slug, kind: "marketing", description: null, defaultSubscribed: true, mirrorOnly: false } });
       expect(await b.store.apiConfig.applyConfigOps({ tenantId: t, ops: [op("a")], expectedVersion: 5, now: NOW })).toEqual({ ok: false, conflict: true });
       expect((await b.store.apiConfig.loadConfigState(t))!.topics).toEqual([]);
       const results = await Promise.all([

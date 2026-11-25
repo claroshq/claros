@@ -167,6 +167,25 @@ export function isSegmentTriggerConfig(value: unknown): value is SegmentTriggerC
 }
 
 /**
+ * P5b: a segment trigger by lifecycle state (and engagement depth) instead of
+ * a grid cell: contacts whose lifecycle_state is one of `lifecycle_states`
+ * (any state when absent) and whose engagement_depth is one of
+ * `engagement_depths` (any depth when absent). At least one list is set.
+ */
+export interface LifecycleSegmentTriggerConfig {
+  lifecycle_states?: string[];
+  engagement_depths?: string[];
+}
+
+export function isLifecycleSegmentTriggerConfig(value: unknown): value is LifecycleSegmentTriggerConfig {
+  if (value === null || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  const list = (x: unknown) => x === undefined || (Array.isArray(x) && x.length > 0 && x.every((s) => typeof s === "string"));
+  if (!list(v.lifecycle_states) || !list(v.engagement_depths)) return false;
+  return v.lifecycle_states !== undefined || v.engagement_depths !== undefined;
+}
+
+/**
  * Check whether a segment-trigger flow targets the given grid cell.
  * Returns false for non-segment flows or malformed config.
  */

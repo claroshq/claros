@@ -19,6 +19,8 @@ import {
   Boxes,
   Tags,
   Activity,
+  Webhook,
+  FileJson,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "../../components/page-header.js";
@@ -70,6 +72,13 @@ export default function SettingsLayout() {
           icon: MapPin,
           warn: tenant !== null && (tenant.postal_address ?? "") === "",
         },
+      ],
+    },
+    {
+      label: "Integration",
+      items: [
+        { to: "/settings/webhooks", label: "Webhooks", icon: Webhook },
+        { to: "/settings/config", label: "Config as code", icon: FileJson },
       ],
     },
   ];

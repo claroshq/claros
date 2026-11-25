@@ -56,6 +56,7 @@ for (const factory of testBackends()) {
           kind: "marketing",
           description: "Monthly",
           defaultSubscribed: true,
+          mirrorOnly: false,
           createdAt: expect.any(Date),
         });
         const c = await q.createTopic({

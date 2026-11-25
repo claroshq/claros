@@ -116,7 +116,7 @@ const PRODUCT_TABLES = [
   "webhook_outbox", "webhook_endpoints", "message_events", "lifecycle_messages", "flow_memberships",
   "contact_topics", "contact_dates", "contact_conflicts", "lifecycle_transitions", "events", "suppressions", "kb_entries",
   "templates", "flows", "topics", "transport_configs", "contacts", "llm_configs", "scan_checkpoints",
-  "retention_grid_snapshots", "api_keys", "sessions", "invites", "magic_link_tokens", "memberships", "users",
+  "retention_grid_snapshots", "api_keys", "sessions", "invites", "magic_link_tokens", "memberships", "users", "tenant_daily_usage",
 ];
 
 export async function dropProduct(db: TestDb, tenantId: string): Promise<void> {

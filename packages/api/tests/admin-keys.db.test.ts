@@ -76,8 +76,10 @@ describe("admin key authentication", () => {
     const a = await app(db);
     expect((await a.inject({ method: "GET", url: "/v1/messages", headers: bearer(key) })).statusCode).toBe(200);
     expect((await a.inject({ method: "GET", url: "/v1/suppressions", headers: bearer(key) })).statusCode).toBe(403);
+    // GET /v1/flows takes the config scope (item 11); this key lacks it.
+    expect((await a.inject({ method: "GET", url: "/v1/flows", headers: bearer(key) })).statusCode).toBe(403);
     // Routes without an admin scope stay session-only.
-    expect((await a.inject({ method: "GET", url: "/v1/flows", headers: bearer(key) })).statusCode).toBe(401);
+    expect((await a.inject({ method: "GET", url: "/v1/team", headers: bearer(key) })).statusCode).toBe(401);
     expect((await a.inject({ method: "GET", url: "/v1/ingestion/keys", headers: bearer(key) })).statusCode).toBe(401);
   });
 

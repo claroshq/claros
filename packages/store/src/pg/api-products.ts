@@ -56,6 +56,7 @@ export function pgApiProducts(db: PgDb): ApiProductsQueries {
           .onConflictDoNothing({ target: tenants.slug })
           .returning(productColumns);
         if (!product) return null;
+        if (ownerUserId === null) return product;
         await tx
           .insert(memberships)
           .values({ userId: ownerUserId, tenantId: product.id, role: "owner" })

@@ -24,6 +24,10 @@ export interface WorkerCompileQueries {
   listActiveTemplateSlugs(tenantId: string): Promise<string[]>;
   /** Titles of the tenant's active KB entries. */
   listActiveKbTitles(tenantId: string): Promise<string[]>;
+  /** P5b: distinct categories of the tenant's active KB entries, sorted (kb_select in compiled plans). */
+  listActiveKbCategories(tenantId: string): Promise<string[]>;
+  /** P5b: the tenant's settings JSON (named links and data sources for the compile prompt), or null. */
+  getTenantSettings(tenantId: string): Promise<Record<string, unknown> | null>;
   /** CAS pending -> ready with the compiled plan; true when this call won. */
   markCompileReady(flowId: string, plan: unknown): Promise<boolean>;
   /** CAS pending -> failed with an error (caller truncates); true when this call won. */

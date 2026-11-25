@@ -4,10 +4,12 @@
 import { eq, and, isNotNull } from "drizzle-orm";
 import { flows } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import { d1ContactConditions } from "./contact-conditions.js";
 import type { WorkerScanEnrollmentQueries } from "../areas/worker-scan-enrollment.js";
 
 export function d1WorkerScanEnrollment(db: D1Db): WorkerScanEnrollmentQueries {
   return {
+    ...d1ContactConditions(db),
     async listActiveLifecycleTransitionFlows(tenantId) {
       return db
         .select({

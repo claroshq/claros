@@ -105,9 +105,9 @@ for (const factory of testBackends()) {
       const instanceHash = `kh-${randomUUID()}`;
       await b.db.insert(b.schema.apiKeys).values({ tenantId: null, keyHash: instanceHash, prefix: "cl_inst_", kind: "instance" });
 
-      expect(await b.store.apiIngestAuth.findActiveKeyByHash(secret.keyHash)).toEqual({ id: s.id, tenantId: t, kind: "secret", allowedOrigins: null });
+      expect(await b.store.apiIngestAuth.findActiveKeyByHash(secret.keyHash)).toEqual({ id: s.id, tenantId: t, kind: "secret", allowedOrigins: null, tenantArchived: false });
       expect(await b.store.apiIngestAuth.findActiveKeyByHash(pub.keyHash)).toEqual({
-        id: p.id, tenantId: t, kind: "publishable", allowedOrigins: ["https://a.example"],
+        id: p.id, tenantId: t, kind: "publishable", allowedOrigins: ["https://a.example"], tenantArchived: false,
       });
       expect(await b.store.apiIngestAuth.findActiveKeyByHash(admin.keyHash)).toBeNull();
       expect(await b.store.apiIngestAuth.findActiveKeyByHash(revoked.keyHash)).toBeNull();

@@ -113,6 +113,10 @@ export function createIngestAuth(lastUsedThrottleMs: number = LAST_USED_THROTTLE
     if (!row) {
       return c.json({ error: "Invalid or revoked API key." }, 401);
     }
+    // P5b: an archived product takes no events until it is unarchived.
+    if (row.tenantArchived) {
+      return c.json({ error: "Product is archived." }, 403);
+    }
 
     const kind: ApiKeyKind = row.kind === "publishable" ? "publishable" : "secret";
 

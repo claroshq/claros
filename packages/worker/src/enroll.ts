@@ -64,6 +64,8 @@ export async function enrollContactInFlows(
   now: Date,
   /** Date triggers (G3): the anchor value this enrollment is for. */
   anchorAt: Date | null = null,
+  /** P5b: properties of the triggering event ({{event.*}} in templates). */
+  triggerProperties: Record<string, unknown> | null = null,
 ): Promise<EnrollmentResult[]> {
   if (candidateFlows.length === 0) return [];
 
@@ -73,5 +75,6 @@ export async function enrollContactInFlows(
     candidateFlows,
     now,
     anchorAt,
+    triggerProperties,
   });
 }

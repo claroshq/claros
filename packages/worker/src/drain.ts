@@ -96,6 +96,7 @@ import {
   tagHtmlLinks,
   tagTextLinks,
   resolveLinkTracking,
+  stepPresentation,
   type LinkTracking,
 } from "@claros/core";
 import type { TenantTransportAdapter, TransportResolver } from "./transport.js";
@@ -611,8 +612,17 @@ export async function processOneMessage(
   // Step 6: Resolve sender info (the routed transport's, else the tenant's active transport).
   const senderInfo: SenderInfo = transportInfo
     ? { fromEmail: transportInfo.fromEmail, fromName: transportInfo.fromName }
-    : await resolveSenderInfo(db, candidate.tenantId);
-  const replyTo = transportInfo?.replyTo ?? brandReplyTo(tenantSettings?.brand) ?? undefined;
+    : { ...(await resolveSenderInfo(db, candidate.tenantId)) };
+  // P5b: per-step persona. from_name replaces the display name only; the
+  // address stays the transport's verified sender.
+  const flowInfo = await storeFor(db).workerDrain.getFlowThrottleInfo(candidate.flowId);
+  const presentation = stepPresentation(
+    flowInfo?.compiledPlan ?? null,
+    candidate.flowStepOrder,
+    await storeFor(db).workerDrain.getMessageActionType({ tenantId: candidate.tenantId, messageId: candidate.id }),
+  );
+  if (presentation.fromName) senderInfo.fromName = presentation.fromName;
+  const replyTo = presentation.replyTo ?? transportInfo?.replyTo ?? brandReplyTo(tenantSettings?.brand) ?? undefined;
   const listUnsubscribe = carriesListUnsubscribe(messageTopic?.kind);
 
   // Step 7: Build compliance headers and footer.
@@ -658,6 +668,8 @@ export async function processOneMessage(
     brand,
     tenantName,
     complianceFooterHtml: shellComplianceHtml,
+    eyebrow: presentation.eyebrow,
+    preheader: presentation.preheader,
   });
   const deliveredText = wrapInTextShell({
     bodyText,

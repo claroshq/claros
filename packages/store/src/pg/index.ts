@@ -52,6 +52,7 @@ import { pgWorkerTriggerCheck } from "./worker-trigger-check.js";
 import { pgWorkerDrainMessage } from "./worker-drain-message.js";
 import { pgWorkerTransportResolver } from "./worker-transport-resolver.js";
 import { pgWorkerProviderResolver } from "./worker-provider-resolver.js";
+import { pgWorkerApprovalsDigest } from "./worker-approvals-digest.js";
 import { pgWorkerProcessMessage } from "./worker-process-message.js";
 import { pgApiSession } from "./api-session.js";
 import { pgWorkerCounterRollover } from "./worker-counter-rollover.js";
@@ -63,6 +64,7 @@ import { pgOps } from "./ops.js";
 import { pgApiAdminAuth } from "./api-admin-auth.js";
 import { pgWorkerWebhooks } from "./worker-webhooks.js";
 import { pgApiConfig } from "./api-config.js";
+import { pgApiWebhooks } from "./api-webhooks.js";
 
 export function createPgStore(db: PgDb): Store {
   return {
@@ -116,6 +118,7 @@ export function createPgStore(db: PgDb): Store {
     workerDrainMessage: pgWorkerDrainMessage(db),
     workerTransportResolver: pgWorkerTransportResolver(db),
     workerProviderResolver: pgWorkerProviderResolver(db),
+    workerApprovalsDigest: pgWorkerApprovalsDigest(db),
     workerProcessMessage: pgWorkerProcessMessage(db),
     apiSession: pgApiSession(db),
     workerCounterRollover: pgWorkerCounterRollover(db),
@@ -127,5 +130,6 @@ export function createPgStore(db: PgDb): Store {
     apiAdminAuth: pgApiAdminAuth(db),
     workerWebhooks: pgWorkerWebhooks(db),
     apiConfig: pgApiConfig(db),
+    apiWebhooks: pgApiWebhooks(db),
   };
 }

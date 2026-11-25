@@ -19,7 +19,10 @@ export interface WorkerScanSegmentEnrollmentFlowRow {
   reentryCooldownDays: number | null;
 }
 
-export interface WorkerScanSegmentEnrollmentQueries {
+import type { ContactConditionQueries } from "./shared-conditions.js";
+
+/** Lookups for trigger `where` (P5b) come from ContactConditionQueries. */
+export interface WorkerScanSegmentEnrollmentQueries extends ContactConditionQueries {
   /** Tenants (id, settings) ordered by id; restricted to tenantIds when given and non-empty. */
   listTenants(tenantIds?: string[]): Promise<{ id: string; settings: unknown }[]>;
   /** Active, compiled (compile_status = ready, plan present) segment-triggered flows of a tenant. */
@@ -36,6 +39,19 @@ export interface WorkerScanSegmentEnrollmentQueries {
     now: Date;
     tenure: { minDays: number; maxDays: number | null };
     recency: { minDays: number; maxDays: number | null };
+    afterId: string | null;
+    limit: number;
+  }): Promise<{ id: string }[]>;
+  /**
+   * P5b: one keyset page (by id, after afterId) of the tenant's contacts whose
+   * lifecycle_state is in `states` (any when null) and engagement_depth is in
+   * `depths` (any when null), excluding contacts actively enrolled in the flow.
+   */
+  listStateContactsPage(input: {
+    tenantId: string;
+    flowId: string;
+    states: string[] | null;
+    depths: string[] | null;
     afterId: string | null;
     limit: number;
   }): Promise<{ id: string }[]>;

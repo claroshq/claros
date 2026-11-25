@@ -13,6 +13,8 @@ export interface ActiveApiKeyRow {
   tenantId: string;
   kind: string;
   allowedOrigins: string[] | null;
+  /** P5b: the key's product is archived (ingestion answers 403). */
+  tenantArchived: boolean;
 }
 
 export interface ApiIngestAuthQueries {

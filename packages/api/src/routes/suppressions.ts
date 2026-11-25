@@ -288,7 +288,16 @@ export default function suppressionRoutes() {
       // Emails are already lowercased above (line 188). The store method
       // detects conflicts case-insensitively on (tenant_id, lower(email)), so
       // both within-batch duplicates and existing rows are caught.
-      imported = await storeFor(db).apiSuppressions.importSuppressions({ tenantId, emails: toInsert });
+      // P5b: the same insert as importSuppressions (reason imported, source
+      // csv_import), plus contact.suppressed per inserted address (G5).
+      // Chunks keep each atomic unit (a D1 batch) small.
+      const now = new Date();
+      imported = 0;
+      for (let i = 0; i < toInsert.length; i += 200) {
+        imported += (
+          await storeFor(db).apiSuppressions.addSuppressions({ tenantId, emails: toInsert.slice(i, i + 200), reason: "imported", source: "csv_import", now })
+        ).length;
+      }
       skipped = toInsert.length - imported; // rows in batch that conflicted
     }
 

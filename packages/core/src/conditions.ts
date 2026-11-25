@@ -65,8 +65,118 @@ export const historyConditionSchema = z
 
 export const firstContactConditionSchema = z.object({ first_contact: z.boolean() }).strict();
 
+/** The contact's current lifecycle state is (or is not) the given one. */
+export const lifecycleStateConditionSchema = z.object({ lifecycle_state: z.string().min(1).max(64) }).strict();
+export const lifecycleStateNotConditionSchema = z.object({ lifecycle_state_not: z.string().min(1).max(64) }).strict();
+
 /** Any of the three G4/G28 shapes. */
 export const contactConditionSchema = z.union([traitConditionSchema, historyConditionSchema, firstContactConditionSchema]);
+
+// ---------------------------------------------------------------------------
+// Combinators (P5b): {all: [...]}, {any: [...]}, {not: c}, and lists (= all)
+// ---------------------------------------------------------------------------
+
+/** Deepest nesting of combinators a condition may use. */
+export const MAX_CONDITION_DEPTH = 4;
+/** Most entries in one list or combinator. */
+export const MAX_CONDITION_ITEMS = 20;
+
+/** Combinator nesting depth of a condition (a leaf is 0, `{all: [leaf]}` is 1). */
+export function conditionDepth(cond: unknown): number {
+  if (Array.isArray(cond)) return cond.reduce((m: number, c) => Math.max(m, conditionDepth(c)), 0);
+  if (cond === null || typeof cond !== "object") return 0;
+  const o = cond as Record<string, unknown>;
+  const keys = Object.keys(o);
+  if (keys.length !== 1) return 0;
+  if (keys[0] === "all" || keys[0] === "any") return 1 + conditionDepth(o[keys[0]]);
+  if (keys[0] === "not") return 1 + conditionDepth(o.not);
+  return 0;
+}
+
+/** True for `{all: [...]}`, `{any: [...]}` and `{not: ...}` (by their single key). */
+export function isCombinator(cond: unknown): cond is { all: unknown[] } | { any: unknown[] } | { not: unknown } {
+  if (cond === null || typeof cond !== "object" || Array.isArray(cond)) return false;
+  const keys = Object.keys(cond);
+  return keys.length === 1 && (keys[0] === "all" || keys[0] === "any" || keys[0] === "not");
+}
+
+/**
+ * A condition tree over `leaf`: a leaf, or `{all: [tree...]}`, `{any:
+ * [tree...]}`, `{not: tree}`, at most MAX_CONDITION_DEPTH combinators deep.
+ */
+export function conditionTreeSchema<T extends z.ZodTypeAny>(leaf: T, name: string): z.ZodType<unknown> {
+  const tree: z.ZodType<unknown> = z.lazy(() =>
+    z.union([
+      leaf,
+      z.object({ all: z.array(tree).min(1).max(MAX_CONDITION_ITEMS) }).strict(),
+      z.object({ any: z.array(tree).min(1).max(MAX_CONDITION_ITEMS) }).strict(),
+      z.object({ not: tree }).strict(),
+    ]),
+  );
+  // The JSON Schema generator (config/json-schema.ts) emits a named $defs entry for it.
+  (tree as unknown as { jsonSchemaName: string }).jsonSchemaName = name;
+  return tree.superRefine((c, ctx) => {
+    if (conditionDepth(c) > MAX_CONDITION_DEPTH) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `conditions nest at most ${MAX_CONDITION_DEPTH} combinators deep` });
+    }
+  });
+}
+
+/** A condition tree, or a list of them (a list means all must hold). */
+export function conditionOrListSchema<T extends z.ZodTypeAny>(leaf: T, name: string): z.ZodType<unknown> {
+  const tree = conditionTreeSchema(leaf, name);
+  return z.union([tree, z.array(tree).min(1).max(MAX_CONDITION_ITEMS)]);
+}
+
+/**
+ * Evaluate a condition tree (or a list, = all) with `leaf` deciding the
+ * leaves. null (from a leaf, or a malformed combinator) means "cannot
+ * decide" and propagates. `all` and `any` stop at the first deciding child.
+ */
+export async function evaluateConditionTree(
+  cond: unknown,
+  leaf: (c: unknown) => Promise<boolean | null>,
+  depth = 0,
+): Promise<boolean | null> {
+  if (depth > MAX_CONDITION_DEPTH + 1) return null;
+  if (Array.isArray(cond)) {
+    for (const c of cond) {
+      const r = await evaluateConditionTree(c, leaf, depth);
+      if (r === null) return null;
+      if (!r) return false;
+    }
+    return true;
+  }
+  if (!isCombinator(cond)) return leaf(cond);
+  if ("not" in cond) {
+    const r = await evaluateConditionTree(cond.not, leaf, depth + 1);
+    return r === null ? null : !r;
+  }
+  const items = "all" in cond ? cond.all : cond.any;
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const wantAll = "all" in cond;
+  for (const c of items) {
+    const r = await evaluateConditionTree(c, leaf, depth + 1);
+    if (r === null) return null;
+    if (wantAll && !r) return false;
+    if (!wantAll && r) return true;
+  }
+  return wantAll;
+}
+
+/**
+ * Audience conditions: trigger `where` and choose-candidate `when`. Leaves:
+ * trait, history, first_contact, lifecycle_state, lifecycle_state_not.
+ */
+export const audienceLeafSchema = z.union([
+  traitConditionSchema,
+  historyConditionSchema,
+  firstContactConditionSchema,
+  lifecycleStateConditionSchema,
+  lifecycleStateNotConditionSchema,
+]);
+export const audienceConditionSchema = conditionTreeSchema(audienceLeafSchema, "audienceCondition");
+export const audienceConditionOrListSchema = conditionOrListSchema(audienceLeafSchema, "audienceCondition");
 
 export type TraitCondition = z.infer<typeof traitConditionSchema>;
 export type HistoryCondition = z.infer<typeof historyConditionSchema>;
@@ -86,6 +196,8 @@ export interface SendHistoryFilter {
 export interface ContactConditionContext {
   traits(): Promise<Record<string, unknown>>;
   countSends(filter: SendHistoryFilter): Promise<number>;
+  /** The contact's lifecycle state (null when unknown). Absent: lifecycle leaves cannot be decided. */
+  lifecycleState?: () => Promise<string | null>;
   now: Date;
 }
 
@@ -196,24 +308,48 @@ export async function evaluateContactCondition(cond: unknown, ctx: ContactCondit
 
 /**
  * Evaluate a list of conditions (AND). Returns null when any is invalid.
- * Used for event triggers' `where`.
+ * Entries may be audience conditions with combinators.
  */
 export async function evaluateAllContactConditions(conds: readonly unknown[], ctx: ContactConditionContext): Promise<boolean | null> {
-  for (const cond of conds) {
-    const r = await evaluateContactCondition(cond, ctx);
-    if (r === null) return null;
-    if (!r) return false;
+  return evaluateAudienceCondition(conds as unknown[], ctx);
+}
+
+/** One audience leaf (trait, history, first_contact, lifecycle_state, lifecycle_state_not). */
+async function evaluateAudienceLeaf(cond: unknown, ctx: ContactConditionContext): Promise<boolean | null> {
+  if (cond !== null && typeof cond === "object" && !Array.isArray(cond)) {
+    const o = cond as Record<string, unknown>;
+    const keys = Object.keys(o);
+    if (keys.length === 1 && (keys[0] === "lifecycle_state" || keys[0] === "lifecycle_state_not")) {
+      const want = o[keys[0]];
+      if (typeof want !== "string" || want === "" || !ctx.lifecycleState) return null;
+      const state = await ctx.lifecycleState();
+      return keys[0] === "lifecycle_state" ? state === want : state !== want;
+    }
   }
-  return true;
+  return evaluateContactCondition(cond, ctx);
+}
+
+/**
+ * Evaluate an audience condition: one condition (with combinators) or a
+ * list (= all). null when a shape is invalid or cannot be decided. Used for
+ * trigger `where` (every trigger type) and choose-candidate `when`.
+ */
+export async function evaluateAudienceCondition(cond: unknown, ctx: ContactConditionContext): Promise<boolean | null> {
+  if (cond === undefined || cond === null || (Array.isArray(cond) && cond.length === 0)) return true;
+  if (!audienceConditionOrListSchema.safeParse(cond).success) return null;
+  return evaluateConditionTree(cond, (leaf) => evaluateAudienceLeaf(leaf, ctx));
 }
 
 /** Memoize the lookups of a context for one evaluation pass. */
 export function cachedConditionContext(ctx: ContactConditionContext): ContactConditionContext {
   let traits: Promise<Record<string, unknown>> | null = null;
+  let state: Promise<string | null> | null = null;
   const counts = new Map<string, Promise<number>>();
+  const lifecycleState = ctx.lifecycleState;
   return {
     now: ctx.now,
     traits: () => (traits ??= ctx.traits()),
+    ...(lifecycleState ? { lifecycleState: () => (state ??= lifecycleState()) } : {}),
     countSends: (f) => {
       const key = JSON.stringify([f.flow ?? null, f.actionType ?? null, f.topic ?? null, f.since?.getTime() ?? null]);
       let p = counts.get(key);

@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   integer,
+  jsonb,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -39,6 +40,8 @@ export const flowMemberships = pgTable(
     conditionError: text("condition_error"),
     /** Date triggers (G3): the anchor date this membership was enrolled for. */
     anchorAt: timestamp("anchor_at", { withTimezone: true }),
+    /** P5b: properties of the event that enrolled the contact ({{event.*}} in templates). */
+    triggerProperties: jsonb("trigger_properties"),
   },
   (table) => [
     // [v2] Only ONE ACTIVE membership per flow per contact

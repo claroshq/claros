@@ -38,14 +38,16 @@ import {
   stepForSlot,
   durationMs,
   resolveThrottleConfig,
-  evaluateAllContactConditions,
+  evaluateAudienceCondition,
   cachedConditionContext,
+  toFlowClass,
   DATE_SLOT_GRACE_MS,
   type CompiledStep,
   type DateTrigger,
   type EnrollableFlow,
 } from "@claros/core";
 import { enrollContactInFlows } from "./enroll.js";
+import { passesTriggerWhere } from "./audience.js";
 import { evaluateStepCondition, formatConditionError, type ContactState, type EventChecker } from "./condition-evaluator.js";
 
 type Db = NodePgDatabase<Record<string, never>>;
@@ -125,7 +127,7 @@ export async function phaseDateEnrollment(db: Db, now: Date, tenantIds?: string[
         priority: flow.priority ?? 0,
         triggerType: trigger.type,
         triggerConfig: flow.triggerConfig,
-        flowClass: (flow.flowClass ?? "nurture") as "critical" | "nurture",
+        flowClass: toFlowClass(flow.flowClass),
         reentryPolicy: (flow.reentryPolicy ?? "cooldown") as "once" | "cooldown" | "every_time",
         reentryCooldownDays: flow.reentryCooldownDays ?? 30,
       };
@@ -141,17 +143,7 @@ export async function phaseDateEnrollment(db: Db, now: Date, tenantIds?: string[
         for (const cand of page) {
           const open = firstOpenSlot(trigger, cand.value, now, dateTimezone(cand.timezone, tz));
           if (!open || open.due.getTime() > now.getTime()) continue;
-          if (trigger.where && trigger.where.length > 0) {
-            const ok = await evaluateAllContactConditions(
-              trigger.where,
-              cachedConditionContext({
-                now,
-                traits: async () => (await store.getContactTraits({ tenantId: tenant.id, contactId: cand.contactId })) ?? {},
-                countSends: (f) => store.countSends({ tenantId: tenant.id, contactId: cand.contactId, ...f }),
-              }),
-            );
-            if (ok !== true) continue;
-          }
+          if (trigger.where !== undefined && !(await passesTriggerWhere(store, flow.triggerConfig, tenant.id, cand.contactId, now))) continue;
           stats.enrollmentsAttempted++;
           const [result] = await enrollContactInFlows(db, cand.contactId, tenant.id, [enrollable], now, cand.value);
           if (result?.enrolled) {
@@ -327,8 +319,8 @@ export async function stepDateMembership(
     }
     pass = r.outcome === "pass";
   }
-  if (pass && trigger.where && trigger.where.length > 0 && eventChecker.contact) {
-    pass = (await evaluateAllContactConditions(trigger.where, eventChecker.contact)) === true;
+  if (pass && trigger.where !== undefined && eventChecker.contact) {
+    pass = (await evaluateAudienceCondition(trigger.where, eventChecker.contact)) === true;
   }
   const last = k >= total;
   if (!pass) {

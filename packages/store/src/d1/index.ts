@@ -47,6 +47,7 @@ import { d1WorkerIndex } from "./worker-index.js";
 import { d1WorkerPartitionMaintenance } from "./worker-partition-maintenance.js";
 import { d1WorkerProcessMessage } from "./worker-process-message.js";
 import { d1WorkerProviderResolver } from "./worker-provider-resolver.js";
+import { d1WorkerApprovalsDigest } from "./worker-approvals-digest.js";
 import { d1WorkerReap } from "./worker-reap.js";
 import { d1WorkerScanEngagementDepth } from "./worker-scan-engagement-depth.js";
 import { d1WorkerScanEnrollment } from "./worker-scan-enrollment.js";
@@ -63,6 +64,7 @@ import { d1Ops } from "./ops.js";
 import { d1ApiAdminAuth } from "./api-admin-auth.js";
 import { d1WorkerWebhooks } from "./worker-webhooks.js";
 import { d1ApiConfig } from "./api-config.js";
+import { d1ApiWebhooks } from "./api-webhooks.js";
 
 export function createD1Store(db: D1Db): Store {
   return {
@@ -111,6 +113,7 @@ export function createD1Store(db: D1Db): Store {
     workerPartitionMaintenance: d1WorkerPartitionMaintenance(db),
     workerProcessMessage: d1WorkerProcessMessage(db),
     workerProviderResolver: d1WorkerProviderResolver(db),
+    workerApprovalsDigest: d1WorkerApprovalsDigest(db),
     workerReap: d1WorkerReap(db),
     workerScanEngagementDepth: d1WorkerScanEngagementDepth(db),
     workerScanEnrollment: d1WorkerScanEnrollment(db),
@@ -127,5 +130,6 @@ export function createD1Store(db: D1Db): Store {
     apiAdminAuth: d1ApiAdminAuth(db),
     workerWebhooks: d1WorkerWebhooks(db),
     apiConfig: d1ApiConfig(db),
+    apiWebhooks: d1ApiWebhooks(db),
   };
 }
