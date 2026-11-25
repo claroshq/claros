@@ -13,8 +13,7 @@
  */
 import { createHash } from "node:crypto";
 import { setCookie } from "hono/cookie";
-import { eq, and, isNull } from "drizzle-orm";
-import { invites, users, sessions, tenants } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { createRouter, parseBody } from "../http/router.js";
 import { parseForm } from "../http/body.js";
@@ -106,29 +105,13 @@ export default function inviteRoutes(opts: InviteRouteOptions) {
       const tokenHash = hashToken(token);
 
       // Read-only lookup
-      const rows = await db
-        .select({
-          email: invites.email,
-          expiresAt: invites.expiresAt,
-          acceptedAt: invites.acceptedAt,
-          tenantId: invites.tenantId,
-        })
-        .from(invites)
-        .where(eq(invites.tokenHash, tokenHash))
-        .limit(1);
-
-      const row = rows[0];
+      const row = await storeFor(db).apiInvite.findInviteByTokenHash(tokenHash);
       if (!row || row.acceptedAt !== null || row.expiresAt < new Date()) {
         return c.redirect(failRedirect, 302);
       }
 
       // Get tenant name for the interstitial
-      const tenantRows = await db
-        .select({ name: tenants.name })
-        .from(tenants)
-        .where(eq(tenants.id, row.tenantId))
-        .limit(1);
-      const tenantName = tenantRows[0]?.name ?? "this workspace";
+      const tenantName = (await storeFor(db).apiInvite.findTenantName(row.tenantId)) ?? "this workspace";
 
       return c.html(renderAcceptPage(row.email, tenantName, token), 200, {
         "cache-control": "no-store",
@@ -157,28 +140,11 @@ export default function inviteRoutes(opts: InviteRouteOptions) {
       const now = new Date();
 
       // Atomic CAS: consume the invite only if not yet consumed
-      const consumed = await db
-        .update(invites)
-        .set({ acceptedAt: now })
-        .where(
-          and(
-            eq(invites.tokenHash, tokenHash),
-            isNull(invites.acceptedAt),
-          ),
-        )
-        .returning({
-          id: invites.id,
-          email: invites.email,
-          role: invites.role,
-          tenantId: invites.tenantId,
-          expiresAt: invites.expiresAt,
-        });
+      const invite = await storeFor(db).apiInvite.consumeInvite({ tokenHash, now });
 
-      if (consumed.length === 0) {
+      if (!invite) {
         return c.redirect(failRedirect, 302);
       }
-
-      const invite = consumed[0]!;
 
       // Check expiry (mark consumed regardless to prevent reuse)
       if (invite.expiresAt < now) {
@@ -186,48 +152,37 @@ export default function inviteRoutes(opts: InviteRouteOptions) {
       }
 
       // Check if a user with this email already exists (reactivation or collision)
-      const existingUser = await db
-        .select({ id: users.id, deactivatedAt: users.deactivatedAt })
-        .from(users)
-        .where(and(eq(users.tenantId, invite.tenantId), eq(users.email, invite.email)))
-        .limit(1);
+      const existingUser = await storeFor(db).apiInvite.findUserByEmail({
+        tenantId: invite.tenantId,
+        email: invite.email,
+      });
 
       let userId: string;
 
-      if (existingUser.length > 0) {
+      if (existingUser) {
         // Reactivate a previously deactivated user
-        userId = existingUser[0]!.id;
-        await db
-          .update(users)
-          .set({ deactivatedAt: null, role: invite.role, lastLoginAt: now })
-          .where(eq(users.id, userId));
+        userId = existingUser.id;
+        await storeFor(db).apiInvite.reactivateUser({ userId, role: invite.role, now });
       } else {
         // Create new user
-        const [newUser] = await db
-          .insert(users)
-          .values({
-            tenantId: invite.tenantId,
-            email: invite.email,
-            role: invite.role,
-            lastLoginAt: now,
-          })
-          .returning({ id: users.id });
-        userId = newUser!.id;
+        userId = await storeFor(db).apiInvite.createUser({
+          tenantId: invite.tenantId,
+          email: invite.email,
+          role: invite.role,
+          now,
+        });
       }
 
       // Create session
       const sessionExpiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
-      const [session] = await db
-        .insert(sessions)
-        .values({
-          tenantId: invite.tenantId,
-          userId,
-          expiresAt: sessionExpiresAt,
-        })
-        .returning({ id: sessions.id });
+      const sessionId = await storeFor(db).apiInvite.createSession({
+        tenantId: invite.tenantId,
+        userId,
+        expiresAt: sessionExpiresAt,
+      });
 
       // Set session cookie
-      setCookie(c, SESSION_COOKIE_NAME, session!.id, {
+      setCookie(c, SESSION_COOKIE_NAME, sessionId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "Lax",

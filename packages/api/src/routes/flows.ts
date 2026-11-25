@@ -33,8 +33,7 @@
 import { RoleRouter } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
-import { eq, and, ne } from "drizzle-orm";
-import { flows, llmConfigs, tenants, templates } from "@claros/db/schema";
+import { storeFor, type ApiFlowsQueries } from "@claros/store";
 import {
   isValidDelay,
   validateStatusTransition,
@@ -52,6 +51,12 @@ import {
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import { OpenAICompatibleProvider, draft } from "@claros/brain-oss";
 import type { Db } from "../plugins/db.js";
+
+/** A flows row as the store returns it. */
+type FlowRow = NonNullable<Awaited<ReturnType<ApiFlowsQueries["findFlow"]>>>;
+
+/** Fields a PATCH may set on a flow. */
+type FlowPatch = Parameters<ApiFlowsQueries["updateFlow"]>[0]["patch"];
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -173,9 +178,7 @@ export default function flowsRoutes() {
       }
     }
 
-    const [inserted] = await db
-      .insert(flows)
-      .values({
+    const inserted = await storeFor(db).apiFlows.createFlow({
         tenantId,
         name: body.name,
         description: body.description ?? null,
@@ -193,8 +196,7 @@ export default function flowsRoutes() {
         promptSource: body.prompt_source ?? null,
         compiledPlan: null,
         compiledAt: null,
-      })
-      .returning();
+      });
 
     return c.json(serializeFlow(inserted!), 201);
   });
@@ -212,22 +214,7 @@ export default function flowsRoutes() {
       const tenantId = c.var.tenant!.id;
       const includeArchived = c.req.query("include_archived") === "true";
 
-      const rows = includeArchived
-        ? await db
-            .select()
-            .from(flows)
-            .where(eq(flows.tenantId, tenantId))
-            .orderBy(flows.createdAt)
-        : await db
-            .select()
-            .from(flows)
-            .where(
-              and(
-                eq(flows.tenantId, tenantId),
-                ne(flows.status, "archived"),
-              ),
-            )
-            .orderBy(flows.createdAt);
+      const rows = await storeFor(db).apiFlows.listFlows({ tenantId, includeArchived });
 
       return c.json({ flows: rows.map(serializeFlow) });
     },
@@ -241,17 +228,13 @@ export default function flowsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select()
-      .from(flows)
-      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-      .limit(1);
+    const row = await storeFor(db).apiFlows.findFlow({ tenantId, id: c.req.param("id")! });
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ error: "Flow not found." }, 404);
     }
 
-    return c.json(serializeFlow(rows[0]!));
+    return c.json(serializeFlow(row));
   });
 
   /**
@@ -281,17 +264,12 @@ export default function flowsRoutes() {
       const tenantId = c.var.tenant!.id;
 
       // Fetch current flow (tenant-scoped)
-      const rows = await db
-        .select()
-        .from(flows)
-        .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-        .limit(1);
+      const current = await storeFor(db).apiFlows.findFlow({ tenantId, id: c.req.param("id")! });
 
-      if (rows.length === 0) {
+      if (!current) {
         return c.json({ error: "Flow not found." }, 404);
       }
 
-      const current = rows[0]!;
       const currentStatus = current.status as FlowStatus;
 
       // Validate status transition if requested
@@ -340,7 +318,7 @@ export default function flowsRoutes() {
       }
 
       // Build the SET clause; never include compiled_plan or compiled_at
-      const setClauses: Record<string, unknown> = {
+      const setClauses: FlowPatch = {
         updatedAt: new Date(),
       };
 
@@ -374,19 +352,14 @@ export default function flowsRoutes() {
 
       // CAS: when status is being changed, guard on current status to prevent
       // a concurrent PATCH from causing an invalid double-transition.
-      const whereConditions = [
-        eq(flows.id, c.req.param("id")!),
-        eq(flows.tenantId, tenantId),
-      ];
-      if (body.status !== undefined && body.status !== currentStatus) {
-        whereConditions.push(eq(flows.status, currentStatus));
-      }
-
-      const [updated] = await db
-        .update(flows)
-        .set(setClauses as any)
-        .where(and(...whereConditions))
-        .returning();
+      const updated = await storeFor(db).apiFlows.updateFlow({
+        tenantId,
+        id: c.req.param("id")!,
+        patch: setClauses,
+        ...(body.status !== undefined && body.status !== currentStatus
+          ? { expectedStatus: currentStatus }
+          : {}),
+      });
 
       if (!updated) {
         // CAS failed: status was changed by a concurrent request.
@@ -412,28 +385,22 @@ export default function flowsRoutes() {
     const tenantId = c.var.tenant!.id;
 
     // Fetch current flow (tenant-scoped)
-    const rows = await db
-      .select()
-      .from(flows)
-      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-      .limit(1);
+    const current = await storeFor(db).apiFlows.findFlow({ tenantId, id: c.req.param("id")! });
 
-    if (rows.length === 0) {
+    if (!current) {
       return c.json({ error: "Flow not found." }, 404);
     }
-
-    const current = rows[0]!;
 
     // Idempotent: already archived
     if (current.status === "archived") {
       return c.json(serializeFlow(current));
     }
 
-    const [updated] = await db
-      .update(flows)
-      .set({ status: "archived", updatedAt: new Date() })
-      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-      .returning();
+    const updated = await storeFor(db).apiFlows.archiveFlow({
+      tenantId,
+      id: c.req.param("id")!,
+      now: new Date(),
+    });
 
     return c.json(serializeFlow(updated!));
   });
@@ -464,17 +431,11 @@ export default function flowsRoutes() {
     }
 
     // Fetch flow
-    const rows = await db
-      .select()
-      .from(flows)
-      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-      .limit(1);
+    const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: c.req.param("id")! });
 
-    if (rows.length === 0) {
+    if (!flow) {
       return c.json({ error: "Flow not found." }, 404);
     }
-
-    const flow = rows[0]!;
 
     // Precondition: not archived
     if (flow.status === "archived") {
@@ -489,25 +450,16 @@ export default function flowsRoutes() {
     // Precondition: tenant has an active LLM configuration.
     // This is a user-resolvable error (go to Settings, add an LLM key), not an
     // async job failure. Check synchronously so the operator learns immediately.
-    const llmRows = await db
-      .select({ id: llmConfigs.id })
-      .from(llmConfigs)
-      .where(and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)))
-      .limit(1);
-
-    if (llmRows.length === 0) {
+    if (!(await storeFor(db).apiFlows.hasActiveLlmConfig(tenantId))) {
       return c.json({ error: "No LLM configuration found. Add an LLM provider in Settings before compiling flows." }, 422);
     }
 
     // Set compile_status = 'pending' and clear any previous error
-    await db
-      .update(flows)
-      .set({
-        compileStatus: "pending",
-        compileError: null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)));
+    await storeFor(db).apiFlows.markCompilePending({
+      tenantId,
+      id: c.req.param("id")!,
+      now: new Date(),
+    });
 
     // Enqueue the compile job. singletonKey ensures only one compile per flow.
     await enqueue(
@@ -575,17 +527,11 @@ export default function flowsRoutes() {
       const { steps, exit_conditions } = parsed.data;
 
       // Fetch flow
-      const flowRows = await db
-        .select()
-        .from(flows)
-        .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-        .limit(1);
+      const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: c.req.param("id")! });
 
-      if (flowRows.length === 0) {
+      if (!flow) {
         return c.json({ error: "Flow not found." }, 404);
       }
-
-      const flow = flowRows[0]!;
 
       if (flow.status === "archived") {
         return c.json({ error: "Cannot update the plan of an archived flow." }, 422);
@@ -613,30 +559,15 @@ export default function flowsRoutes() {
         const name = `${flow.name} - Step ${step.order}`;
 
         // Upsert template: ON CONFLICT (tenant_id, slug) DO UPDATE
-        await db
-          .insert(templates)
-          .values({
-            tenantId,
-            name,
-            slug,
-            subject: step.subject,
-            bodyHtml: step.body_html,
-            bodyText: step.body_text ?? null,
-            variables: templateVariables,
-            category: "flow",
-            isActive: true,
-          })
-          .onConflictDoUpdate({
-            target: [templates.tenantId, templates.slug],
-            set: {
-              name,
-              subject: step.subject,
-              bodyHtml: step.body_html,
-              bodyText: step.body_text ?? null,
-              variables: templateVariables,
-              isActive: true,
-            },
-          });
+        await storeFor(db).apiFlows.upsertStepTemplate({
+          tenantId,
+          name,
+          slug,
+          subject: step.subject,
+          bodyHtml: step.body_html,
+          bodyText: step.body_text ?? null,
+          variables: templateVariables,
+        });
       }
 
       // Build the compiled plan
@@ -670,24 +601,20 @@ export default function flowsRoutes() {
       }
 
       // Write the plan to the flow
-      const [updated] = await db
-        .update(flows)
-        .set({
-          compiledPlan: planParsed.data as unknown as Record<string, unknown>,
-          compiledAt: new Date(),
-          compileStatus: "ready",
-          compileError: null,
-          steps: steps.map((s) => ({
-            order: s.order,
-            action_type: s.action_type,
-            delay: s.delay,
-            window_policy: s.window_policy,
-            template_ref: `flow-${flowId}-step-${s.order}`,
-          })),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(flows.id, flowId), eq(flows.tenantId, tenantId)))
-        .returning();
+      const updated = await storeFor(db).apiFlows.saveFixedPlan({
+        tenantId,
+        id: flowId,
+        compiledPlan: planParsed.data as unknown as Record<string, unknown>,
+        compiledAt: new Date(),
+        steps: steps.map((s) => ({
+          order: s.order,
+          action_type: s.action_type,
+          delay: s.delay,
+          window_policy: s.window_policy,
+          template_ref: `flow-${flowId}-step-${s.order}`,
+        })),
+        updatedAt: new Date(),
+      });
 
       return c.json(serializeFlow(updated!));
     },
@@ -731,30 +658,19 @@ export default function flowsRoutes() {
       const { step_order, subject, body_html, context } = parsed.data;
 
       // Fetch flow
-      const flowRows = await db
-        .select()
-        .from(flows)
-        .where(and(eq(flows.id, c.req.param("id")!), eq(flows.tenantId, tenantId)))
-        .limit(1);
+      const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: c.req.param("id")! });
 
-      if (flowRows.length === 0) {
+      if (!flow) {
         return c.json({ error: "Flow not found." }, 404);
       }
 
-      const flow = flowRows[0]!;
-
       // Require active LLM config and resolve provider
-      const llmRows = await db
-        .select()
-        .from(llmConfigs)
-        .where(and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)))
-        .limit(1);
+      const llmConfig = await storeFor(db).apiFlows.findActiveLlmConfig(tenantId);
 
-      if (llmRows.length === 0) {
+      if (!llmConfig) {
         return c.json({ error: "No LLM configuration found. Add an LLM provider in Settings to use AI drafting." }, 422);
       }
 
-      const llmConfig = llmRows[0]!;
       const encryptionKeyEnv = process.env.ENCRYPTION_KEY;
       if (!encryptionKeyEnv) {
         return c.json({ error: "ENCRYPTION_KEY not configured." }, 500);
@@ -771,13 +687,7 @@ export default function flowsRoutes() {
       }
 
       // Fetch tenant name for product context
-      const tenantRows = await db
-        .select({ name: tenants.name })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
-
-      const productName = tenantRows[0]?.name ?? undefined;
+      const productName = (await storeFor(db).apiFlows.findTenantName(tenantId)) ?? undefined;
 
       // Build the steps array for context
       const compiledPlan = flow.compiledPlan as Record<string, unknown> | null;
@@ -845,7 +755,7 @@ export default function flowsRoutes() {
  * compiled_plan and compiled_at are included so the dashboard can show
  * compilation state.
  */
-function serializeFlow(row: typeof flows.$inferSelect) {
+function serializeFlow(row: FlowRow) {
   return {
     id: row.id,
     tenant_id: row.tenantId,
