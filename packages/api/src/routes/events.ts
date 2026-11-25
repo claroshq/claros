@@ -8,7 +8,7 @@
  *   GET /v1/events/names  distinct track-event names seen recently
  */
 import { RoleRouter } from "../http/router.js";
-import { sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 
 export default function eventsRoutes() {
   const r = new RoleRouter();
@@ -28,21 +28,9 @@ export default function eventsRoutes() {
     const db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = (
-      await db.execute<{ event_name: string }>(sql`
-        SELECT event_name
-        FROM events
-        WHERE tenant_id = ${tenantId}
-          AND type = 'track'
-          AND event_name IS NOT NULL
-          AND received_at >= now() - interval '6 months'
-        GROUP BY event_name
-        ORDER BY count(*) DESC, event_name ASC
-        LIMIT 200
-      `)
-    ).rows;
+    const eventNames = await storeFor(db).apiEvents.listRecentTrackEventNames(tenantId);
 
-    return c.json({ event_names: rows.map((row) => row.event_name) });
+    return c.json({ event_names: eventNames });
   });
   return r.app;
 }

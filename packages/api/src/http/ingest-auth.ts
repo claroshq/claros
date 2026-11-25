@@ -25,8 +25,7 @@
  */
 import { createHash } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
-import { eq, isNull, and } from "drizzle-orm";
-import { apiKeys } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { AppEnv } from "./env.js";
 
 export type ApiKeyKind = "publishable" | "secret";
@@ -109,22 +108,12 @@ export function createIngestAuth(lastUsedThrottleMs: number = LAST_USED_THROTTLE
       return c.json({ error: "Database unavailable." }, 500);
     }
 
-    const rows = await db
-      .select({
-        id: apiKeys.id,
-        tenantId: apiKeys.tenantId,
-        kind: apiKeys.kind,
-        allowedOrigins: apiKeys.allowedOrigins,
-      })
-      .from(apiKeys)
-      .where(and(eq(apiKeys.keyHash, hashApiKey(extracted.raw)), isNull(apiKeys.revokedAt)))
-      .limit(1);
+    const row = await storeFor(db).apiIngestAuth.findActiveKeyByHash(hashApiKey(extracted.raw));
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ error: "Invalid or revoked API key." }, 401);
     }
 
-    const row = rows[0]!;
     const kind: ApiKeyKind = row.kind === "publishable" ? "publishable" : "secret";
 
     if (extracted.from === "body" && kind !== "publishable") {
@@ -163,9 +152,8 @@ export function createIngestAuth(lastUsedThrottleMs: number = LAST_USED_THROTTLE
     const lastWrite = lastWrittenAt.get(row.id) ?? 0;
     if (now - lastWrite >= lastUsedThrottleMs) {
       lastWrittenAt.set(row.id, now);
-      db.update(apiKeys)
-        .set({ lastUsedAt: new Date(now) })
-        .where(eq(apiKeys.id, row.id))
+      storeFor(db)
+        .apiIngestAuth.touchKeyLastUsed(row.id, new Date(now))
         .then(() => {})
         .catch(() => {
           lastWrittenAt.delete(row.id);

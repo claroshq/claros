@@ -6,5 +6,18 @@
  * ../d1/api-ingest-auth.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface ApiIngestAuthQueries {}
+
+/** A non-revoked API key as the ingestion auth step needs it. */
+export interface ActiveApiKeyRow {
+  id: string;
+  tenantId: string;
+  kind: string;
+  allowedOrigins: string[] | null;
+}
+
+export interface ApiIngestAuthQueries {
+  /** The non-revoked API key with this SHA-256 hash, or null. */
+  findActiveKeyByHash(keyHash: string): Promise<ActiveApiKeyRow | null>;
+  /** Set last_used_at on an API key. */
+  touchKeyLastUsed(apiKeyId: string, at: Date): Promise<void>;
+}
