@@ -32,6 +32,7 @@ jobs:
           --health-retries 10
     env:
       CI: "true"
+      WRANGLER_SEND_METRICS: "false"
       DATABASE_URL: postgres://claros:claros@localhost:5432/claros
       SEED_TEST_DATABASE_URL: postgres://claros:claros@localhost:5432/claros_seed_test
     steps:
@@ -49,6 +50,33 @@ jobs:
           DATABASE_URL="$SEED_TEST_DATABASE_URL" npm run db:migrate -- --yes
       - run: npm run typecheck
       - run: npm test
+
+  workers:
+    name: Cloudflare Workers runtime (D1)
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build packages and the dashboard
+        run: >-
+          npm run build
+          -w @claros/core -w @claros/adapters -w @claros/brain-oss -w @claros/db
+          -w @claros/store -w @claros/api -w @claros/worker -w @claros/dashboard
+      - name: Bundle the Worker (wrangler deploy --dry-run)
+        run: npm run build -w @claros/cloudflare-worker
+      - name: Bundle size
+        run: ls -l apps/worker/dist/index.js
+      - name: Typecheck
+        run: npm run typecheck -w @claros/cloudflare-worker
+      - name: Worker tests (Miniflare, D1, Queues)
+        run: npm test -w @claros/cloudflare-worker
 
   upgrade:
     name: upgrade from v0.6.4
@@ -75,6 +103,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          WRANGLER_SEND_METRICS: "false"
       - name: Restore v0.6.4 data, migrate, boot
         env:
           UPGRADE_ADMIN_URL: postgres://claros:claros@localhost:5432/postgres

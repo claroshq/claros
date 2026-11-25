@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
-import { buildApp } from "@claros/api";
+import { buildApp } from "@claros/api/node";
 import { storeFor } from "@claros/store";
 import { createBoss, startWorker } from "@claros/worker";
 import { startScheduler } from "@claros/scheduler";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildApp } from "@claros/api";
+import { buildApp } from "@claros/api/node";
 
 describe("@claros/server", () => {
   it("valid roles are defined", () => {

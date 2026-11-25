@@ -1,0 +1,13 @@
+# Local secrets and overrides for `wrangler dev`. Copy to .dev.vars (gitignored).
+# In production set the secrets with `wrangler secret put <NAME>`.
+
+# Encrypts LLM and transport credentials at rest (32 bytes, base64).
+# Generate: openssl rand -base64 32
+ENCRYPTION_KEY=
+
+# Signs unsubscribe links (32 bytes, hex). Permanent once mail is delivered.
+# Generate: openssl rand -hex 32
+UNSUBSCRIBE_SIGNING_KEY=
+
+# NODE_ENV is not read from here: wrangler fixes it at build time
+# ("development" under `wrangler dev`, "production" for a deploy).

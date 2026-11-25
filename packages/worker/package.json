@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./handlers": {
+      "import": "./dist/handlers.js",
+      "types": "./dist/handlers.d.ts"
     }
   },
   "scripts": {
