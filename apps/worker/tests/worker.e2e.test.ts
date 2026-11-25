@@ -173,7 +173,7 @@ describe("Workers runtime: claim (no startup step)", () => {
   it("an unknown token is refused with the CLI hint", async () => {
     const res = await mf.dispatchFetch("http://localhost/claim?token=nope");
     expect(res.status).toBe(403);
-    expect(await res.text()).toContain("npx claros claim-url");
+    expect(await res.text()).toContain("npx @claroshq/claros claim-url");
   });
 
   it("a token minted in claim_tokens opens the form; the claim creates the default product and owner", async () => {

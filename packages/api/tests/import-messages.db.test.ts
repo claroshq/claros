@@ -40,6 +40,14 @@ describe("POST /v1/import/messages", () => {
     expect(again.json()).toMatchObject({ imported: 0, duplicates: 2 });
   });
 
+  it.each(["application/x-ndjson", "application/jsonl", "application/x-jsonlines; charset=utf-8"])("accepts JSONL as %s", async (type) => {
+    const a = await app();
+    const line = JSON.stringify({ external_id: "u-1", flow_slug: "winback", action_type: "winback", sent_at: "2026-06-01T10:00:00Z" });
+    const res = await a.inject({ method: "POST", url: "/v1/import/messages?dry_run=1", headers: { ...bearer(key), "content-type": type }, payload: line + "\n" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ dry_run: true, errors: [] });
+  });
+
   it("needs the messages scope", async () => {
     const other = await newKey(db, p.tenantId, "admin", ["kb"]);
     const a = await app();

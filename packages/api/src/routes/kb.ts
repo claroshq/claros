@@ -53,6 +53,7 @@
  *   added in migration 0018.
  */
 import { RoleRouter, allowAdminKey } from "../http/router.js";
+import { JSONL_PARSERS } from "../http/body.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor, type ApiKbQueries, type KbImportEntry } from "@claros/store";
@@ -212,7 +213,7 @@ function importItems(body: unknown): { items: unknown[] } | { error: string } {
     }
     return { items };
   }
-  return { error: "Send a JSON array of entries, {\"entries\": [...]}, or JSONL as text/plain." };
+  return { error: "Send a JSON array of entries, {\"entries\": [...]}, or JSONL (text/plain or application/x-ndjson)." };
 }
 
 // Update: all fields optional; cannot set embedding via API
@@ -293,8 +294,8 @@ function makePreview(content: string): string {
 // ---------------------------------------------------------------------------
 
 export default function kbRoutes() {
-  // KB imports (POST /v1/kb/import) carry many entries.
-  const r = new RoleRouter({ limit: 4 * 1024 * 1024 });
+  // KB imports (POST /v1/kb/import) carry many entries, as JSON or JSONL.
+  const r = new RoleRouter({ limit: 4 * 1024 * 1024, parsers: JSONL_PARSERS });
   /**
    * POST /v1/kb
    * Create a new knowledge base entry.

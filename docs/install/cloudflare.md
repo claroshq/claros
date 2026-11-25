@@ -55,14 +55,16 @@ Variables and secrets:
 
 Files that exist in the dashboard build are served by Cloudflare before the Worker runs. API paths (`/health`, `/version`, `/auth`, `/invite`, `/unsubscribe`, `/webhooks`, `/v1`) always reach the Worker first. Any other path the Worker does not know gets `index.html`, so client-side routes work; unknown API paths and non-GET requests get a JSON 404. These are the same rules as on Node.
 
-## Deploy with `npx claros deploy`
+## Deploy with `npx @claroshq/claros deploy`
 
-From a checkout of the repository you can run the same CLI without npm: `npm run build`, then `node packages/cli/bin/claros.mjs` in place of `npx claros`.
+The CLI is the npm package `@claroshq/claros`. `npx @claroshq/claros <command>` runs it without installing; `npm i -g @claroshq/claros` installs it globally and gives you the `claros` command, so `claros deploy` and `npx @claroshq/claros deploy` are the same. Pin a release with `npx @claroshq/claros@<version> <command>`.
+
+From a checkout of the repository you can run the same CLI without npm: `npm run build`, then `node packages/cli/bin/claros.mjs` in place of `npx @claroshq/claros`.
 
 `claros deploy` creates or updates one Claros instance in your Cloudflare account. It runs wrangler with your Cloudflare login (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in CI) and never changes DNS records.
 
 ```bash
-npx claros deploy --domain claros.example.com
+npx @claroshq/claros deploy --domain claros.example.com
 ```
 
 | Option | Meaning |
@@ -81,7 +83,7 @@ Every step checks what exists and changes only what is missing, so running the c
 3. Sets `ENCRYPTION_KEY` and `UNSUBSCRIBE_SIGNING_KEY` on the Worker when they are missing. Existing secrets are never overwritten. New values are written to `~/.config/claros/<name>.json` (mode 600): back that file up. Losing `UNSUBSCRIBE_SIGNING_KEY` breaks unsubscribe links in mail already sent; losing `ENCRYPTION_KEY` makes stored credentials unreadable.
 4. Applies pending D1 migrations (`wrangler d1 migrations apply --remote`).
 5. Deploys the Worker and waits until `https://<host>/version` reports the deployed version. A new custom domain can take a few minutes to get its certificate.
-6. While no user exists, prints a one-time claim URL (valid for 24 hours) to create the first owner account. `npx claros claim-url` prints a new one.
+6. While no user exists, prints a one-time claim URL (valid for 24 hours) to create the first owner account. `npx @claroshq/claros claim-url` prints a new one.
 7. Prints the next steps: the email transport in Settings, the Resend webhook URL (`https://<host>/webhooks/resend/<product id>`, shown in Settings, Transport).
 
 `~/.config/claros/<name>.json` caches the account, resource ids and host. Everything in it except the generated secrets is found again on Cloudflare by name, so a missing file is fine.
@@ -94,10 +96,10 @@ When the command cannot confirm a Workers Paid plan, it prints the Workers Free 
 
 | Command | Does |
 |---|---|
-| `npx claros upgrade [--name]` | Refuses a downgrade, backs up D1 (see [Upgrade backups](#upgrade-backups)), applies migrations, deploys the package's version and waits for it. If the new version does not come up, it rolls the Worker back (`wrangler rollback`); migrations are additive and stay applied. |
-| `npx claros products set-host <slug> <host> [--name]` | Sets the product's public host and redeploys with a custom domain route for it. |
-| `npx claros doctor [--name]` | Checks the secrets, pending migrations, HTTPS on every route, `/health` and `/version`. |
-| `npx claros claim-url [--name]` | Prints a new one-time claim URL while no user exists. |
+| `npx @claroshq/claros upgrade [--name]` | Refuses a downgrade, backs up D1 (see [Upgrade backups](#upgrade-backups)), applies migrations, deploys the package's version and waits for it. If the new version does not come up, it rolls the Worker back (`wrangler rollback`); migrations are additive and stay applied. |
+| `npx @claroshq/claros products set-host <slug> <host> [--name]` | Sets the product's public host and redeploys with a custom domain route for it. |
+| `npx @claroshq/claros doctor [--name]` | Checks the secrets, pending migrations, HTTPS on every route, `/health` and `/version`. |
+| `npx @claroshq/claros claim-url [--name]` | Prints a new one-time claim URL while no user exists. |
 
 ### Upgrade backups
 

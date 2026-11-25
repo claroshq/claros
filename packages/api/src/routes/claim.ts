@@ -91,7 +91,7 @@ const INVALID_HINT_LOGS = `<p>This link is invalid or has expired. Each server s
 const INVALID_HINT_CLI = `<p>This link is invalid or has expired. Claim links are valid for 24 hours
           and work once.</p>
           <p>Fix: mint a new one with</p>
-          <pre>npx claros claim-url</pre>`;
+          <pre>npx @claroshq/claros claim-url</pre>`;
 
 export default function claimRoutes(opts: ClaimRouteOptions) {
   const { dashboardUrl } = opts;

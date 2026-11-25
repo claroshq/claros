@@ -6,6 +6,16 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-25
+
+### Changed
+
+- The CLI is published on npm as `@claroshq/claros` (the unscoped name `claros` belongs to another package). Run it with `npx @claroshq/claros <command>` (for example `npx @claroshq/claros upgrade`), or install it with `npm i -g @claroshq/claros`, which still gives you the `claros` command. Commands and options are unchanged. Wherever earlier release notes say `npx claros ...`, use `npx @claroshq/claros ...`.
+
+### Fixed
+
+- `POST /v1/kb/import` and `POST /v1/import/messages` accept JSONL sent as `application/x-ndjson`, `application/jsonl` or `application/x-jsonlines`, in addition to `text/plain` and JSON. Before, those media types got `415 Unsupported Media Type`.
+
 ## [0.8.2] - 2026-11-25
 
 ### Fixed
@@ -179,7 +189,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/claroshq/claros/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/claroshq/claros/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/claroshq/claros/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/claroshq/claros/compare/v0.7.0...v0.8.0

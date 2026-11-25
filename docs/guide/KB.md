@@ -21,8 +21,8 @@ In the dashboard (Knowledge Base), an entry shows its category, pinned state and
 ```bash
 export CLAROS_URL=https://claros.example.com
 export CLAROS_ADMIN_KEY=clr_ak_...        # admin key with the "kb" scope
-npx claros kb import kb.jsonl --dry-run   # counts only, nothing written
-npx claros kb import kb.jsonl
+npx @claroshq/claros kb import kb.jsonl --dry-run   # counts only, nothing written
+npx @claroshq/claros kb import kb.jsonl
 ```
 
 The file is JSONL (one entry per line) or a JSON array:
@@ -34,7 +34,7 @@ The file is JSONL (one entry per line) or a JSON array:
 
 Fields: `external_key`, `title`, `content` (up to 8,000 characters) are required; `content_type` (`markdown`), `category`, `tags`, `data`, `pinned` (`false`), `is_active` or `active` (`true`) and `source_url` are optional.
 
-The CLI sends `POST /v1/kb/import` (`?dry_run=1`, `?force=1`; up to 1,000 entries per request, the CLI splits larger files). The API also takes JSONL as `text/plain`. Rules:
+The CLI sends `POST /v1/kb/import` (`?dry_run=1`, `?force=1`; up to 1,000 entries per request, the CLI splits larger files). The API also takes JSONL as `application/x-ndjson`, `application/jsonl`, `application/x-jsonlines` or `text/plain`. Rules:
 
 - Entries are matched by `external_key`. A new key is created (`source = import`).
 - An existing entry is overwritten only when nobody changed it in Claros since its last import. An entry edited since then is reported as `skipped_edited` (with its key) unless you pass `--force`. Re-embedding an entry does not count as an edit.

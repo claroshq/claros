@@ -14,7 +14,7 @@ If code and docs diverge, say so before writing code. Do not silently "fix" eith
 
 ## Stack
 
-Two runtimes, one engine: Node + Postgres 16 (pgvector, pg-boss, one Docker image with `--role=all|api|worker|scheduler`) and Cloudflare Workers + D1 (Queues, one cron trigger, Static Assets; `apps/worker`, installed with `packages/cli`). TypeScript (Node 22+) · npm workspaces · Hono (HTTP) · Drizzle ORM · Zod at all boundaries · Vitest · Vite + React dashboard.
+Two runtimes, one engine: Node + Postgres 16 (pgvector, pg-boss, one Docker image with `--role=all|api|worker|scheduler`) and Cloudflare Workers + D1 (Queues, one cron trigger, Static Assets; `apps/worker`, installed with `packages/cli`, the npm package `@claroshq/claros`). TypeScript (Node 22+) · npm workspaces · Hono (HTTP) · Drizzle ORM · Zod at all boundaries · Vitest · Vite + React dashboard.
 
 HTTP conventions (packages/api/src/http): dashboard routes use `RoleRouter` (every route declares its minimum role), bodies are parsed per route with v0.6 rules, schema-validated bodies use `validatedBody` + `validateBody`; Hono matches routes in registration order, so register static paths before overlapping param paths. All database access goes through `@claros/store` (docs/dev/storage.md): every query method has a Postgres and a D1 implementation and contract tests on both; schema changes touch both `drizzle/schema` and `drizzle/schema-sqlite`.
 

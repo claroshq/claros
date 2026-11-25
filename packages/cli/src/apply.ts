@@ -49,7 +49,7 @@ export async function applyConfig(ctx: Context, opts: ApplyOptions, env: NodeJS.
     if (state?.host) base = `https://${state.host}`;
   }
   if (!base) {
-    ctx.io.warn("No Claros URL: pass --url, set CLAROS_URL, or deploy an instance with `claros deploy` (--name).");
+    ctx.io.warn("No Claros URL: pass --url, set CLAROS_URL, or deploy an instance with `npx @claroshq/claros deploy` (--name).");
     return 2;
   }
   const url = `${base.replace(/\/+$/, "")}/v1/config${opts.dryRun ? "?dry_run=1" : ""}`;

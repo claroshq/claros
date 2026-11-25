@@ -148,7 +148,7 @@ async function existingSession(ctx: Context, name: string, opts: { account?: str
   if (!state) {
     throw new Error(
       `No local state for instance "${name}" (${statePath(ctx.configDir, name)}). ` +
-        "Run `npx claros deploy` (with the same --name and --domain): it finds the existing resources by name.",
+        "Run `npx @claroshq/claros deploy` (with the same --name and --domain): it finds the existing resources by name.",
     );
   }
   const accountId = await selectAccount(ctx, opts, state);
@@ -253,7 +253,7 @@ async function deployWorker(
       ctx.io.log(`Setting BASE_URL to https://${dev} and deploying again.`);
       result = await deployOnce(deployed);
     } else {
-      ctx.io.warn("Could not read the workers.dev URL from wrangler's output; BASE_URL is not set, so sending stays blocked. Run `claros deploy --domain <host>`.");
+      ctx.io.warn("Could not read the workers.dev URL from wrangler's output; BASE_URL is not set, so sending stays blocked. Run `npx @claroshq/claros deploy --domain <host>`.");
     }
   }
 
@@ -298,7 +298,7 @@ function printClaim(ctx: Context, url: string): void {
   ctx.io.log("");
   ctx.io.log("Claim your account (one-time link, valid for 24 hours):");
   ctx.io.log(`  ${url}`);
-  ctx.io.log("A new link: `npx claros claim-url`.");
+  ctx.io.log("A new link: `npx @claroshq/claros claim-url`.");
 }
 
 async function planWarning(ctx: Context, s: Session): Promise<void> {
@@ -417,7 +417,7 @@ export async function deploy(ctx: Context, opts: DeployOptions): Promise<DeployO
       await deployWorker(ctx, s, config, newSecrets);
       ctx.io.log(`Waiting for https://${state.host}/version to report ${version}.`);
       if (!(await pollVersion(ctx, state.host!, version))) {
-        ctx.io.warn(`https://${state.host} does not answer with ${version} yet. New custom domains can take a few minutes (certificate). Check with \`npx claros doctor --name ${name}\`.`);
+        ctx.io.warn(`https://${state.host} does not answer with ${version} yet. New custom domains can take a few minutes (certificate). Check with \`npx @claroshq/claros doctor --name ${name}\`.`);
       }
     });
   }
@@ -520,11 +520,11 @@ export async function upgrade(
   const s = await existingSession(ctx, name, opts);
   const { state } = s;
   const target = ctx.assets().version;
-  if (!state.host || !state.d1Id) throw new Error(`Instance "${name}" was not deployed completely; run \`npx claros deploy --name ${name}\` first.`);
+  if (!state.host || !state.d1Id) throw new Error(`Instance "${name}" was not deployed completely; run \`npx @claroshq/claros deploy --name ${name}\` first.`);
 
   const running = (await liveVersion(ctx, state.host)) ?? state.deployedVersion;
   if (running && compareVersions(target, running) < 0) {
-    throw new Error(`Refusing to downgrade "${name}" from ${running} to ${target}. Use \`npx claros@${running} upgrade\` or newer.`);
+    throw new Error(`Refusing to downgrade "${name}" from ${running} to ${target}. Use \`npx @claroshq/claros@${running} upgrade\` or newer.`);
   }
   if (running === target && state.deployedVersion === target) {
     ctx.io.log(`"${name}" already runs Claros ${target}.`);

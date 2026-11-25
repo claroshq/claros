@@ -40,6 +40,17 @@ const DEFAULT_PARSERS: Record<string, BodyParser> = {
 };
 
 /**
+ * JSONL media types. Routes that accept JSONL (KB import, message import)
+ * register these so the body reaches the handler as the raw text, the same
+ * as text/plain.
+ */
+export const JSONL_PARSERS: Record<string, BodyParser> = {
+  "application/x-ndjson": (raw) => raw,
+  "application/jsonl": (raw) => raw,
+  "application/x-jsonlines": (raw) => raw,
+};
+
+/**
  * Parse application/x-www-form-urlencoded the way the v0.6 auth, invite and
  * unsubscribe scopes did: "+" is a space, pairs without "=" are skipped.
  */

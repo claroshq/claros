@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Entry point of the `claros` npm package (Claros on Cloudflare Workers + D1).
+// Entry point of the `@claroshq/claros` npm package (bin `claros`) (Claros on Cloudflare Workers + D1).
 import { main } from "../dist/cli.js";
 
 main(process.argv.slice(2)).then(

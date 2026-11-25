@@ -44,8 +44,8 @@ export default function ConfigSettings() {
           and data source secrets stay on the server). Edit it, then preview and apply it:
         </p>
         <pre className="overflow-x-auto rounded-md border border-border bg-sunken p-4 font-mono text-[13px] text-foreground">
-{`npx claros apply -f claros.config.json --dry-run
-npx claros apply -f claros.config.json`}
+{`npx @claroshq/claros apply -f claros.config.json --dry-run
+npx @claroshq/claros apply -f claros.config.json`}
         </pre>
         <FormError message={err} />
         <Button type="button" onClick={() => void download()} disabled={busy}>
