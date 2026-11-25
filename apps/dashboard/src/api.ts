@@ -1959,6 +1959,10 @@ export interface ProductSummary {
   name: string;
   role: string;
   archived: boolean;
+  /** Host for the product's public pages (unsubscribe, preferences), or null. */
+  public_host: string | null;
+  /** The product's brand logo URL (uploaded or external), or null. */
+  logo_url: string | null;
 }
 
 export interface ProductsResponse {

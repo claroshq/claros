@@ -3,7 +3,10 @@
  *
  * Routing:
  *   /login       - LoginPage (public, redirects to / if authenticated)
- *   /            - ShellPage (requires auth, redirects to /login if not)
+ *   /products    - ProductPickerPage (requires auth): every product, full screen
+ *   /            - ShellPage (requires auth, redirects to /login if not),
+ *                  behind ProductGate: on app open, instances with several
+ *                  active products show the product picker first
  *     index      - DefaultRoute: always /home (the unified landing screen)
  *     *          - NotFoundPage (unknown route, rendered inside the shell)
  *
@@ -19,6 +22,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useMe } from "./auth.js";
 import LoginPage from "./pages/LoginPage.js";
 import ShellPage from "./pages/ShellPage.js";
+import ProductPickerPage from "./pages/ProductPickerPage.js";
+import { ProductGate } from "./components/product-gate.js";
 import HomePage from "./pages/HomePage.js";
 import FlowsPage from "./pages/FlowsPage.js";
 import FlowEditorPage from "./pages/FlowEditorPage.js";
@@ -76,9 +81,21 @@ export default function App() {
         }
       />
       <Route
+        path="/products"
+        element={
+          me ? <ProductPickerPage me={me} /> : <Navigate to="/login" replace />
+        }
+      />
+      <Route
         path="/"
         element={
-          me ? <ShellPage me={me} /> : <Navigate to="/login" replace />
+          me ? (
+            <ProductGate me={me}>
+              <ShellPage me={me} />
+            </ProductGate>
+          ) : (
+            <Navigate to="/login" replace />
+          )
         }
       >
         {/* Default child: always routes to /home, the unified landing. */}

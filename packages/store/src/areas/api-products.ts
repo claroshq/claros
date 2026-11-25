@@ -20,6 +20,13 @@ export interface ProductRow {
   createdAt: Date | null;
 }
 
+/**
+ * A product in a list: the row plus its effective brand logo, the string in
+ * settings.brand.logo_url (an uploaded logo's hosted URL or an external
+ * URL), null when unset, empty or not a string.
+ */
+export type ProductListRow = ProductRow & { logoUrl: string | null };
+
 export type ProductUpdateResult =
   | { ok: true; product: ProductRow }
   | { ok: false; reason: "not_found" | "public_host_taken" };
@@ -30,9 +37,9 @@ export interface ApiProductsQueries {
    * home product (users.role) plus every tenant with a membership row
    * (membership role).
    */
-  listForUser(args: { userId: string }): Promise<Array<ProductRow & { role: string }>>;
+  listForUser(args: { userId: string }): Promise<Array<ProductListRow & { role: string }>>;
   /** Every product of the instance, oldest first. */
-  listAll(): Promise<ProductRow[]>;
+  listAll(): Promise<ProductListRow[]>;
   /**
    * In one transaction: insert the product and the creator's owner
    * membership (none when ownerUserId is null: an instance key created

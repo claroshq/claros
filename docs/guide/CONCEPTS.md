@@ -5,6 +5,7 @@ Claros is unconventional in one deliberate way: there is no visual flow builder.
 Contents:
 
 - [The mental model](#the-mental-model)
+- [Products](#products)
 - [How an event becomes an email](#how-an-event-becomes-an-email)
 - [Compilation: prompts in, deterministic plans out](#compilation-prompts-in-deterministic-plans-out)
 - [The approval queue](#the-approval-queue)
@@ -30,7 +31,18 @@ Event  ->  Contact  ->  Flow membership  ->  Message
 
 All four live inside a **product**. Since v0.8, one install can serve several products, each with its own data, settings and team; see [PRODUCTS.md](./PRODUCTS.md). Topics let contacts choose which kinds of mail they receive ([TOPICS.md](./TOPICS.md)), and a product can route mail through several transports ([TRANSPORTS.md](./TRANSPORTS.md)). Failures that need a person (dead jobs, send and webhook errors, missing configuration) are mailed to an instance admin and listed on a Health page ([ALERTS.md](./ALERTS.md)).
 
-The engine is deterministic. Everything below the flow is Postgres jobs and SQL. AI participates in exactly two places, both off the execution path: compiling a flow's prompt into its plan, and drafting a message's copy before it enters the approval queue.
+The engine is deterministic. Everything below the flow is queued jobs and database queries (Postgres or D1). AI participates in exactly two places, both off the execution path: compiling a flow's prompt into its plan, and drafting a message's copy before it enters the approval queue.
+
+## Products
+
+A product is the unit everything else belongs to: one app or brand you send lifecycle email for. One instance can run several, on either runtime.
+
+- **Separate data and settings.** Contacts, events, flows, templates, topics, knowledge base, transports and routing, brand, postal address, LLM settings and API keys are per product. Nothing crosses between products, not even a shared email address.
+- **People have a role per product.** One login, with owner or member access through a membership in each product. Instance admins manage the install and act as owner everywhere.
+- **Keys pick the product.** An ingestion key (`clr_pk_`, `clr_sk_`) or admin key (`clr_ak_`) belongs to one product. Dashboard sessions and instance keys (`clr_ik_`) name it with the `X-Claros-Product: <slug>` header.
+- **Archiving stops a product, not its data.** An archived product is readable, refuses ingestion with `403` and changes with `409`, and sends nothing until it is unarchived.
+
+In code and in the database a product is a `tenant` (`tenant_id`). Details: [PRODUCTS.md](./PRODUCTS.md).
 
 ## How an event becomes an email
 

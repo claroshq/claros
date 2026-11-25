@@ -23,6 +23,17 @@ An AI-native alternative to Customer.io, Loops, and Mautic. Flows are written in
 
 ![Lifecycle retention grid](docs/guide/assets/lifecycle.png)
 
+## Several products, one instance
+
+One Claros install serves as many products as you run. Each product is fully separate: its own contacts and events, flows and templates, topics and consent, transports and routing, brand, knowledge base, API keys and team. The same email address in two products is two contacts, and nothing crosses between them.
+
+- **People**: one login per person, with a role per product (owner or member). Instance admins manage the install and act as owner in every product.
+- **Dashboard**: with two or more active products it opens on a product picker; the sidebar switcher moves between them.
+- **API**: ingestion keys belong to one product. Dashboard sessions and instance keys (`clr_ik_`) pick the product with the `X-Claros-Product: <slug>` header. Instance keys script the install from CI: create products, give each an admin key, set up its transports.
+- **Archiving**: an archived product stays readable, refuses ingestion with `403` and sends nothing until it is unarchived.
+
+Products work the same on both runtimes. See [Products](docs/guide/PRODUCTS.md).
+
 ## Get running
 
 Two install options run the same HTTP API and engine. Pick one.
@@ -47,7 +58,7 @@ The Cloudflare Workers + D1 install option, multi-product instances, topics and 
 - **Brain** - compile, decide, draft, assess, choose. Real LLM calls to any OpenAI-compatible endpoint, only at compile time and content time, never in timing, targeting or the send path
 - **Approval queue** - AI-drafted messages are held for human review by default; edit, regenerate, cancel or exclude a person; per-flow auto-approve when you trust it
 - **Event ingestion** - Segment-compatible `/v1/track`, `/v1/identify`, `/v1/batch`. Publishable and secret API keys, rate limits, browser snippet at `/claros.js`
-- **Multi-product instances** - one install serves several products, each with its own contacts, flows, settings, keys and team; instance admins manage them all. See [Products](docs/guide/PRODUCTS.md)
+- **Multi-product instances** - one install serves several products, each with its own contacts, flows, topics, transports, brand, keys and team; per-product memberships, instance admins, instance keys (`clr_ik_`) and the `X-Claros-Product` header; a product picker in the dashboard; archive and unarchive. See [Products](docs/guide/PRODUCTS.md)
 - **Transports** - Resend (with open/click/bounce webhooks), generic SMTP (including the Amazon SES SMTP endpoint) and Cloudflare Email Service (transactional mail only). Several transports per product, routed by topic kind. See [Transports](docs/guide/TRANSPORTS.md)
 - **Topics and consent** - marketing, lifecycle and transactional topics with per-topic unsubscribe. See [Topics](docs/guide/TOPICS.md)
 - **Compliance built in** - RFC 8058 one-click unsubscribe built in for lifecycle and marketing mail, a CAN-SPAM postal footer on every outgoing email, suppression list enforced before everything

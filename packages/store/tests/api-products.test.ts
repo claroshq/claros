@@ -61,7 +61,30 @@ for (const factory of testBackends()) {
       const mine = new Set(ids);
       const rows = (await b.store.apiProducts.listAll()).filter((r) => mine.has(r.id));
       expect(rows.map((r) => r.id)).toEqual([ids[3], ids[2], ids[1], ids[0]]);
-      expect(Object.keys(rows[0]!).sort()).toEqual(["archivedAt", "createdAt", "id", "locale", "name", "publicHost", "slug"]);
+      expect(Object.keys(rows[0]!).sort()).toEqual(["archivedAt", "createdAt", "id", "locale", "logoUrl", "name", "publicHost", "slug"]);
+    });
+
+    it("listAll and listForUser: logoUrl is settings.brand.logo_url when it is a non-empty string, else null", async () => {
+      const url = "https://cdn.example.com/logo.png?v=abc";
+      const withLogo = await addTenant(b, { slug: slug("lg-a"), settings: { brand: { logo_url: url, brand_name: "A" } } });
+      const empty = await addTenant(b, { slug: slug("lg-b"), settings: { brand: { logo_url: "" } } });
+      const notString = await addTenant(b, { slug: slug("lg-c"), settings: { brand: { logo_url: 42 } } });
+      const noBrand = await addTenant(b, { slug: slug("lg-d"), settings: { throttle: { max_per_day: 1 } } });
+      const noSettings = await addTenant(b, { slug: slug("lg-e") });
+      const all = await b.store.apiProducts.listAll();
+      const logo = (id: string) => all.find((r) => r.id === id)!.logoUrl;
+      expect(logo(withLogo.id)).toBe(url);
+      expect(logo(empty.id)).toBeNull();
+      expect(logo(notString.id)).toBeNull();
+      expect(logo(noBrand.id)).toBeNull();
+      expect(logo(noSettings.id)).toBeNull();
+
+      const u = await addUser(b, withLogo.id, { role: "owner" });
+      await addMembership(b, u, empty.id, "member");
+      const mine = await b.store.apiProducts.listForUser({ userId: u });
+      expect(mine.map((r) => [r.id, r.logoUrl])).toEqual(
+        expect.arrayContaining([[withLogo.id, url], [empty.id, null]]),
+      );
     });
 
     it("create inserts the product and the creator's owner membership; a taken slug is null", async () => {

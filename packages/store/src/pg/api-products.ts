@@ -16,6 +16,9 @@ const productColumns = {
   createdAt: tenants.createdAt,
 };
 
+/** settings.brand.logo_url when it is a non-empty string, else null. */
+const logoUrlColumn = sql<string | null>`CASE WHEN jsonb_typeof(${tenants.settings} -> 'brand' -> 'logo_url') = 'string' THEN NULLIF(${tenants.settings} -> 'brand' ->> 'logo_url', '') END`;
+
 /** True for a Postgres unique violation on the named constraint/index. */
 function isUniqueViolation(err: unknown, constraint: string): boolean {
   const e = (err as { cause?: unknown })?.cause ?? err;
@@ -29,6 +32,7 @@ export function pgApiProducts(db: PgDb): ApiProductsQueries {
       return db
         .select({
           ...productColumns,
+          logoUrl: logoUrlColumn,
           role: sql<string>`CASE WHEN ${users.tenantId} = ${tenants.id} THEN ${users.role} ELSE ${memberships.role} END`,
         })
         .from(tenants)
@@ -43,7 +47,7 @@ export function pgApiProducts(db: PgDb): ApiProductsQueries {
 
     async listAll() {
       return db
-        .select(productColumns)
+        .select({ ...productColumns, logoUrl: logoUrlColumn })
         .from(tenants)
         .orderBy(asc(tenants.createdAt), asc(tenants.slug));
     },

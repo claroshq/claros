@@ -102,7 +102,8 @@ export default function productsRoutes() {
 
   /**
    * GET /v1/products
-   * { products: [{ id, slug, name, role, archived }], instance_admin }
+   * { products: [{ id, slug, name, role, archived, public_host, logo_url }], instance_admin }
+   * logo_url is the product's brand.logo_url (uploaded or external), or null.
    * Instance admins see every product (role owner).
    */
   app.get("/", body, async (c, next) => {
@@ -116,7 +117,15 @@ export default function productsRoutes() {
     if (!tenant) {
       const rows = await storeFor(db).apiProducts.listAll();
       return c.json({
-        products: rows.map((p) => ({ id: p.id, slug: p.slug, name: p.name, role: "owner", archived: p.archivedAt !== null })),
+        products: rows.map((p) => ({
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          role: "owner",
+          archived: p.archivedAt !== null,
+          public_host: p.publicHost,
+          logo_url: p.logoUrl,
+        })),
         instance_admin: false,
       });
     }
@@ -131,6 +140,8 @@ export default function productsRoutes() {
         name: p.name,
         role: p.role,
         archived: p.archivedAt !== null,
+        public_host: p.publicHost,
+        logo_url: p.logoUrl,
       })),
       instance_admin: isAdmin,
     });

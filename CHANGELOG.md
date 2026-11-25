@@ -6,6 +6,20 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-11-25
+
+### Added
+
+- Dashboard product picker. With two or more active products, signing in or opening a new tab shows a full-screen picker before the app: one card per product (name, slug, public host, role), the last chosen product highlighted, arrow keys, Enter and `1` to `9`. Archived products sit in a collapsed group and open read-only; instance admins can create a product there. The picker shows once per tab; `/products` opens it any time. See [Products](docs/guide/PRODUCTS.md#opening-and-switching-products-in-the-dashboard).
+- `GET /v1/products` returns each product's `public_host` and `logo_url` (additive fields). `logo_url` is the product's `brand.logo_url` (an uploaded logo's hosted URL or an external URL), or `null`; it is read in the same list query on Postgres and D1.
+- The product picker and the sidebar switcher show each product's brand logo, contained on a white tile in both themes, and fall back to the two-letter monogram when a product has no logo or the image does not load.
+
+### Changed
+
+- With exactly one active product the dashboard opens it directly, even when the user's home product or last used product is archived (before, it opened the archived product).
+- The sidebar product switcher is a menu: monogram, name and slug or public host per product, a check on the open product, a filter field above six products, keyboard navigation, and "All products" and (instance admins) "New product" actions. It lists active products only; archived products open from the picker or Settings, Products, and an open archived product is tagged "archived".
+- Docs: the Quickstart covers both install paths (Docker + Postgres and Cloudflare Workers + D1) side by side, tracking a first event and adding a second product. Installation gains a "Choose a runtime" comparison, a Cloudflare section and Workers upgrades. README presents multi-product instances; Products and Concepts describe the picker, product selection in the API and archiving.
+
 ## [0.8.5] - 2026-11-25
 
 ### Added
@@ -201,7 +215,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.5...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.6...HEAD
+[0.8.6]: https://github.com/claroshq/claros/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/claroshq/claros/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/claroshq/claros/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/claroshq/claros/compare/v0.8.2...v0.8.3

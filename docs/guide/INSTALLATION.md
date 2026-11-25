@@ -4,7 +4,9 @@ The complete reference for running Claros. For a guided first run, start with [Q
 
 Contents:
 
-- [Ways to run](#ways-to-run)
+- [Choose a runtime](#choose-a-runtime)
+- [Ways to run](#ways-to-run) (Docker + Postgres)
+- [Cloudflare Workers + D1](#cloudflare-workers--d1)
 - [Environment variables](#environment-variables)
 - [Configuration](#configuration) (transport, LLM, throttle, team)
 - [Operator CLI](#operator-cli)
@@ -16,9 +18,33 @@ Contents:
 
 ---
 
+## Choose a runtime
+
+Claros runs on two runtimes. Both serve the same HTTP API (including the v0.6 API and ingestion contract), run the same engine and ship the same dashboard. Both are supported install options; Postgres + Node stays first-class and upgrades in place.
+
+| | Docker + Postgres (Node) | Cloudflare Workers + D1 |
+|---|---|---|
+| Install | `docker compose run --rm install`, then `docker compose up` | `npx @claroshq/claros deploy --domain <host>` |
+| What you run | One Docker image (`--role=all`, or api / worker / scheduler split) and Postgres 16 with pgvector | One Worker, one D1 database, two Cloudflare Queues, one Cron Trigger, in your Cloudflare account |
+| Job queue | pg-boss inside Postgres | Cloudflare Queues (failed jobs retried, then a dead letter queue) |
+| Knowledge base search | pgvector similarity when an embedding model is configured, full-text fallback | SQLite full-text search (FTS5, `bm25`) |
+| Event storage | `events` partitioned by month | plain `events` table with a daily rollup and retention |
+| Cloudflare Email Service (transactional mail only) | REST API with an API token | `send_email` binding added by `claros deploy`, or the REST API |
+| SMTP | nodemailer | worker-mailer (not yet tested on Workers) |
+| Custom domains | your DNS and reverse proxy | `--domain` and `claros products set-host` attach them for you |
+| Upgrades | pull the new release, migrations run on boot | `npx @claroshq/claros upgrade` (D1 backup, migrate, deploy, rollback on failure) |
+| Concurrency | decisions inside database locks; a racing request waits | no interactive transactions on D1; guarded writes keep every invariant, but a request that loses a race may be refused where Postgres would wait |
+| Scale target | larger installs (not benchmarked) | small and medium installs; one database per instance |
+
+The running instance reports which one it is at `GET /v1/capabilities` (`backend`, `runtime`, `kb.semantic`, `events.partitioned`). The full list of backend differences is in [Architecture](../architecture.md#capability-differences-between-backends) and, for contributors, [Storage layer](../dev/storage.md#known-differences-on-d1).
+
+Moving an existing Postgres install to D1 is not built yet: a Postgres install stays on Postgres and upgrades in place. Pick the runtime you want to keep.
+
+The rest of this page covers the Docker + Postgres install. The Cloudflare install is summarised [below](#cloudflare-workers--d1) and documented in full in [Install on Cloudflare Workers + D1](../install/cloudflare.md).
+
 ## Ways to run
 
-This guide covers the Postgres + Node install: a single Docker image plus Postgres. Claros also runs on Cloudflare Workers + D1 (since v0.8); see [Install on Cloudflare Workers + D1](../install/cloudflare.md). There are three practical ways to run the Postgres + Node install.
+There are three practical ways to run the Docker + Postgres install.
 
 ### 1. Docker Compose (recommended)
 
@@ -82,6 +108,25 @@ The Vite dev server proxies `/v1` and `/auth` to the API on port 3000. In a buil
 Other root scripts: `npm test` (unit tests need no database; `*.db.test.ts` integration tests need `DATABASE_URL`), `npm run typecheck`, `npm run lint`, `npm run db:generate` (authors a new migration after schema changes).
 
 ---
+
+## Cloudflare Workers + D1
+
+Since v0.8. The CLI is the npm package `@claroshq/claros` and uses wrangler with your Cloudflare login (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in CI).
+
+```bash
+npx @claroshq/claros deploy --domain claros.example.com
+```
+
+One command creates or updates the instance: the D1 database `claros-<name>`, the queues `claros-<name>-jobs` and `claros-<name>-jobs-dlq`, the secrets `ENCRYPTION_KEY` and `UNSUBSCRIBE_SIGNING_KEY` (never overwritten once set), the Worker with its Cron Trigger and dashboard assets, and the custom domain. It applies D1 migrations, waits for the new version, and prints a one-time claim URL while no user exists. Running it again changes only what is missing. Options: `--name <instance>` (default `default`), `--domain <host>`, `--account <id>`, `--non-interactive`, `--dry-run`, `--force`.
+
+| Command | Does |
+|---|---|
+| `npx @claroshq/claros upgrade` | Backs up D1, migrates, deploys the package's version, rolls back if it does not come up |
+| `npx @claroshq/claros doctor` | Checks secrets, pending migrations, HTTPS on every route, `/health` and `/version` |
+| `npx @claroshq/claros claim-url` | Prints a new claim URL while no user exists |
+| `npx @claroshq/claros products set-host <slug> <host>` | Serves a product's links on its own host |
+
+The environment variables below are for the Docker install. On Workers, `BASE_URL`, `DASHBOARD_URL` and `CLAROS_VERSION` are Worker variables and the two keys are Worker secrets, all set by `claros deploy`. Bindings, state files, backups and local development with `wrangler dev` are in [Install on Cloudflare Workers + D1](../install/cloudflare.md).
 
 ## Environment variables
 
@@ -287,6 +332,8 @@ Migrations are expand-contract: new code always works against the previous schem
 
 ## Upgrading
 
+### Docker + Postgres
+
 Compose / source checkout:
 
 ```bash
@@ -297,6 +344,14 @@ docker compose up -d --build    # compose remigrates on boot
 Published image: pull the new tag, recreate the container. With `CLAROS_MIGRATE_ON_BOOT=true` the schema updates itself; otherwise run `npm run db:migrate` first.
 
 There is no downgrade path for the schema. Take a backup before upgrading (below), and read the release notes on the [releases page](https://github.com/claroshq/claros/releases); that page is the changelog.
+
+### Cloudflare Workers + D1
+
+```bash
+npx @claroshq/claros upgrade            # add --name <instance> for an instance other than "default"
+```
+
+`upgrade` refuses a downgrade, backs up D1 (a Time Travel bookmark and an SQL export), applies migrations, deploys the package's version and waits for it. If the new version does not come up, it rolls the Worker back; migrations are additive and stay applied. Pin a release with `npx @claroshq/claros@<version> upgrade`. Details: [Upgrade backups](../install/cloudflare.md#upgrade-backups).
 
 ## Backups
 

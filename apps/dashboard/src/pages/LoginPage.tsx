@@ -11,9 +11,10 @@
  *   - sent: "check your inbox" message
  *   - error: banner above the form (from ?error=invalid_link or submit failure)
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useLogin } from "../auth.js";
+import { forgetPickedProduct } from "../product.js";
 import { BrandLockup } from "../components/brand-lockup.js";
 import { ThemeToggle } from "../components/theme-toggle.js";
 import { Button } from "../components/ui/button.js";
@@ -60,6 +61,9 @@ export default function LoginPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const login = useLogin();
+
+  // A new sign-in shows the product picker again (multi-product instances).
+  useEffect(() => forgetPickedProduct(), []);
 
   // Session-expiry notice: apiFetch sets this flag when a 401 forces the
   // redirect. Read once and clear so later visits do not show it.
