@@ -1,0 +1,1 @@
+ALTER TABLE `flows` ADD `email_template` text;

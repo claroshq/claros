@@ -34,6 +34,8 @@ export const flows = sqliteTable("flows", {
   compileError: text("compile_error"), // human-readable error when status = failed
   /** Topic of the flow's messages (G8a); null = no topic. */
   topicId: text("topic_id").references(() => topics.id),
+  /** Email template of the flow's messages (built-in key or email_layouts id); null = the product's. */
+  emailTemplate: text("email_template"),
   /** Stable identifier for config as code (G2); null for flows created in the dashboard. */
   slug: text("slug"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),

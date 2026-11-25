@@ -15,6 +15,7 @@ import {
   lintLayoutSource,
   renderLayout,
   resolveLayout,
+  resolveMessageLayout,
   SAMPLE_BODY_HTML,
   SAMPLE_COMPLIANCE_HTML,
   tintHex,
@@ -229,5 +230,29 @@ describe("client checks", () => {
     const all = checkLayoutSource(base.replace("{{body}}", '<div style="display:flex">'));
     expect(all[0]!.severity).toBe("error");
     expect(all.map((i) => i.rule)).toContain("flexbox");
+  });
+});
+
+describe("resolveMessageLayout", () => {
+  const stored = { width: "wide" as const, source: "<html><body>{{body}}{{compliance_footer}}</body></html>" };
+  const id = "3b1f0c52-1d2e-4c55-9a8e-2f4f0f6c9d10";
+  const other = "9c2e7a10-0b1d-4f2a-8e3c-5d6f7a8b9c0d";
+  const load = async (x: string) => (x === id ? stored : null);
+
+  it("prefers the flow's template, built-in or stored", async () => {
+    expect(await resolveMessageLayout({ template: "wide" }, "letter", load)).toEqual({ brand: { template: "letter" }, layout: null });
+    expect(await resolveMessageLayout({ template: "wide" }, id, load)).toEqual({ brand: { template: id }, layout: stored });
+  });
+
+  it("falls back to the product's template when the flow has none or its template is gone", async () => {
+    expect(await resolveMessageLayout({ template: "banner" }, null, load)).toEqual({ brand: { template: "banner" }, layout: null });
+    expect(await resolveMessageLayout({ template: id }, other, load)).toEqual({ brand: { template: id }, layout: stored });
+    expect(await resolveMessageLayout({ template: "banner" }, "nope", load)).toEqual({ brand: { template: "banner" }, layout: null });
+  });
+
+  it("falls back to brand.layout when neither names a usable template", async () => {
+    const r = await resolveMessageLayout({ template: other, layout: "wide" }, null, load);
+    expect(r).toEqual({ brand: { template: undefined, layout: "wide" }, layout: null });
+    expect(wrapInShell({ ...{ bodyHtml: "<p>x</p>", tenantName: "A", complianceFooterHtml: "" }, brand: r.brand, layout: r.layout })).toContain('<td align="center" style="padding:24px 12px 40px 12px;">');
   });
 });

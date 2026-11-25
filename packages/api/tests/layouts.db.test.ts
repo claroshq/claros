@@ -229,3 +229,59 @@ describe("previews follow the product's template", () => {
     expect(msg.preview_html).toContain("<p>Hi</p>");
   });
 });
+
+describe("per-flow email template", () => {
+  const flowBody = (extra: Record<string, unknown> = {}) => ({
+    name: "Welcome",
+    trigger_type: "event",
+    trigger_config: { event: "signed_up" },
+    steps: [{ order: 1, action_type: "welcome", delay: "0m", window_policy: "immediate" }],
+    ...extra,
+  });
+
+  it("sets, changes, validates and clears a flow's email_template", async () => {
+    const p = await product("flow-tpl");
+    const created = await req(p, "POST", "/v1/flows", flowBody({ email_template: "letter" }));
+    expect(created.statusCode).toBe(201);
+    const flowId = created.json().flow?.id ?? created.json().id;
+    const flowOf = (r: { json(): Record<string, unknown> }) => ((r.json().flow ?? r.json()) as { email_template: string | null });
+    expect(flowOf(created).email_template).toBe("letter");
+
+    const customId = (await req(p, "POST", "/v1/layouts", { name: "Mine", width: "narrow", source })).json().template.id;
+    const patched = await a.inject({ method: "PATCH", url: `/v1/flows/${flowId}`, headers: cookieJson(p.ownerCookie), payload: { email_template: customId } });
+    expect(patched.statusCode).toBe(200);
+    expect(flowOf(patched).email_template).toBe(customId);
+
+    expect((await a.inject({ method: "PATCH", url: `/v1/flows/${flowId}`, headers: cookieJson(p.ownerCookie), payload: { email_template: "nope" } })).statusCode).toBe(400);
+    expect((await a.inject({ method: "PATCH", url: `/v1/flows/${flowId}`, headers: cookieJson(p.ownerCookie), payload: { email_template: "3b1f0c52-1d2e-4c55-9a8e-2f4f0f6c9d10" } })).statusCode).toBe(400);
+    expect((await req(p, "POST", "/v1/flows", flowBody({ name: "Bad", email_template: "nope" }))).statusCode).toBe(400);
+
+    // The Templates list counts flows; a template a flow uses cannot be deleted.
+    const list = (await req(p, "GET", "/v1/layouts")).json();
+    expect(list.templates.find((t: { ref: string }) => t.ref === customId).flow_count).toBe(1);
+    const del = await req(p, "DELETE", `/v1/layouts/${customId}`);
+    expect(del.statusCode).toBe(409);
+    expect(del.json().error).toContain('"Welcome"');
+
+    const cleared = await a.inject({ method: "PATCH", url: `/v1/flows/${flowId}`, headers: cookieJson(p.ownerCookie), payload: { email_template: null } });
+    expect(flowOf(cleared).email_template).toBeNull();
+    expect((await req(p, "DELETE", `/v1/layouts/${customId}`)).statusCode).toBe(204);
+  });
+
+  it("renders approval drafts in their flow's template, others in the product's", async () => {
+    const p = await product("flow-tpl-preview");
+    const custom = '<!DOCTYPE html><html><body><div id="flow-shell">{{brand_name}}</div>{{body}}{{compliance_footer}}</body></html>';
+    const id = (await req(p, "POST", "/v1/layouts", { name: "Flow one", width: "narrow", source: custom })).json().template.id;
+    const a1 = await newMessage(db, p.tenantId);
+    const a2 = await newMessage(db, p.tenantId);
+    await a.inject({ method: "PATCH", url: `/v1/flows/${a1.flowId}`, headers: cookieJson(p.ownerCookie), payload: { email_template: id } });
+    await req(p, "PUT", "/v1/layouts/active", { template: "letter" });
+    const msgs = (await req(p, "GET", "/v1/messages?status=pending_approval")).json().messages as Array<{ id: string; preview_html: string }>;
+    const m1 = msgs.find((m) => m.id === a1.messageId)!;
+    const m2 = msgs.find((m) => m.id === a2.messageId)!;
+    expect(m1.preview_html).toContain('<div id="flow-shell">');
+    expect(m2.preview_html).not.toContain("flow-shell");
+    expect(m2.preview_html).toContain("Georgia");
+  });
+});
+

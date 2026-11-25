@@ -52,6 +52,7 @@ import {
   useFlowWithPolling,
 } from "../flows.js";
 import { useTopics } from "../topics-transports.js";
+import { useLayoutList } from "../layouts.js";
 import { useTenant } from "../settings.js";
 import { useKbEntries } from "../kb.js";
 import { cleanTriggerConfig, LIFECYCLE_STATES, type Json, type TriggerDraft } from "../lib/flow-model.js";
@@ -297,6 +298,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
   const ctx = useFlowEditorContext();
   const eventNames = useEventNames();
   const topics = useTopics();
+  const layouts = useLayoutList();
   const tenant = useTenant();
   const kb = useKbEntries(false);
   const statusMutation = useFlowStatus(flow?.id ?? "");
@@ -467,6 +469,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
           reentry_policy: draft.reentry_policy,
           reentry_cooldown_days: draft.reentry_cooldown_days,
           topic_id: draft.topic_id,
+          email_template: draft.email_template,
           ...(draft.prompt !== null ? { prompt_source: draft.prompt } : {}),
         });
         flowId = current.id;
@@ -757,7 +760,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
       </div>
 
       {/* Tabs */}
-      <div role="tablist" className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
+      <div role="tablist" className="mt-5 flex gap-1 border-b border-border">
         {([["emails", "Emails"], ["settings", "Delivery settings"]] as const).map(([value, label]) => (
           <button
             key={value}
@@ -774,7 +777,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
 
       {tab === "settings" ? (
         <div className="mt-6">
-          <DeliverySettings draft={draft} onChange={(patch) => update(patch)} topics={topics.data?.topics ?? []} disabled={disabled} flow={flow} />
+          <DeliverySettings draft={draft} onChange={(patch) => update(patch)} topics={topics.data?.topics ?? []} templates={layouts.data ?? null} disabled={disabled} flow={flow} />
         </div>
       ) : json !== null ? (
         <div className="mt-6 rounded-xl border border-border bg-card p-5">

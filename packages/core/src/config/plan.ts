@@ -8,6 +8,7 @@
  * current row produces no change, so applying a document twice yields an
  * empty diff the second time.
  */
+import { builtinLayout, isCustomLayoutRef } from "../layout-templates.js";
 import { TRIGGER_KEYS, type ClarosConfig, type ConfigFlow } from "./schema.js";
 import { ANALYTICS_ENDPOINT_SLUG, ANALYTICS_SOURCE_EVENTS } from "../webhooks.js";
 
@@ -49,6 +50,8 @@ export interface StateFlow {
   reentryPolicy: string;
   reentryCooldownDays: number | null;
   topicId: string | null;
+  /** Email template ref (built-in key or custom id), null = the product's. */
+  emailTemplate?: string | null;
 }
 export interface StateTransport {
   id: string;
@@ -106,6 +109,7 @@ export interface FlowValues {
   reentryPolicy: string;
   reentryCooldownDays: number;
   topicId: string | null;
+  emailTemplate: string | null;
 }
 
 export type ConfigOp =
@@ -357,6 +361,10 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
     } else if (f.topic === undefined && cur) {
       topicId = cur.topicId;
     }
+    if (f.email_template && !builtinLayout(f.email_template) && !isCustomLayoutRef(f.email_template)) {
+      errors.push(`flows.${f.slug}: unknown email template '${f.email_template}'`);
+      continue;
+    }
     flowWarnings(f, s, state, warnings);
     const sources = (s.data_sources ?? (state.settings.data_sources as Record<string, { modes?: string[] }> | undefined) ?? {}) as Record<string, { modes?: string[] }>;
     for (const step of f.steps ?? []) {
@@ -422,8 +430,9 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       reentryPolicy: cur.reentryPolicy,
       reentryCooldownDays: cur.reentryCooldownDays ?? 30,
       topicId: cur.topicId,
+      emailTemplate: cur.emailTemplate ?? null,
     };
-    const keys = ["name", "description", "status", "triggerType", "triggerConfig", "contentMode", "approvalMode", "flowClass", "priority", "reentryPolicy", "reentryCooldownDays", "topicId"];
+    const keys = ["name", "description", "status", "triggerType", "triggerConfig", "contentMode", "approvalMode", "flowClass", "priority", "reentryPolicy", "reentryCooldownDays", "topicId", "emailTemplate"];
     if (values.promptSource !== null) keys.push("promptSource");
     else keys.push("steps", "compiledPlan", "promptSource");
     const fields = diffFields(current, values as unknown as Record<string, unknown>, keys);
@@ -606,5 +615,7 @@ function flowValues(f: ConfigFlow, cur: StateFlow | undefined, topicId: string |
     reentryPolicy: f.reentry?.policy ?? "cooldown",
     reentryCooldownDays: f.reentry?.cooldown_days ?? 30,
     topicId,
+    // Absent keeps the flow's current template, like topic.
+    emailTemplate: f.email_template !== undefined ? f.email_template : (cur?.emailTemplate ?? null),
   };
 }

@@ -242,7 +242,7 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
 
     async getFlowThrottleInfo(flowId) {
       const rows = await db
-        .select({ flowClass: flows.flowClass, compiledPlan: flows.compiledPlan })
+        .select({ flowClass: flows.flowClass, compiledPlan: flows.compiledPlan, emailTemplate: flows.emailTemplate })
         .from(flows)
         .where(eq(flows.id, flowId))
         .limit(1);

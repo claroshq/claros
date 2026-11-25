@@ -135,6 +135,26 @@ describe("planConfig", () => {
     expect(reprompt.ops[0]).toMatchObject({ op: "upsertFlow", compile: true, values: { compiledPlan: null, compileStatus: "pending" } });
   });
 
+  it("sets, keeps and validates a flow's email_template", () => {
+    const state = emptyState();
+    state.flows = [{
+      id: "f1", slug: "winback", name: "Winback", description: null, status: "paused", triggerType: "lifecycle_transition", triggerConfig: { to: "churned" },
+      steps: [{ order: 1 }], compiledPlan: { steps: [{ order: 1 }] }, promptSource: "Win them back", contentMode: "ai_drafted", approvalMode: "require",
+      flowClass: "nurture", priority: 0, reentryPolicy: "cooldown", reentryCooldownDays: 30, topicId: null, emailTemplate: "letter",
+    }];
+    const base = { slug: "winback", name: "Winback", trigger: { type: "lifecycle_transition", to: "churned" }, prompt: "Win them back" };
+    // Absent keeps the current template.
+    expect(planConfig(clarosConfigSchema.parse({ flows: [base] }), state, deps).ops).toEqual([]);
+    const changed = planConfig(clarosConfigSchema.parse({ flows: [{ ...base, email_template: "compact" }] }), state, deps);
+    expect(changed.changes).toEqual([{ kind: "flow", key: "winback", action: "update", fields: ["emailTemplate"] }]);
+    expect(changed.ops[0]).toMatchObject({ op: "upsertFlow", values: { emailTemplate: "compact" } });
+    const cleared = planConfig(clarosConfigSchema.parse({ flows: [{ ...base, email_template: null }] }), state, deps);
+    expect(cleared.ops[0]).toMatchObject({ values: { emailTemplate: null } });
+    const unknown = planConfig(clarosConfigSchema.parse({ flows: [{ ...base, email_template: "nope" }] }), state, deps);
+    expect(unknown.errors).toContain("flows.winback: unknown email template 'nope'");
+    expect(clarosConfigSchema.safeParse({ flows: [{ ...base, email_template: "Not A Key!" }] }).success).toBe(false);
+  });
+
   it("sameJson ignores key order and undefined", () => {
     expect(sameJson({ a: 1, b: { c: [1, { d: 2, e: undefined }] } }, { b: { c: [1, { d: 2 }] }, a: 1 })).toBe(true);
     expect(sameJson([1, 2], [2, 1])).toBe(false);

@@ -229,3 +229,28 @@ export const SAMPLE_BODY_HTML = [
 /** Compliance footer as the drain builds it, with example values. */
 export const SAMPLE_COMPLIANCE_HTML =
   '<p style="margin:0 0 4px 0;"><a href="https://example.com/unsubscribe" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from these emails.</p>\n<p style="margin:0;">1 Example Street, Springfield</p>';
+
+/**
+ * The template one message is sent in, for wrapInShell: the flow's
+ * email_template when it names a built-in or an existing stored template,
+ * else the product's brand.template (built-in or stored), else
+ * brand.layout. `load` reads a stored template of the product (null when
+ * it does not exist); it is the only I/O, passed in by the caller.
+ * Returns the brand to pass (with template set to the ref in effect) and
+ * the stored template to pass as `layout`, if any.
+ */
+export async function resolveMessageLayout<B extends { template?: string; layout?: unknown }>(
+  brand: B,
+  flowTemplate: string | null | undefined,
+  load: (id: string) => Promise<LayoutTemplate | null>,
+): Promise<{ brand: B; layout: LayoutTemplate | null }> {
+  for (const ref of [flowTemplate, brand.template]) {
+    if (!ref) continue;
+    if (builtinLayout(ref)) return { brand: { ...brand, template: ref }, layout: null };
+    if (isCustomLayoutRef(ref)) {
+      const stored = await load(ref);
+      if (stored) return { brand: { ...brand, template: ref }, layout: stored };
+    }
+  }
+  return { brand: { ...brand, template: undefined }, layout: null };
+}

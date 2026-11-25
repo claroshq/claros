@@ -60,6 +60,9 @@ import {
   evaluateAudienceCondition,
   type EnrollableFlow,
   type FlowStatus,
+  BUILTIN_LAYOUTS,
+  builtinLayout,
+  isCustomLayoutRef,
 } from "@claros/core";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import { OpenAICompatibleProvider, draft } from "@claros/brain-oss";
@@ -125,6 +128,11 @@ const createFlowSchema = z.object({
     .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "topic_id must be a UUID")
     .nullable()
     .optional(),
+  /**
+   * Email template of the flow's messages: a built-in key or the id of a
+   * template of the product; null clears it (the product's template).
+   */
+  email_template: z.string().max(64).nullable().optional(),
 });
 
 /** POST /v1/flows/:ref/enroll body (P5b). */
@@ -221,6 +229,11 @@ export default function flowsRoutes() {
       }
     }
 
+    if (body.email_template) {
+      const err = await emailTemplateError(db, tenantId, body.email_template);
+      if (err) return c.json({ error: err }, 400);
+    }
+
     if (body.topic_id) {
       const topic = await storeFor(db).apiTopics.findTopic({ tenantId, id: body.topic_id.toLowerCase() });
       if (!topic) return c.json({ error: "topic_id does not name a topic of this product." }, 400);
@@ -246,6 +259,7 @@ export default function flowsRoutes() {
         compiledPlan: null,
         compiledAt: null,
         topicId: body.topic_id ? body.topic_id.toLowerCase() : null,
+        emailTemplate: body.email_template ? body.email_template.trim() : null,
       });
 
     return c.json(serializeFlow(inserted!), 201);
@@ -538,6 +552,11 @@ export default function flowsRoutes() {
         }
       }
 
+      if (body.email_template) {
+        const err = await emailTemplateError(db, tenantId, body.email_template);
+        if (err) return c.json({ error: err }, 400);
+      }
+
       if (body.topic_id) {
         const topic = await storeFor(db).apiTopics.findTopic({ tenantId, id: body.topic_id.toLowerCase() });
         if (!topic) return c.json({ error: "topic_id does not name a topic of this product." }, 400);
@@ -565,6 +584,7 @@ export default function flowsRoutes() {
       }
       if (body.status !== undefined)            setClauses.status = body.status;
       if (body.topic_id !== undefined)          setClauses.topicId = body.topic_id ? body.topic_id.toLowerCase() : null;
+      if (body.email_template !== undefined)    setClauses.emailTemplate = body.email_template ? body.email_template.trim() : null;
 
       // prompt_source: update and clear stale compiled_plan/compiled_at
       if (
@@ -1008,7 +1028,16 @@ export function serializeFlow(row: FlowRow) {
     compile_status: row.compileStatus,
     compile_error: row.compileError,
     topic_id: row.topicId ?? null,
+    email_template: row.emailTemplate ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
+}
+
+/** Why an email_template value is not usable for this product, or null when it is. */
+async function emailTemplateError(db: Db, tenantId: string, ref: string): Promise<string | null> {
+  const r = ref.trim();
+  if (builtinLayout(r)) return null;
+  if (isCustomLayoutRef(r) && (await storeFor(db).emailLayouts.getLayout({ tenantId, id: r }))) return null;
+  return `email_template must be a built-in template (${BUILTIN_LAYOUTS.map((b) => b.key).join(", ")}) or the id of one of the product's templates.`;
 }

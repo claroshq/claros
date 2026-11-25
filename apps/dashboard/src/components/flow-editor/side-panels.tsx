@@ -2,7 +2,8 @@
  * The non-email nodes of the timeline: what starts the flow, what ends it
  * early, the prompt of a prompt-defined flow, and the delivery settings tab.
  */
-import type { Flow, Topic } from "../../api.js";
+import { Link } from "react-router-dom";
+import type { Flow, LayoutSummary, Topic } from "../../api.js";
 import type { Condition, TriggerDraft } from "../../lib/flow-model.js";
 import type { EditorDraft, FlowSettingsDraft } from "../../lib/flow-editor-model.js";
 import { ConditionListEditor } from "../condition-builder.js";
@@ -202,12 +203,15 @@ export function DeliverySettings({
   draft,
   onChange,
   topics,
+  templates,
   disabled,
   flow,
 }: {
   draft: EditorDraft;
   onChange: (patch: Partial<FlowSettingsDraft>) => void;
   topics: Topic[];
+  /** The product's email templates; null while loading or on older servers. */
+  templates: { active: string; templates: LayoutSummary[] } | null;
   disabled: boolean;
   flow: Flow | undefined;
 }) {
@@ -231,6 +235,31 @@ export function DeliverySettings({
             {sendable.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
           </Select>
           <p className={HINT}>Contacts unsubscribed from the topic get none of this flow&apos;s mail. Transactional topics carry no List-Unsubscribe header.</p>
+        </SettingsSection>
+      )}
+
+      {templates && (
+        <SettingsSection title="Email template">
+          <Select
+            aria-label="Email template"
+            className="mt-2 max-w-sm"
+            value={draft.email_template ?? ""}
+            disabled={d}
+            onChange={(e) => onChange({ email_template: e.target.value || null })}
+          >
+            <option value="">Product default ({templates.templates.find((t) => t.ref === templates.active)?.name ?? templates.active})</option>
+            {templates.templates.map((t) => (
+              <option key={t.ref} value={t.ref}>
+                {t.name} ({t.width}{t.kind === "custom" ? ", custom" : ""})
+              </option>
+            ))}
+            {draft.email_template && !templates.templates.some((t) => t.ref === draft.email_template) && (
+              <option value={draft.email_template}>Deleted template (sends with the product default)</option>
+            )}
+          </Select>
+          <p className={HINT}>
+            The design this flow&apos;s emails are sent in. Edit templates on the <Link to="/templates" className="text-accent-text underline">Templates</Link> page.
+          </p>
         </SettingsSection>
       )}
 

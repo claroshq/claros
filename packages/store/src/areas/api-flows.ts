@@ -33,6 +33,8 @@ export interface ApiFlowRow {
   compileError: string | null;
   /** Topic of the flow's messages (G8a), or null. */
   topicId: string | null;
+  /** Email template of the flow (built-in key or custom id), or null for the product's. */
+  emailTemplate: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 }
@@ -59,6 +61,7 @@ export interface ApiFlowPatch {
   compileStatus?: null;
   compileError?: null;
   topicId?: string | null;
+  emailTemplate?: string | null;
 }
 
 import type { ContactConditionQueries } from "./shared-conditions.js";
@@ -85,6 +88,7 @@ export interface ApiFlowsQueries extends ContactConditionQueries {
     compiledPlan: null;
     compiledAt: null;
     topicId?: string | null;
+    emailTemplate?: string | null;
   }): Promise<ApiFlowRow | undefined>;
   /** The tenant's flows ordered by created_at; archived ones only when includeArchived. */
   listFlows(args: { tenantId: string; includeArchived: boolean }): Promise<ApiFlowRow[]>;

@@ -71,6 +71,7 @@ function TemplateCard({ t }: { t: LayoutSummary }) {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <p className="mr-auto text-[15px] font-medium text-foreground">{t.name}</p>
         {t.in_use && <Badge variant="success">In use</Badge>}
+        {(t.flow_count ?? 0) > 0 && <Badge variant="accent">{t.flow_count === 1 ? "1 flow" : `${t.flow_count} flows`}</Badge>}
         <Badge variant="neutral">{t.width === "wide" ? "Wide" : "Narrow"}</Badge>
         <Badge variant={t.kind === "custom" ? "accent" : "muted"}>{t.kind === "custom" ? "Custom" : "Built-in"}</Badge>
       </div>
@@ -94,7 +95,7 @@ function TemplateCard({ t }: { t: LayoutSummary }) {
             {use.isPending ? "Switching..." : "Use for this product"}
           </Button>
         )}
-        {t.kind === "custom" && !t.in_use && (
+        {t.kind === "custom" && !t.in_use && (t.flow_count ?? 0) === 0 && (
           <Button
             size="icon"
             variant="ghost"
@@ -186,7 +187,7 @@ export function LayoutsPage() {
       )}
 
       <p className="mt-8 text-[13px] text-muted-foreground">
-        Templates use your <Link to="/settings/branding" className="text-accent-text underline">branding</Link> (logo, accent color, footer text). Every template keeps the unsubscribe link and postal address.
+        Templates use your <Link to="/settings/branding" className="text-accent-text underline">branding</Link> (logo, accent color, footer text). Every template keeps the unsubscribe link and postal address. A flow can use its own template: choose it in the flow&apos;s delivery settings.
       </p>
     </div>
   );

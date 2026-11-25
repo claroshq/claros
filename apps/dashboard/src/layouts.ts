@@ -20,6 +20,11 @@ export function useLayouts() {
   return useQuery({ queryKey: [...LAYOUTS_QUERY_KEY, "list"], queryFn: () => fetchLayouts(true) });
 }
 
+/** The templates without previews (for pickers such as the flow editor's). */
+export function useLayoutList() {
+  return useQuery({ queryKey: [...LAYOUTS_QUERY_KEY, "names"], queryFn: () => fetchLayouts(false), staleTime: 60_000 });
+}
+
 export function useLayout(ref: string) {
   return useQuery({ queryKey: [...LAYOUTS_QUERY_KEY, "one", ref], queryFn: () => fetchLayout(ref), staleTime: Infinity });
 }

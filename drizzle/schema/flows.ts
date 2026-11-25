@@ -37,6 +37,11 @@ export const flows = pgTable("flows", {
   compileError: text("compile_error"), // human-readable error when status = failed
   /** Topic of the flow's messages (G8a); null = no topic, behaves as before topics. */
   topicId: uuid("topic_id").references(() => topics.id),
+  /**
+   * Email template of the flow's messages: a built-in key or an
+   * email_layouts id; null = the product's template (settings.brand.template).
+   */
+  emailTemplate: text("email_template"),
   /** Stable identifier for config as code (G2); null for flows created in the dashboard. */
   slug: text("slug"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),

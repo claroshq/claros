@@ -1058,6 +1058,17 @@
                 "type": "null"
               }
             ]
+          },
+          "email_template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[a-z][a-z0-9_-]{0,31}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

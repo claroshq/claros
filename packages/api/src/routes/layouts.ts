@@ -8,11 +8,11 @@
  * A template is addressed by its ref: the built-in key ("classic") or the
  * custom template's id.
  *
- *   GET    /v1/layouts                 (member)  every template, the one in use; ?previews=true adds rendered previews
+ *   GET    /v1/layouts                 (member)  every template, the one in use, flow_count (flows that set it); ?previews=true adds rendered previews
  *   GET    /v1/layouts/:ref            (member)  one template with its source, findings and preview
  *   POST   /v1/layouts                 (owner, admin key "config")  create a custom template
  *   PUT    /v1/layouts/:id             (owner, admin key "config")  change a custom template
- *   DELETE /v1/layouts/:id             (owner, admin key "config")  delete a custom template not in use
+ *   DELETE /v1/layouts/:id             (owner, admin key "config")  delete a custom template that neither the product nor a flow uses
  *   PUT    /v1/layouts/active          (owner, admin key "config")  { template: ref } use a template for the product
  *   POST   /v1/layouts/preview         (member)  { source, width } -> rendered sample and findings
  *   POST   /v1/layouts/assist          (owner)   template studio: one chat turn with the product's LLM
@@ -188,10 +188,15 @@ export default function layoutsRoutes() {
     const active = activeLayoutRef(p.brand);
     const rows = await storeFor(db).emailLayouts.listLayouts(tenantId);
     const withPreview = c.req.query("previews") === "true";
+    const flowCount = new Map<string, number>();
+    for (const f of await storeFor(db).apiFlows.listFlows({ tenantId, includeArchived: false })) {
+      if (f.emailTemplate) flowCount.set(f.emailTemplate, (flowCount.get(f.emailTemplate) ?? 0) + 1);
+    }
     const templates = [
-      ...BUILTIN_LAYOUTS.map((b) => ({ ...builtinJson(b, active), ...(withPreview ? { preview_html: renderSample(b, p) } : {}) })),
+      ...BUILTIN_LAYOUTS.map((b) => ({ ...builtinJson(b, active), flow_count: flowCount.get(b.key) ?? 0, ...(withPreview ? { preview_html: renderSample(b, p) } : {}) })),
       ...rows.map((row) => ({
         ...customJson(row, active),
+        flow_count: flowCount.get(row.id) ?? 0,
         ...(withPreview ? { preview_html: renderSample({ source: row.source, width: row.width as LayoutWidth }, p) } : {}),
       })),
     ];
@@ -329,6 +334,10 @@ export default function layoutsRoutes() {
     const p = await loadProduct(db, tenantId);
     if (p && p.brand.template === id) {
       return c.json({ error: "This template is in use. Choose another template for the product first." }, 409);
+    }
+    const users = (await storeFor(db).apiFlows.listFlows({ tenantId, includeArchived: false })).filter((f) => f.emailTemplate === id);
+    if (users.length > 0) {
+      return c.json({ error: `This template is used by ${users.length === 1 ? "the flow" : "the flows"} ${users.map((f) => `"${f.name}"`).join(", ")}. Choose another template for ${users.length === 1 ? "it" : "them"} first.` }, 409);
     }
     const deleted = await storeFor(db).emailLayouts.deleteLayout({ tenantId, id });
     if (!deleted) return c.json({ error: "Template not found." }, 404);
