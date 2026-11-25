@@ -142,7 +142,7 @@ A product without an LLM configuration cannot use choose steps: the config apply
 
 The flow editor shows a flow as a timeline: what starts it, each email with the wait before it, and what ends it early. Selecting an email opens it beside the timeline:
 
-- **Who writes it.** "I write it" is fixed copy (a template, `template_ref`): subject, preview text (`preheader`), an HTML body with insert buttons for variables and the product's named links, and a preview with a sample contact. "AI drafts it per contact" is a `brain_instruction`, with example instructions and the links, knowledge base entry (`kb_select`) and context sources the AI may use. Choose steps show their candidates.
+- **Who writes it.** "I write it" is fixed copy (a template, `template_ref`): subject, preview text (`preheader`), an HTML body in a code editor (HTML highlighting, highlighted `{{variables}}`) with insert buttons for variables and the product's named links, and a preview with a sample contact. The **Code / Preview / Both** switch above the email shows the code, the preview, or both (side by side when the panel is wide enough, with the preview updating as you type). "AI drafts it per contact" is a `brain_instruction`, with example instructions and the links, knowledge base entry (`kb_select`) and context sources the AI may use. Choose steps show their candidates.
 - **When** (`delay`, `window_policy`), **Skip this email unless** (`condition`) and, under Sender and advanced, `from_name`, `reply_to`, `eyebrow`, `expires_after`, `exit_condition` and the internal name (`action_type`).
 - The editor flags variables the renderer does not know (an email that uses one fails to render) and personal variables without a fallback.
 
