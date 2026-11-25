@@ -173,7 +173,10 @@ describe("POST /v1/layouts/assist", () => {
 
   it("runs one studio turn with the product's LLM and counts its tokens", async () => {
     const p = await product("layouts-assist");
-    const key = parseEncryptionKey(process.env.ENCRYPTION_KEY!);
+    // CI has no ENCRYPTION_KEY; use a test key for this test only.
+    const savedKey = process.env.ENCRYPTION_KEY;
+    process.env.ENCRYPTION_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    const key = parseEncryptionKey(process.env.ENCRYPTION_KEY);
     await db.insert(llmConfigs).values({
       tenantId: p.tenantId,
       provider: "openai",
@@ -198,6 +201,8 @@ describe("POST /v1/layouts/assist", () => {
       expect(String(fetchMock.mock.calls[0]![0])).toBe("https://llm.example/v1/chat/completions");
     } finally {
       globalThis.fetch = original;
+      if (savedKey === undefined) delete process.env.ENCRYPTION_KEY;
+      else process.env.ENCRYPTION_KEY = savedKey;
     }
     const usage = await db.execute(sql`SELECT llm_tokens FROM tenant_daily_usage WHERE tenant_id = ${p.tenantId}::uuid`);
     expect(Number((usage.rows[0] as { llm_tokens: number }).llm_tokens)).toBe(1000);
