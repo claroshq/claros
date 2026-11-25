@@ -316,7 +316,7 @@ export default function FlowsPage() {
                   <TableCell className="text-muted-foreground">
                     {flow.approval_mode}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] text-muted-foreground">
                     {formatDate(flow.created_at)}
                   </TableCell>
                   <TableCell
