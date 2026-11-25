@@ -7,17 +7,34 @@
  * values (Date for timestamps), never Drizzle objects.
  */
 
-/** A session joined with its tenant and user. */
+/**
+ * A session joined with its user and the product (tenant) the request acts on.
+ */
 export interface SessionLookupRow {
   sessionUserId: string;
   sessionExpiresAt: Date;
   tenantId: string;
   tenantSlug: string;
+  /**
+   * The user's effective role in the product: "owner" for an instance admin,
+   * users.role in the user's home product (users.tenant_id), else the
+   * membership role.
+   */
   userRole: string;
   userDeactivatedAt: Date | null;
+  /** users.instance_role: "admin" or null. */
+  userInstanceRole: string | null;
+  /** tenants.archived_at of the product. */
+  tenantArchivedAt: Date | null;
 }
 
 export interface ApiSessionQueries {
-  /** Session + tenant + user for a session id (null when the session, its tenant or its user is missing). */
-  findSessionWithTenantAndUser(sessionId: string): Promise<SessionLookupRow | null>;
+  /**
+   * Session + product + user for a session id, in one query. The product is
+   * the one with `productSlug` when given, else the session's tenant. Null
+   * when the session, the product or the user is missing, or when the user
+   * may not act on the product (no membership row, not their home product,
+   * not an instance admin).
+   */
+  findSessionWithTenantAndUser(sessionId: string, productSlug?: string | null): Promise<SessionLookupRow | null>;
 }

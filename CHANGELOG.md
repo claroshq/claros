@@ -6,6 +6,22 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Multi-product instances: one install can serve several products, each with its own contacts, flows, settings and team. Existing installs keep one product and work as before. See [Products](docs/guide/PRODUCTS.md).
+- Instance admins manage the install: they see every product, act on each as an owner, and create, rename and archive products (`GET/POST /v1/products`, `PATCH /v1/products/:slug`, `POST /v1/products/:slug/archive` and `/unarchive`) and instance settings (`GET /v1/instance`, `PUT /v1/instance/settings/:key`). The upgrade makes the active owners of the oldest product instance admins; the person who claims a fresh install is one.
+- Dashboard requests pick a product with the `X-Claros-Product: <slug>` header or `?product=<slug>`; without either they act on the session's product, as before. The dashboard shows a product switcher when you can act on more than one product, and a Settings, Products page for instance admins.
+- Archived products stay readable; dashboard API writes to them answer `409 {"error": "Product is archived."}`.
+- Inviting an address that already belongs to a user of another product adds the product to that user (one login per person).
+
+### Changed
+
+- `GET /auth/me` reports the role and product (`tenantId`) of the product the request acts on. Without a product header this is the session's product, as before.
+
+### Upgrade notes
+
+- One database migration (`0023_instance_layer`), applied on boot or with `scripts/migrate.sh`. It only adds: the `memberships` and `instance_settings` tables, new nullable `tenants` columns (`archived_at`, `public_host`, `locale`) and `config_version`, `users.instance_role`, and `api_keys.tenant_id` becomes nullable for future instance keys. It backfills one membership per existing user and the instance admins described above.
+
 ## [0.7.0] - 2026-11-25
 
 This release changes how Claros is built and developed, not what it does. The HTTP API, the Docker install and the database are compatible with v0.6.

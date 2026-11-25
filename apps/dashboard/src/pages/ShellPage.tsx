@@ -8,6 +8,9 @@
  * a data tool) to hold three small controls; the footer puts them where
  * every comparable product puts identity.
  *
+ * Multi-product instances: a product switcher sits under the lockup at the
+ * top of the sidebar when the user can act on more than one product.
+ *
  * On mobile (<lg) the sidebar becomes an overlay triggered by a hamburger
  * button in a slim top bar. Tapping a nav link or the backdrop closes it.
  *
@@ -34,6 +37,7 @@ import {
 import { useLogout } from "../auth.js";
 import { BrandLockup } from "../components/brand-lockup.js";
 import { ThemeToggle } from "../components/theme-toggle.js";
+import { ProductSwitcher } from "../components/product-switcher.js";
 import type { MeResponse } from "../api.js";
 
 // ---------------------------------------------------------------------------
@@ -129,6 +133,9 @@ export default function ShellPage({ me }: ShellPageProps) {
           <X size={20} strokeWidth={1.5} />
         </button>
       </div>
+
+      {/* Product switcher: only when the user can act on several products */}
+      <ProductSwitcher currentProductId={me.user.tenantId} />
 
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">

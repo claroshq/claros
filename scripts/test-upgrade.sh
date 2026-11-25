@@ -60,6 +60,28 @@ if [ "$before" != "$after" ]; then
 fi
 echo "row counts unchanged"
 
+echo "==> check the multi-product backfill"
+# Every existing user has a membership of their home product with their role,
+# and the instance admins are exactly the active owners of the oldest product.
+backfill="$(psql_db -tA -c "
+  select
+    (select count(*) from users) = (select count(*) from memberships)
+    and not exists (
+      select 1 from users u
+      left join memberships m on m.user_id = u.id and m.tenant_id = u.tenant_id
+      where m.role is distinct from u.role)
+    and (select array_agg(id order by id) from users where instance_role = 'admin')
+      is not distinct from
+      (select array_agg(id order by id) from users
+       where role = 'owner' and deactivated_at is null
+         and tenant_id = (select id from tenants order by created_at asc nulls last, id asc limit 1))")"
+if [ "$backfill" != "t" ]; then
+  echo "upgrade test: memberships / instance admin backfill is wrong" >&2
+  psql_db -c "select u.email, u.role, u.instance_role, m.role as membership_role from users u left join memberships m on m.user_id = u.id" >&2 || true
+  exit 1
+fi
+psql_db -tA -c "select 'memberships', count(*) from memberships union all select 'instance_admins', count(*) from users where instance_role = 'admin'"
+
 echo "==> boot server on the upgraded database"
 DATABASE_URL="$DB_URL" PORT="$PORT_UNDER_TEST" HOST=127.0.0.1 NODE_ENV=production \
   ENCRYPTION_KEY="$(openssl rand -base64 32)" UNSUBSCRIBE_SIGNING_KEY="$(openssl rand -hex 32)" \

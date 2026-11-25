@@ -159,12 +159,34 @@ export default function inviteRoutes(opts: InviteRouteOptions) {
 
       let userId: string;
 
+      // A user whose home is another product joins this one by membership
+      // (one user row per person, one login).
+      const elsewhere = existingUser
+        ? null
+        : await storeFor(db).apiInvite.findActiveUserElsewhere({
+            tenantId: invite.tenantId,
+            email: invite.email,
+          });
+
       if (existingUser) {
-        // Reactivate a previously deactivated user
+        // Reactivate a previously deactivated user (and restore their membership)
         userId = existingUser.id;
-        await storeFor(db).apiInvite.reactivateUser({ userId, role: invite.role, now });
+        await storeFor(db).apiInvite.reactivateUser({
+          userId,
+          tenantId: invite.tenantId,
+          role: invite.role,
+          now,
+        });
+      } else if (elsewhere) {
+        userId = elsewhere.id;
+        await storeFor(db).apiInvite.addMembership({
+          userId,
+          tenantId: invite.tenantId,
+          role: invite.role,
+          now,
+        });
       } else {
-        // Create new user
+        // Create new user (and its membership)
         userId = await storeFor(db).apiInvite.createUser({
           tenantId: invite.tenantId,
           email: invite.email,

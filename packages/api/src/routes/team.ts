@@ -232,7 +232,7 @@ export default function teamRoutes() {
         }
       }
 
-      await storeFor(db).apiTeam.setRole({ userId: id, role });
+      await storeFor(db).apiTeam.setRole({ tenantId, userId: id, role });
 
       return c.json({ ok: true, role });
     },
@@ -278,7 +278,7 @@ export default function teamRoutes() {
 
       // Deactivate user and delete sessions in one operation
       const now = new Date();
-      await storeFor(db).apiTeam.deactivateMember({ userId: id, now });
+      await storeFor(db).apiTeam.deactivateMember({ tenantId, userId: id, now });
 
       return c.json({ ok: true });
     },

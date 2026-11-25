@@ -604,13 +604,17 @@ export default function authRoutes(opts: AuthRouteOptions) {
       return c.json({ error: "Not authenticated." }, 401);
     }
 
+    // The product the request acts on (X-Claros-Product, else the session's
+    // tenant) and the user's role there, when the session resolved one.
+    const product = c.var.tenant?.userId === user.id ? c.var.tenant : null;
+
     return c.json({
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
-        tenantId: session.tenantId,
+        role: product?.userRole ?? user.role,
+        tenantId: product?.id ?? session.tenantId,
       },
     });
   });

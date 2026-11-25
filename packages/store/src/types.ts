@@ -54,6 +54,8 @@ import type { WorkerProcessMessageQueries } from "./areas/worker-process-message
 import type { ApiSessionQueries } from "./areas/api-session.js";
 import type { WorkerCounterRolloverQueries } from "./areas/worker-counter-rollover.js";
 import type { ApiEventsQueries } from "./areas/api-events.js";
+import type { ApiProductsQueries } from "./areas/api-products.js";
+import type { ApiInstanceQueries } from "./areas/api-instance.js";
 
 export interface Store {
   readonly dialect: "pg" | "sqlite";
@@ -108,6 +110,8 @@ export interface Store {
   readonly apiSession: ApiSessionQueries;
   readonly workerCounterRollover: WorkerCounterRolloverQueries;
   readonly apiEvents: ApiEventsQueries;
+  readonly apiProducts: ApiProductsQueries;
+  readonly apiInstance: ApiInstanceQueries;
 }
 
 export type * from "./areas/api-settings.js";
@@ -161,3 +165,5 @@ export type * from "./areas/worker-process-message.js";
 export type * from "./areas/api-session.js";
 export type * from "./areas/worker-counter-rollover.js";
 export type * from "./areas/api-events.js";
+export type * from "./areas/api-products.js";
+export type * from "./areas/api-instance.js";

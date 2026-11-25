@@ -30,6 +30,10 @@ Both options will run the same HTTP API and the same engine behaviour. Postgres 
 | `apps/server` | Node entry point, operator CLI (`claros`) |
 | `apps/dashboard` | React dashboard |
 
+## Tenancy
+
+Every product-owned table carries `tenant_id` (user-facing name: product) and every query is scoped by it; ingestion keys belong to one product. In v0.6 and v0.7 an install runs one product. Multi-product instances are in progress for v0.8 (unreleased): one instance serves several products, users act on them through memberships, instance admins on all of them. See [Products](guide/PRODUCTS.md).
+
 ## Engine rules
 
 - The LLM runs only at flow compile time and content draft time, never in the send path.

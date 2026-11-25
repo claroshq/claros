@@ -19,3 +19,5 @@ export { llmConfigs } from "./llm-configs.js";
 export { scanCheckpoints } from "./scan-checkpoints.js";
 export { messageEvents } from "./message-events.js";
 export { retentionGridSnapshots } from "./retention-grid-snapshots.js";
+export { memberships } from "./memberships.js";
+export { instanceSettings } from "./instance-settings.js";
