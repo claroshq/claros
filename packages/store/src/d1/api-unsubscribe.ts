@@ -1,9 +1,9 @@
 /**
  * SQLite / Cloudflare D1 implementation of the queries in ../areas/api-unsubscribe.ts.
  *
- * suppressAddress: the SQLite schema has no (tenant_id, lower(email)) unique
- * index, so ON CONFLICT DO NOTHING becomes one INSERT ... SELECT ... WHERE NOT
- * EXISTS statement (atomic on SQLite; D1 serialises writes). SQLite lower()
+ * suppressAddress: one INSERT ... SELECT ... WHERE NOT EXISTS statement (atomic
+ * on SQLite; D1 serialises writes), backed by the unique index
+ * uq_suppressions_tenant_email_lower (migration 0003). SQLite lower()
  * folds ASCII only, Postgres lower() folds all of Unicode.
  */
 import { eq, and, sql } from "drizzle-orm";
