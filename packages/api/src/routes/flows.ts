@@ -396,6 +396,47 @@ export default function flowsRoutes() {
   });
 
   /**
+   * GET /v1/flows/editor-context
+   * What the flow editor offers in its pickers: the product's named links
+   * (settings.links), context source names (settings.data_sources, names
+   * only, never secrets), date traits, and its email templates with the
+   * flows that use each one. Registered before /:id.
+   */
+  r.get("/editor-context", "member", async (c) => {
+    const db: Db = c.var.db;
+    const state = await storeFor(db).apiConfig.loadConfigState(c.var.tenant!.id);
+    if (!state) return c.json({ error: "Product not found." }, 404);
+    const settings = state.settings ?? {};
+    const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+    const links = Object.entries(obj(settings.links))
+      .filter(([, url]) => typeof url === "string")
+      .map(([name, url]) => ({ name, url: url as string }));
+    const dataSources = Object.keys(obj(settings.data_sources));
+    const dateTraits = Array.isArray(settings.date_traits) ? settings.date_traits.filter((t): t is string => typeof t === "string") : [];
+    const usedBy = new Map<string, string[]>();
+    for (const f of state.flows) {
+      if (f.status === "archived") continue;
+      const plan = obj(f.compiledPlan);
+      const steps = Array.isArray(plan.steps) ? plan.steps : Array.isArray(f.steps) ? f.steps : [];
+      const refs = new Set<string>();
+      for (const s of steps as Array<Record<string, unknown>>) {
+        if (typeof s.template_ref === "string") refs.add(s.template_ref);
+        for (const cand of Array.isArray(s.candidates) ? (s.candidates as Array<Record<string, unknown>>) : []) {
+          if (typeof cand.template_ref === "string") refs.add(cand.template_ref);
+        }
+      }
+      for (const ref of refs) usedBy.set(ref, [...(usedBy.get(ref) ?? []), f.id]);
+    }
+    return c.json({
+      links,
+      data_sources: dataSources,
+      date_traits: dateTraits,
+      has_llm: await storeFor(db).apiFlows.hasActiveLlmConfig(c.var.tenant!.id),
+      templates: state.templates.map((t) => ({ slug: t.slug, name: t.name, subject: t.subject, used_by_flows: usedBy.get(t.slug) ?? [] })),
+    });
+  });
+
+  /**
    * GET /v1/flows/:id
    * Get a single flow. Returns 404 if not found or owned by another tenant.
    */
@@ -953,6 +994,8 @@ export function serializeFlow(row: FlowRow) {
     trigger_config: row.triggerConfig,
     steps: row.steps,
     source: row.source,
+    /** Config-as-code slug; null for flows created in the dashboard. */
+    slug: row.slug ?? null,
     content_mode: row.contentMode ?? "ai_drafted",
     status: row.status,
     approval_mode: row.approvalMode,

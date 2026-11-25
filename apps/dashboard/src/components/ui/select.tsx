@@ -5,6 +5,9 @@
  * accessible and more familiar than anything built from divs. The chevron
  * is decorative; the boundary, focus ring, and disabled treatment match
  * Input exactly so a form reads as one system.
+ *
+ * Width classes (w-*, max-w-*, min-w-*, with breakpoints) go on the wrapper
+ * as well as the select, so the chevron stays inside a narrowed select.
  */
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
@@ -15,8 +18,12 @@ const Select = React.forwardRef<
   HTMLSelectElement,
   React.SelectHTMLAttributes<HTMLSelectElement>
 >(({ className, children, ...props }, ref) => {
+  const widths = (className ?? "")
+    .split(/\s+/)
+    .filter((c) => /^(?:[a-z0-9]+:)*(?:w|max-w|min-w)-/.test(c))
+    .join(" ");
   return (
-    <div className="relative">
+    <div className={cn("relative", widths)}>
       <select
         ref={ref}
         className={cn(

@@ -8,6 +8,7 @@
  *   GET    /v1/email-templates          list email templates for the tenant
  *   GET    /v1/email-templates/:id      get a single template
  *   PATCH  /v1/email-templates/:id      update subject, body_html, body_text
+ *   PUT    /v1/email-templates/by-slug/:slug  create or update by slug (flow editor)
  *
  * Editing a template changes the stored content but does NOT bypass the shell.
  * The template body is always wrapped in the branded shell at drain time.
@@ -16,6 +17,7 @@ import { z } from "zod";
 import { RoleRouter, validatedBody } from "../http/router.js";
 import { validateBody, coerceString } from "../http/validate.js";
 import { storeFor } from "@claros/store";
+import { CONFIG_SLUG } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 
 /**
@@ -42,6 +44,14 @@ const SUPPORTED_VARIABLES = [
 const patchTemplateBodySchema = z.object({
   subject: coerceString().optional(),
   body_html: coerceString().optional(),
+  body_text: coerceString().nullable().optional(),
+});
+
+/** PUT /v1/email-templates/by-slug/:slug body. */
+const putTemplateBodySchema = z.object({
+  name: coerceString().optional(),
+  subject: coerceString(),
+  body_html: coerceString(),
   body_text: coerceString().nullable().optional(),
 });
 
@@ -168,6 +178,60 @@ export default function emailTemplatesRoutes() {
           created_at: r.createdAt,
         },
       });
+    },
+  );
+  /**
+   * PUT /v1/email-templates/by-slug/:slug
+   * Create the template, or update its subject and body when the slug
+   * exists (the flow editor writes a step's fixed copy this way, then
+   * references it from the step's template_ref). An existing template keeps
+   * its name unless one is given.
+   */
+  r.put(
+    "/by-slug/:slug",
+    "member",
+    validatedBody(putTemplateBodySchema),
+    async (c) => {
+      const v = validateBody(c, putTemplateBodySchema);
+      if (!v.ok) return v.response;
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const slug = c.req.param("slug")!;
+      if (!CONFIG_SLUG.test(slug)) {
+        return c.json({ error: "slug: 1-63 characters of a-z, 0-9, _ and -, starting with a letter or digit." }, 400);
+      }
+      const subject = v.value.subject.trim();
+      const bodyHtml = v.value.body_html.trim();
+      if (subject.length === 0) return c.json({ error: "subject must be a non-empty string." }, 400);
+      if (bodyHtml.length === 0) return c.json({ error: "body_html must be a non-empty string." }, 400);
+
+      const store = storeFor(db);
+      const existing = (await store.apiEmailTemplates.listTemplates({ tenantId })).find((t) => t.slug === slug);
+      await store.apiFlows.upsertStepTemplate({
+        tenantId,
+        slug,
+        name: v.value.name?.trim() || existing?.name || slug,
+        subject,
+        bodyHtml,
+        bodyText: v.value.body_text?.trim() || null,
+        variables: [...SUPPORTED_VARIABLES],
+      });
+      const r = (await store.apiEmailTemplates.listTemplates({ tenantId })).find((t) => t.slug === slug);
+      if (!r) return c.json({ error: "Template not found." }, 404);
+      return c.json({
+        template: {
+          id: r.id,
+          name: r.name,
+          slug: r.slug,
+          subject: r.subject,
+          body_html: r.bodyHtml,
+          body_text: r.bodyText,
+          variables: r.variables,
+          category: r.category,
+          is_active: r.isActive,
+          created_at: r.createdAt,
+        },
+      }, existing ? 200 : 201);
     },
   );
   return r.app;

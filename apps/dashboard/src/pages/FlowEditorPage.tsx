@@ -1,152 +1,92 @@
 /**
- * Flow editor page.
+ * Flow editor (/flows/new and /flows/:id/edit).
  *
- * Handles both create (/flows/new) and edit (/flows/:id/edit) in a single
- * component. The mode is determined by whether an :id param is present.
+ * The flow reads as a timeline: what starts it, each email with the wait
+ * before it, and what ends it early. Selecting a node opens its editor
+ * beside the timeline. Delivery settings (review, topic, class, priority,
+ * re-entry) live on their own tab.
  *
- * Two distinct editing experiences:
- *   1. Prompt-defined flows (source: "manual" | "brain_suggested") -
- *      the prompt is the primary surface. The user writes what the flow
- *      should do, Claros compiles it into a plan, and the brain drafts
- *      each email per contact at send time.
- *   2. Library flows (source: "library") - pre-built flows with fixed
- *      email copy in templates. No prompt, no LLM needed. The editor
- *      shows the plan and lets the user edit template content inline.
+ * One draft, one save. Every edit on the page goes into a single draft;
+ * the save bar shows when it differs from what is stored. Saving writes the
+ * differences in order: PATCH /v1/flows/:id (name, trigger, prompt,
+ * settings, content_mode), PUT /v1/email-templates/by-slug/:slug for each
+ * changed fixed copy, then PUT /v1/flows/:id/steps for the steps and exits.
+ * A new flow is created with POST /v1/flows first. An active flow keeps
+ * running on the stored version until the save completes.
  *
- * Template editing lives here as a detail of a step, not as a separate
- * destination. Click a template_ref in the plan to edit its content.
+ * The steps keep the config document shape, so a flow applied from a config
+ * file shows its real emails here (template copy, AI instruction, choose
+ * candidates) and saves back the same shape. Flows managed by config as
+ * code say so: the next `claros apply` of the document replaces edits.
  *
- * Layout:
- *   - New flow: single column, progressive disclosure. Step 1 is the
- *     trigger (cards + inline config), step 2 is who writes the emails,
- *     step 3 is the writing surface (prompt or step writer). The name is
- *     the page title itself, edited inline. There is no sidebar.
- *   - Edit flow: the trigger renders as a summary with an "Edit trigger"
- *     action (PATCH trigger_type + trigger_config). The right rail carries
- *     the flow settings (class, priority, re-entry) and meta.
- *   - Plan editor (edit mode): every step field written out (choose steps,
- *     context, kb_select, sender fields, links, conditions with all / any /
- *     not, expiry) and the plan exits, saved with PUT /v1/flows/:id/steps.
- *
- * Behaviour preserved from the previous implementation:
- *   - lifecycle_transition takes from + to over the seven lifecycle states
- *   - event takes an event name string, sent as { event: "..." }
- *   - manual flows are enrolled through POST /v1/flows/:id/enroll
- *   - steps is always sent as [] on create
- *   - 400 issues map to their fields; a 422 shows the server's string
- *     verbatim; a failed save never renders as success
- *
- * Compilation: POST /v1/flows/:id/compile returns 202, the flow query polls
- * every 3 s while compile_status is pending. compile_error renders verbatim.
- * Saving a changed prompt clears the plan; the user is warned before saving,
- * and only when a plan actually exists.
- *
- * Status lifecycle (PATCH status / DELETE):
- *   draft|paused -> active requires compile_status ready + a plan (the API
- *   enforces; the button is disabled with a hint, not silently rejected).
- *   active -> paused. Anything not archived -> archived, behind an inline
- *   confirmation, because archived is terminal. 409 (concurrent transition)
- *   and 422 surface as banners with the server's message.
+ * Prompt-defined flows keep their prompt as a timeline node: compiling
+ * (POST /v1/flows/:id/compile, polled every 3 s) replaces the emails.
  */
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { Pause, Play } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { MoreHorizontal, Pause, Play } from "lucide-react";
 import {
-  useFlowWithPolling,
-  useCreateFlow,
-  useUpdateFlow,
-  useCompileFlow,
-  useFlowStatus,
+  compileFlow,
+  createFlow,
+  putEmailTemplateBySlug,
+  saveFlowSteps,
+  updateFlow,
+  type EmailTemplateRow,
+  type Flow,
+  type FlowApiError,
+  type StepCopy,
+  type UpdateFlowInput,
+} from "../api.js";
+import {
+  EMAIL_TEMPLATE_ROWS_KEY,
+  FLOWS_QUERY_KEY,
+  FLOW_EDITOR_CONTEXT_KEY,
+  flowQueryKey,
   useArchiveFlow,
-  useSaveFlowPlan,
-  useDraftFlowStep,
+  useCompileFlow,
+  useEmailTemplateRows,
   useEventNames,
-  useSaveFlowSteps,
+  useFlowEditorContext,
+  useFlowStatus,
+  useFlowWithPolling,
 } from "../flows.js";
-import type { Flow, FlowApiError, FlowFieldError } from "../api.js";
+import { useTopics } from "../topics-transports.js";
+import { useTenant } from "../settings.js";
+import { useKbEntries } from "../kb.js";
+import { cleanTriggerConfig, LIFECYCLE_STATES, type Json, type TriggerDraft } from "../lib/flow-model.js";
+import {
+  contentModeFor,
+  describeDelay,
+  draftChanges,
+  draftFromFlow,
+  draftProblems,
+  emptyDraft,
+  hasChanges,
+  moveStep,
+  newCopySlug,
+  newStep,
+  planBody,
+  sortSteps,
+  stepMode,
+  summarizeFlow,
+  switchStepMode,
+  type DraftProblem,
+  type EditorDraft,
+} from "../lib/flow-editor-model.js";
+import { RECIPES, draftFromRecipe, type Recipe } from "../lib/flow-recipes.js";
+import { FlowTimeline, type Selection } from "../components/flow-editor/flow-timeline.js";
+import { StepPanel, type EditorEnv } from "../components/flow-editor/step-panel.js";
+import { DeliverySettings, ExitsPanel, PromptPanel, TriggerPanel } from "../components/flow-editor/side-panels.js";
+import { sampleValues } from "../components/flow-editor/email-preview.js";
 import { Button } from "../components/ui/button.js";
 import { Badge, type BadgeVariant } from "../components/ui/badge.js";
-import { Input } from "../components/ui/input.js";
-import { Select } from "../components/ui/select.js";
-import { Textarea } from "../components/ui/textarea.js";
 import { Skeleton } from "../components/ui/skeleton.js";
-import { TemplateEditorBySlug } from "../components/template-editor.js";
-import { StepWriter, buildPlanBody, type StepData } from "../components/step-writer.js";
-import { useLlm } from "../settings.js";
-import { FlowTopicPicker } from "../components/flow-topic-picker.js";
-import { TriggerEditor } from "../components/trigger-editor.js";
-import { PlanEditor, planFromFlow } from "../components/plan-editor.js";
-import {
-  FLOW_CLASS_OPTIONS,
-  cleanTriggerConfig,
-  summarizeCondition,
-  summarizeTrigger,
-  triggerProblems,
-  type TriggerDraft,
-  type TriggerType,
-} from "../lib/flow-model.js";
+import { Textarea } from "../components/ui/textarea.js";
 
 // ---------------------------------------------------------------------------
-// Constants derived from the engine (packages/core/src/lifecycle/states.ts)
+// Small helpers
 // ---------------------------------------------------------------------------
-
-const LIFECYCLE_STATES: ReadonlyArray<string> = [
-  "signed_up",
-  "activated",
-  "engaged",
-  "at_risk",
-  "dormant",
-  "churned",
-  "resurrected",
-];
-
-// Retention-grid bucket labels (mirror of packages/core retention-grid.ts).
-const TENURE_BUCKET_OPTIONS = [
-  { value: "new", label: "New (< 30 days)" },
-  { value: "growing", label: "Growing (30-89 days)" },
-  { value: "established", label: "Established (90-179 days)" },
-  { value: "loyal", label: "Loyal (180+ days)" },
-] as const;
-
-const RECENCY_BUCKET_OPTIONS = [
-  { value: "active", label: "Active (inside the natural rhythm)" },
-  { value: "cooling", label: "Cooling (1-2x the rhythm quiet)" },
-  { value: "idle", label: "Idle (2-4x the rhythm quiet)" },
-  { value: "dormant", label: "Dormant (4x+ the rhythm quiet)" },
-] as const;
-
-// ---------------------------------------------------------------------------
-// Shared small components
-// ---------------------------------------------------------------------------
-
-function FieldError({ message }: { message: string | undefined }) {
-  if (!message) return null;
-  return (
-    <p className="mt-1 text-[13px] text-danger" role="alert">
-      {message}
-    </p>
-  );
-}
-
-function Label({
-  htmlFor,
-  children,
-  required,
-}: {
-  htmlFor: string;
-  children: React.ReactNode;
-  required?: boolean;
-}) {
-  return (
-    <label
-      htmlFor={htmlFor}
-      className="mb-1.5 block text-[14px] font-medium text-foreground"
-    >
-      {children}
-      {required && <span className="ml-0.5 text-danger" aria-hidden="true">*</span>}
-    </label>
-  );
-}
 
 function statusVariant(status: Flow["status"]): BadgeVariant {
   switch (status) {
@@ -157,1641 +97,786 @@ function statusVariant(status: Flow["status"]): BadgeVariant {
   }
 }
 
-function compileVariant(cs: Flow["compile_status"]): BadgeVariant {
-  switch (cs) {
-    case null: return "muted";
-    case "pending": return "warning";
-    case "ready": return "success";
-    case "failed": return "danger";
+function errorText(err: unknown): string {
+  if (err !== null && typeof err === "object" && "kind" in err) {
+    const e = err as FlowApiError;
+    if (e.kind === "validation") return e.issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join("; ");
+    return e.message;
   }
+  return err instanceof Error ? err.message : "Saving failed.";
 }
 
-function compileLabel(cs: Flow["compile_status"]): string {
-  switch (cs) {
-    case null: return "not compiled";
-    case "pending": return "compiling";
-    case "ready": return "ready";
-    case "failed": return "failed";
+const TENURE = ["new", "growing", "established", "loyal"];
+const RECENCY = ["active", "cooling", "idle", "dormant"];
+
+/** Prefill from the retention grid: ?segment=tenure:recency or ?transition=from:to (&name=). */
+function prefillFromSearch(params: URLSearchParams): EditorDraft | null {
+  const segment = params.get("segment");
+  if (segment) {
+    const [tenure, recency] = segment.split(":");
+    if (tenure && recency && TENURE.includes(tenure) && RECENCY.includes(recency)) {
+      return { ...emptyDraft({ type: "segment", config: { tenure_bucket: tenure, recency_bucket: recency } }), name: params.get("name") ?? `${tenure} · ${recency}` };
+    }
   }
+  const transition = params.get("transition");
+  if (transition) {
+    const [from, to] = transition.split(":");
+    const states: readonly string[] = LIFECYCLE_STATES;
+    if (from && to && states.includes(from) && states.includes(to)) {
+      return { ...emptyDraft({ type: "lifecycle_transition", config: { from, to } }), name: params.get("name") ?? "" };
+    }
+  }
+  return null;
 }
 
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Page-level building blocks
-// ---------------------------------------------------------------------------
-
-/** Numbered section heading used by the new-flow progressive disclosure. */
-function SectionHeading({
-  step,
-  title,
-  description,
-}: {
-  step: number;
-  title: string;
-  description?: string;
-}) {
+function FlowNameInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   return (
-    <div className="flex items-start gap-3">
-      <span
-        aria-hidden="true"
-        className="mt-0.5 flex h-[23px] w-[23px] shrink-0 items-center justify-center rounded-full border border-border-strong bg-background font-mono text-[12px] text-muted-foreground"
-      >
-        {step}
-      </span>
-      <div className="min-w-0">
-        <p className="text-[15px] font-semibold text-foreground">{title}</p>
-        {description && (
-          <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">
-            {description}
-          </p>
-        )}
-      </div>
+    <input
+      id="flow-name"
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="Name this flow"
+      disabled={disabled}
+      aria-label="Flow name"
+      className="-ml-2 w-full min-w-0 rounded-md bg-transparent px-2 py-1 font-display text-[26px] font-bold leading-[32px] tracking-[-0.02em] text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 hover:bg-sunken focus:bg-sunken disabled:hover:bg-transparent sm:text-[28px] sm:leading-[34px]"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Header actions
+// ---------------------------------------------------------------------------
+
+function MoreMenu({ items }: { items: Array<{ label: string; onClick: () => void; danger?: boolean }> }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <Button type="button" variant="ghost" size="icon" aria-label="More actions" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <MoreHorizontal />
+      </Button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-card p-1 shadow-(--overlay-shadow)">
+          {items.map((i) => (
+            <button
+              key={i.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                i.onClick();
+              }}
+              className={`block w-full rounded-md px-3 py-2 text-left text-[14px] hover:bg-sunken ${i.danger ? "text-danger" : "text-foreground"}`}
+            >
+              {i.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * The flow name as the page title: a borderless input styled like the h1.
- * The hover/focus background is the only affordance that it is editable.
- */
-function FlowNameInput({
-  value,
-  onChange,
-  disabled,
-  error,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-  error?: string;
-}) {
-  return (
-    <div className="min-w-0 flex-1">
-      <input
-        id="flow-name"
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Untitled flow"
-        disabled={disabled}
-        aria-label="Flow name"
-        className="-ml-2 w-full min-w-0 rounded-md bg-transparent px-2 py-1 font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 hover:bg-sunken focus:bg-sunken disabled:hover:bg-transparent"
-      />
-      <FieldError message={error} />
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// New flow: start screen
+// ---------------------------------------------------------------------------
 
-/** Read-only trigger summary for edit mode. The trigger is immutable. */
-function TriggerSummary({ flow, onEdit }: { flow: Flow; onEdit?: () => void }) {
+function StartScreen({ hasLlm, dateTraits, onPick }: { hasLlm: boolean; dateTraits: string[]; onPick: (draft: EditorDraft, select: Selection) => void }) {
+  const [prompt, setPrompt] = useState("");
+  const pickRecipe = (r: Recipe) => onPick(draftFromRecipe(r, () => newCopySlug()), 0);
   return (
-    <div className="rounded-lg border border-border bg-card px-5 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          Starts when
-        </p>
-        {onEdit && (
-          <Button type="button" size="sm" variant="ghost" className="h-7" onClick={onEdit}>
-            Edit trigger
-          </Button>
-        )}
-      </div>
-      <p className="mt-1.5 text-[15px] text-foreground">
-        {summarizeTrigger(flow.trigger_type, (flow.trigger_config ?? {}) as Record<string, unknown>)}
+    <div className="mx-auto max-w-5xl">
+      <Link to="/flows" className="text-[14px] text-muted-foreground transition-colors hover:text-foreground">&larr; Flows</Link>
+      <h1 className="mt-3 font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground">New flow</h1>
+      <p className="mt-1 max-w-2xl text-[15px] text-muted-foreground">
+        A flow sends a short sequence of emails to the contacts who match its trigger. Start from an example and change it, or describe what you want.
       </p>
+
+      <h2 className="mt-8 text-[16px] font-semibold text-foreground">Start from an example</h2>
+      <p className="mt-0.5 text-[14px] text-muted-foreground">Each fills the trigger and the emails with sample copy you edit before saving. Nothing sends until you activate the flow.</p>
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {RECIPES.map((r) => {
+          const blocked = r.needsLlm === true && !hasLlm;
+          return (
+            <button
+              key={r.id}
+              type="button"
+              disabled={blocked}
+              onClick={() => pickRecipe(r)}
+              className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border"
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-[15px] font-semibold text-foreground">{r.title}</span>
+                {r.needsLlm && <Badge variant="accent">AI drafted</Badge>}
+              </span>
+              <span className="mt-1 block text-[14px] leading-relaxed text-muted-foreground">{r.description}</span>
+              <span className="mt-3 flex flex-wrap gap-1">
+                {r.build().emails.map((e, i) => (
+                  <span key={i} className="rounded bg-sunken px-1.5 py-0.5 text-[12px] text-muted-foreground">
+                    {i === 0 ? describeDelay(e.delay) : `then ${describeDelay(e.delay)}`}
+                  </span>
+                ))}
+              </span>
+              {blocked && <span className="mt-2 block text-[12px] text-muted-foreground">Needs an LLM provider (Settings, LLM).</span>}
+              {r.needsDateTrait && dateTraits.length === 0 && (
+                <span className="mt-2 block text-[12px] text-muted-foreground">Needs a date trait such as trial_ends_at in settings.date_traits.</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h2 className="text-[16px] font-semibold text-foreground">Or describe it</h2>
+          <p className="mt-0.5 text-[14px] text-muted-foreground">Claros compiles the description into emails you can read and change before anything sends.</p>
+          <Textarea
+            aria-label="Describe the flow"
+            className="mt-3 text-[15px] leading-relaxed"
+            rows={5}
+            value={prompt}
+            disabled={!hasLlm}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="When someone signs up on the free plan, welcome them right away. If they have not created a project after a day, show them the two-minute setup. Two days later, send one tip. Stop as soon as they upgrade."
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button type="button" disabled={!hasLlm || prompt.trim() === ""} onClick={() => onPick({ ...emptyDraft(), prompt: prompt.trim() }, "trigger")}>
+              Continue
+            </Button>
+            <span className="text-[13px] text-muted-foreground">{hasLlm ? "Next: pick the trigger, then create the flow to compile." : "Needs an LLM provider (Settings, LLM)."}</span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h2 className="text-[16px] font-semibold text-foreground">Or start blank</h2>
+          <p className="mt-0.5 text-[14px] text-muted-foreground">Pick a trigger and write the emails yourself.</p>
+          <Button type="button" variant="outline" className="mt-3" onClick={() => onPick(emptyDraft(), "trigger")}>
+            Start blank
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
 
-/** Edit an existing flow's trigger (PATCH trigger_type + trigger_config). */
-function TriggerEditCard({
-  flow,
-  suggestions,
-  onDone,
-}: {
-  flow: Flow;
-  suggestions: string[];
-  onDone: () => void;
-}) {
-  const update = useUpdateFlow(flow.id);
-  const [draft, setDraft] = useState<TriggerDraft>({
-    type: flow.trigger_type as TriggerType,
-    config: { ...((flow.trigger_config ?? {}) as Record<string, unknown>) },
-  });
-  const [error, setError] = useState<string | null>(null);
-  const problems = triggerProblems(draft);
+// ---------------------------------------------------------------------------
+// The workspace
+// ---------------------------------------------------------------------------
+
+interface WorkspaceProps {
+  flow?: Flow;
+  initialDraft: EditorDraft;
+  initialSelection: Selection;
+  templates: EmailTemplateRow[];
+  initialError?: string | null;
+}
+
+function stampOf(f: Flow): string {
+  return `${f.updated_at}|${f.compiled_at ?? ""}|${f.compile_status ?? ""}`;
+}
+
+function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initialError = null }: WorkspaceProps) {
+  const isNew = !flow;
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const ctx = useFlowEditorContext();
+  const eventNames = useEventNames();
+  const topics = useTopics();
+  const tenant = useTenant();
+  const kb = useKbEntries(false);
+  const statusMutation = useFlowStatus(flow?.id ?? "");
+  const archiveMutation = useArchiveFlow(flow?.id ?? "");
+  const compileMutation = useCompileFlow(flow?.id ?? "");
+
+  const [saved, setSaved] = useState<EditorDraft>(() => (flow ? draftFromFlow(flow) : emptyDraft()));
+  const [draft, setDraft] = useState<EditorDraft>(initialDraft);
+  const [selected, setSelected] = useState<Selection>(initialSelection);
+  const [tab, setTab] = useState<"emails" | "settings">("emails");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(initialError);
+  const [showProblems, setShowProblems] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [json, setJson] = useState<string | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [compileError, setCompileError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const templateMap = useMemo(() => new Map(templates.map((t) => [t.slug, t])), [templates]);
+  const copyOf = useCallback(
+    (slug: string): StepCopy | undefined => {
+      const c = draft.copies[slug];
+      if (c) return c;
+      const t = templateMap.get(slug);
+      return t ? { subject: t.subject, body_html: t.body_html, body_text: t.body_text } : undefined;
+    },
+    [draft.copies, templateMap],
+  );
+
+  // Copies typed back to what is stored are not changes.
+  const effectiveDraft = useMemo<EditorDraft>(() => {
+    const copies: Record<string, StepCopy> = {};
+    for (const [slug, c] of Object.entries(draft.copies)) {
+      const t = templateMap.get(slug);
+      if (!t || t.subject !== c.subject || t.body_html !== c.body_html || (t.body_text ?? null) !== (c.body_text ?? null)) copies[slug] = c;
+    }
+    return { ...draft, copies };
+  }, [draft, templateMap]);
+
+  const changes = useMemo(() => draftChanges(saved, effectiveDraft, cleanTriggerConfig), [saved, effectiveDraft]);
+  const dirty = isNew || hasChanges(changes);
+  const problems = useMemo(() => draftProblems(draft, copyOf), [draft, copyOf]);
+
+  // A flow that changed on the server (a compile finished, another tab
+  // saved) replaces the draft when nothing is being edited here.
+  const lastStamp = useRef(flow ? stampOf(flow) : "");
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useEffect(() => {
+    if (!flow || stampOf(flow) === lastStamp.current) return;
+    lastStamp.current = stampOf(flow);
+    const next = draftFromFlow(flow);
+    setSaved(next);
+    if (!dirtyRef.current) setDraft(next);
+  }, [flow]);
+
+  // Leaving with unsaved changes asks first.
+  useEffect(() => {
+    if (!dirty || (isNew && draft.steps.length === 0 && draft.name === "")) return;
+    const onUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, [dirty, isNew, draft.steps.length, draft.name]);
+
+  const archived = flow?.status === "archived";
+  const disabled = archived || saving;
+  const hasLlm = ctx.data?.has_llm ?? false;
+  const links = useMemo(() => ctx.data?.links ?? [], [ctx.data]);
+  const kbCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const page of kb.data?.pages ?? []) for (const e of page.entries) if (e.category) set.add(e.category);
+    return [...set].sort();
+  }, [kb.data]);
+  const sample = useMemo(() => sampleValues(tenant.data?.tenant.name ?? "", draft.name, links), [tenant.data, draft.name, links]);
+
+  const problemsAt = (where: Selection) => (showProblems ? problems.filter((p) => p.where === where).length : 0);
+  const problemTexts = (where: DraftProblem["where"]) => (showProblems ? problems.filter((p) => p.where === where).map((p) => p.message) : []);
+
+  function select(s: Selection) {
+    setSelected(s);
+    setTab("emails");
+    if (window.matchMedia("(max-width: 1023px)").matches) {
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
+
+  function update(patch: Partial<EditorDraft>) {
+    setNotice(null);
+    setDraft((d) => ({ ...d, ...patch }));
+  }
+
+  function updateStep(i: number, patch: Json) {
+    setNotice(null);
+    setDraft((d) => ({ ...d, steps: d.steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+  }
+
+  function addStep(mode: "fixed" | "ai") {
+    const slug = newCopySlug();
+    const index = draft.steps.length;
+    setDraft((d) => {
+      const step = newStep(d.steps, mode, slug);
+      const copies = mode === "fixed" ? { ...d.copies, [slug]: { subject: "", body_html: "", body_text: null } } : d.copies;
+      return { ...d, steps: [...d.steps, step], copies };
+    });
+    select(index);
+  }
+
+  function setMode(i: number, mode: "fixed" | "ai") {
+    const slug = newCopySlug();
+    setDraft((d) => {
+      const step = switchStepMode(d.steps[i]!, mode, slug);
+      const ref = typeof step.template_ref === "string" ? step.template_ref : null;
+      const copies = ref && !d.copies[ref] && !templateMap.has(ref) ? { ...d.copies, [ref]: { subject: "", body_html: "", body_text: null } } : d.copies;
+      return { ...d, steps: d.steps.map((s, j) => (j === i ? step : s)), copies };
+    });
+  }
+
+  function discard() {
+    if (isNew) {
+      navigate("/flows");
+      return;
+    }
+    setDraft(saved);
+    setError(null);
+    setShowProblems(false);
+  }
 
   async function save() {
     setError(null);
+    setNotice(null);
+    setShowProblems(true);
+    const blocking = [...problems];
+    if (draft.steps.length === 0 && draft.prompt === null && (isNew || changes.plan)) blocking.push({ where: "trigger", message: "Add at least one email." });
+    if (blocking.length > 0) {
+      const first = blocking[0]!;
+      if (first.where !== "name") select(first.where);
+      setError(blocking.length === 1 ? first.message : `${blocking.length} things to fix before saving. First: ${first.message}`);
+      return;
+    }
+    setSaving(true);
+    const copyName = (slug: string) => {
+      const i = draft.steps.findIndex((s) => s.template_ref === slug);
+      return templateMap.has(slug) ? undefined : `${draft.name.trim()} - email ${i + 1}`;
+    };
+    let flowId = flow?.id;
     try {
-      await update.mutateAsync({ trigger_type: draft.type, trigger_config: cleanTriggerConfig(draft) });
-      onDone();
-    } catch (err) {
-      setError(toMessage(err));
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        Edit trigger
-      </p>
-      <p className="mb-4 text-[13px] text-muted-foreground">
-        Contacts already in the flow stay; the new trigger decides who enters from now on.
-      </p>
-      <TriggerEditor draft={draft} onChange={setDraft} disabled={update.isPending} eventSuggestions={suggestions} />
-      {problems.length > 0 && (
-        <ul className="mt-3 list-disc pl-5 text-[13px] text-muted-foreground">
-          {problems.map((p) => <li key={p}>{p}</li>)}
-        </ul>
-      )}
-      {error && <p className="mt-3 text-[14px] text-danger" role="alert">{error}</p>}
-      <div className="mt-4 flex items-center gap-2">
-        <Button type="button" size="sm" disabled={update.isPending || problems.length > 0} onClick={() => void save()}>
-          {update.isPending ? "Saving..." : "Save trigger"}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** Flow class, priority and re-entry (right rail, edit mode). */
-function FlowSettingsCard({ flow, disabled }: { flow: Flow; disabled?: boolean }) {
-  const update = useUpdateFlow(flow.id);
-  const [priority, setPriority] = useState(String(flow.priority ?? 0));
-  const [cooldown, setCooldown] = useState(String(flow.reentry_cooldown_days ?? 30));
-  const [error, setError] = useState<string | null>(null);
-  const busy = update.isPending || disabled;
-
-  async function patch(input: Parameters<typeof update.mutateAsync>[0]) {
-    setError(null);
-    try {
-      await update.mutateAsync(input);
-    } catch (err) {
-      setError(toMessage(err));
-    }
-  }
-
-  const classHint = FLOW_CLASS_OPTIONS.find((o) => o.value === flow.flow_class)?.hint;
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        Flow settings
-      </p>
-      <div className="space-y-4 text-[14px]">
-        <div>
-          <label htmlFor="flow-class" className="mb-1 block text-muted-foreground">Class</label>
-          <Select id="flow-class" value={flow.flow_class} disabled={busy} onChange={(e) => void patch({ flow_class: e.target.value as Flow["flow_class"] })}>
-            {FLOW_CLASS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </Select>
-          {classHint && <p className="mt-1 text-[12px] text-muted-foreground">{classHint}</p>}
-        </div>
-        <div>
-          <label htmlFor="flow-priority" className="mb-1 block text-muted-foreground">Priority</label>
-          <Input
-            id="flow-priority"
-            type="number"
-            value={priority}
-            disabled={busy}
-            onChange={(e) => setPriority(e.target.value)}
-            onBlur={() => {
-              const n = Number(priority);
-              if (Number.isInteger(n) && n !== flow.priority) void patch({ priority: n });
-            }}
-          />
-        </div>
-        <div>
-          <label htmlFor="flow-reentry" className="mb-1 block text-muted-foreground">Re-entry</label>
-          <Select id="flow-reentry" value={flow.reentry_policy} disabled={busy} onChange={(e) => void patch({ reentry_policy: e.target.value as Flow["reentry_policy"] })}>
-            <option value="once">once</option>
-            <option value="cooldown">after a cooldown</option>
-            <option value="every_time">every time</option>
-          </Select>
-        </div>
-        {flow.reentry_policy === "cooldown" && (
-          <div>
-            <label htmlFor="flow-cooldown" className="mb-1 block text-muted-foreground">Cooldown (days)</label>
-            <Input
-              id="flow-cooldown"
-              type="number"
-              min={1}
-              value={cooldown}
-              disabled={busy}
-              onChange={(e) => setCooldown(e.target.value)}
-              onBlur={() => {
-                const n = Number(cooldown);
-                if (Number.isInteger(n) && n >= 1 && n !== flow.reentry_cooldown_days) void patch({ reentry_cooldown_days: n });
-              }}
-            />
-          </div>
-        )}
-        {error && <p className="text-[13px] text-danger" role="alert">{error}</p>}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Form state
-// ---------------------------------------------------------------------------
-
-interface FormState {
-  name: string;
-  trigger: TriggerDraft;
-  prompt_source: string;
-  approval_mode: Flow["approval_mode"];
-  content_mode: Flow["content_mode"];
-  steps_data: StepData[];
-}
-
-function defaultFormState(): FormState {
-  return {
-    name: "",
-    trigger: { type: "lifecycle_transition", config: {} },
-    prompt_source: "",
-    approval_mode: "require",
-    content_mode: "ai_drafted",
-    steps_data: [],
-  };
-}
-
-function formStateFromFlow(flow: Flow): FormState {
-  return {
-    name: flow.name,
-    trigger: { type: flow.trigger_type as TriggerType, config: { ...((flow.trigger_config ?? {}) as Record<string, unknown>) } },
-    prompt_source: flow.prompt_source ?? "",
-    approval_mode: flow.approval_mode,
-    content_mode: (flow.content_mode as Flow["content_mode"]) ?? "ai_drafted",
-    steps_data: [],
-  };
-}
-
-function buildTriggerConfig(state: FormState): Record<string, unknown> {
-  return cleanTriggerConfig(state.trigger);
-}
-
-// ---------------------------------------------------------------------------
-// Field error helpers
-// ---------------------------------------------------------------------------
-
-type FieldErrors = Partial<Record<string, string>>;
-
-function extractFieldErrors(issues: FlowFieldError[]): FieldErrors {
-  const map: FieldErrors = {};
-  for (const issue of issues) {
-    const key = issue.path === "" ? "_form" : issue.path;
-    map[key] = issue.message;
-  }
-  return map;
-}
-
-function toMessage(err: unknown): string {
-  if (err !== null && typeof err === "object" && "kind" in err) {
-    const apiErr = err as FlowApiError;
-    if (apiErr.kind === "validation") {
-      return apiErr.issues.map((i) => i.message).join("; ");
-    }
-    return apiErr.message;
-  }
-  return err instanceof Error ? err.message : "An unexpected error occurred.";
-}
-
-// ---------------------------------------------------------------------------
-// Loading skeleton
-// ---------------------------------------------------------------------------
-
-function EditorSkeleton() {
-  return (
-    <div className="mx-auto max-w-6xl">
-      <Skeleton className="h-4 w-16" />
-      <Skeleton className="mt-4 h-8 w-64" />
-      <div className="mt-8 flex gap-8">
-        <div className="min-w-0 flex-1 space-y-4">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-44 w-full" />
-          <Skeleton className="h-9 w-40" />
-        </div>
-        <div className="hidden w-72 shrink-0 lg:block">
-          <Skeleton className="h-28 w-full" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Compiled plan renderer
-// ---------------------------------------------------------------------------
-
-type UnknownRecord = Record<string, unknown>;
-
-/**
- * Humanize a delay string. "0m" -> "right away", "2h" -> "after 2 hours".
- * Anything that does not match the shape renders verbatim in mono.
- */
-function renderDelay(delay: string): React.ReactNode {
-  const m = /^(\d+)([mhd])$/.exec(delay);
-  if (!m) return <code className="font-mono text-[13px]">{delay}</code>;
-  const n = Number(m[1]);
-  if (n === 0) return "right away";
-  const unit = m[2] === "m" ? "minute" : m[2] === "h" ? "hour" : "day";
-  return `after ${n} ${unit}${n === 1 ? "" : "s"}`;
-}
-
-/** A condition (or a list: all of them) as a readable clause. */
-function renderConditionClause(cond: unknown): React.ReactNode {
-  return <span>{summarizeCondition(cond)}</span>;
-}
-
-/** A plan-level exit condition as a readable clause. */
-function renderPlanExitCondition(cond: unknown): React.ReactNode {
-  return <span>{summarizeCondition(cond)}</span>;
-}
-
-/** Sender, links, expiry, context, KB and choose details of a step. */
-function StepDetails({ step }: { step: UnknownRecord }) {
-  const parts: string[] = [];
-  if (typeof step.from_name === "string") parts.push(`from ${step.from_name}`);
-  if (typeof step.reply_to === "string") parts.push(`reply-to ${step.reply_to}`);
-  if (typeof step.eyebrow === "string") parts.push(`eyebrow "${step.eyebrow}"`);
-  if (typeof step.preheader === "string") parts.push(`preheader "${step.preheader}"`);
-  if (Array.isArray(step.allowed_links)) parts.push(`links ${(step.allowed_links as string[]).join(", ")}`);
-  if (step.single_cta === true) parts.push("one call to action");
-  if (typeof step.expires_after === "string") parts.push(`expires after ${step.expires_after}`);
-  if (Array.isArray(step.context)) parts.push(`context ${(step.context as UnknownRecord[]).map((c) => String(c.source ?? "")).join(", ")}`);
-  const kb = step.kb_select as UnknownRecord | undefined;
-  if (kb && typeof kb === "object") parts.push(`knowledge base ${String(kb.category ?? "")}`);
-  const candidates = Array.isArray(step.candidates) ? (step.candidates as UnknownRecord[]) : [];
-  if (parts.length === 0 && candidates.length === 0) return null;
-  return (
-    <>
-      {parts.length > 0 && <p className="text-[13px] text-muted-foreground">{parts.join(" · ")}</p>}
-      {candidates.length > 0 && (
-        <p className="text-[13px] text-muted-foreground">
-          the AI chooses {step.allow_none === false ? "one of" : "one of (or none)"}:{" "}
-          {candidates.map((c, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && ", "}
-              <code className="font-mono text-[13px]">{String(c.action_type ?? "")}</code>
-              {c.when !== undefined ? ` if ${summarizeCondition(c.when)}` : ""}
-            </React.Fragment>
-          ))}
-        </p>
-      )}
-    </>
-  );
-}
-
-function CompiledPlanPreview({
-  plan,
-  onEditTemplate,
-}: {
-  plan: UnknownRecord;
-  onEditTemplate?: (slug: string) => void;
-}) {
-  const trigger = plan.trigger as UnknownRecord | undefined;
-  const steps = Array.isArray(plan.steps) ? (plan.steps as UnknownRecord[]) : [];
-  const exitConditions = Array.isArray(plan.exit_conditions)
-    ? (plan.exit_conditions as unknown[])
-    : [];
-
-  return (
-    <div className="space-y-6">
-      {/* Trigger */}
-      {trigger && (
-        <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Fires when
-          </p>
-          <p className="mt-1.5 text-[14px] text-foreground">
-            <code className="font-mono text-[13px]">{String(trigger.type ?? "")}</code>
-            {trigger.condition !== null &&
-              trigger.condition !== undefined &&
-              typeof trigger.condition === "object" && (
-                <span className="text-muted-foreground">
-                  {" "}matching{" "}
-                  <code className="font-mono text-[13px]">
-                    {JSON.stringify(trigger.condition)}
-                  </code>
-                </span>
-              )}
-          </p>
-        </div>
-      )}
-
-      {/* Steps */}
-      {steps.length > 0 && (
-        <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Then, in order
-          </p>
-          <ol className="mt-2 list-none space-y-0">
-            {steps.map((step, idx) => (
-              <li key={idx} className="relative flex gap-4 pb-5 last:pb-0">
-                {/* Connector line + order node */}
-                {idx < steps.length - 1 && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute left-[11px] top-6 h-full w-px bg-border"
-                  />
-                )}
-                <span
-                  aria-hidden="true"
-                  className="z-10 mt-0.5 flex h-[23px] w-[23px] shrink-0 items-center justify-center rounded-full border border-border-strong bg-background font-mono text-[12px] text-muted-foreground"
-                >
-                  {typeof step.order === "number" ? step.order : idx + 1}
-                </span>
-                <div className="min-w-0 flex-1 space-y-1 pt-0.5">
-                  <p className="text-[14px] text-foreground">
-                    <code className="font-mono text-[13px]">{String(step.action_type ?? "")}</code>
-                    {typeof step.delay === "string" && (
-                      <span className="text-muted-foreground"> {renderDelay(step.delay)}</span>
-                    )}
-                    {typeof step.window_policy === "string" && (
-                      <span className="text-muted-foreground">
-                        {step.window_policy === "immediate"
-                          ? ", outside the send window"
-                          : ", within the send window"}
-                      </span>
-                    )}
-                  </p>
-                  {(typeof step.template_ref === "string" || typeof step.kb_ref === "string") && (
-                    <p className="text-[13px] text-muted-foreground">
-                      {typeof step.template_ref === "string" && (
-                        onEditTemplate ? (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[13px] text-accent-text transition-colors hover:bg-sunken"
-                            onClick={() => onEditTemplate(step.template_ref as string)}
-                          >
-                            template <code className="font-mono">{step.template_ref}</code>
-                            <span className="text-[11px] text-muted-foreground">(edit)</span>
-                          </button>
-                        ) : (
-                          <>template <code className="font-mono text-[13px]">{step.template_ref}</code></>
-                        )
-                      )}
-                      {typeof step.template_ref === "string" && typeof step.kb_ref === "string" && " · "}
-                      {typeof step.kb_ref === "string" && (
-                        <>kb <code className="font-mono text-[13px]">{step.kb_ref}</code></>
-                      )}
-                    </p>
-                  )}
-                  {typeof step.brain_instruction === "string" && (
-                    <p className="text-[13px] italic text-muted-foreground">
-                      {step.brain_instruction}
-                    </p>
-                  )}
-                  <StepDetails step={step} />
-                  {step.condition !== undefined && step.condition !== null && (
-                    <p className="text-[13px] text-muted-foreground">
-                      only if {renderConditionClause(step.condition)}
-                    </p>
-                  )}
-                  {step.exit_condition !== undefined && step.exit_condition !== null && (
-                    <p className="text-[13px] text-muted-foreground">
-                      exit the flow if {renderConditionClause(step.exit_condition)}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      {/* Plan-level exit conditions */}
-      {exitConditions.length > 0 && (
-        <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            The flow ends early if
-          </p>
-          <ul className="mt-1.5 list-none space-y-1">
-            {exitConditions.map((ec, idx) => (
-              <li key={idx} className="text-[14px] text-muted-foreground">
-                {renderPlanExitCondition(ec)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Status actions (header cluster, edit mode)
-// ---------------------------------------------------------------------------
-
-interface StatusActionsProps {
-  flow: Flow;
-  busy: boolean;
-  onTransition: (status: "active" | "paused") => void;
-  onArchive: () => void;
-}
-
-function StatusActions({ flow, busy, onTransition, onArchive }: StatusActionsProps) {
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-
-  if (flow.status === "archived") {
-    return null;
-  }
-
-  if (confirmingArchive) {
-    return (
-      <div className="flex items-center gap-3">
-        <span className="text-[14px] text-muted-foreground">
-          Archive permanently? There is no way back.
-        </span>
-        <Button
-          variant="destructive"
-          size="sm"
-          disabled={busy}
-          onClick={onArchive}
-        >
-          Archive
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          onClick={() => setConfirmingArchive(false)}
-        >
-          Cancel
-        </Button>
-      </div>
-    );
-  }
-
-  const canActivate = flow.compile_status === "ready" && flow.compiled_plan !== null;
-
-  return (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={busy}
-        onClick={() => setConfirmingArchive(true)}
-      >
-        Archive
-      </Button>
-      {(flow.status === "draft" || flow.status === "paused") && (
-        <Button
-          size="sm"
-          disabled={busy || !canActivate}
-          title={
-            canActivate
-              ? undefined
-              : "Compile the flow and wait for compile status 'ready' before activating."
-          }
-          onClick={() => onTransition("active")}
-        >
-          <Play size={16} strokeWidth={1.5} aria-hidden="true" />
-          {flow.status === "paused" ? "Resume" : "Activate"}
-        </Button>
-      )}
-      {flow.status === "active" && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => onTransition("paused")}
-        >
-          <Pause size={16} strokeWidth={1.5} aria-hidden="true" />
-          Pause
-        </Button>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
-export default function FlowEditorPage() {
-  const { id } = useParams<{ id?: string }>();
-  const isNew = !id;
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-
-  const flowQuery = useFlowWithPolling(id ?? "");
-  const createMutation = useCreateFlow();
-  const updateMutation = useUpdateFlow(id ?? "");
-  const compileMutation = useCompileFlow(id ?? "");
-  const statusMutation = useFlowStatus(id ?? "");
-  const archiveMutation = useArchiveFlow(id ?? "");
-  const savePlanMutation = useSaveFlowPlan(id ?? "");
-  const saveStepsMutation = useSaveFlowSteps(id ?? "");
-  const llmQuery = useLlm();
-  const eventNamesQuery = useEventNames();
-
-  const [form, setForm] = useState<FormState>(defaultFormState);
-  const [contentModeSelected, setContentModeSelected] = useState(false);
-  const [promptDirty, setPromptDirty] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [bannerError, setBannerError] = useState<string | null>(null);
-  const [compileError, setCompileError] = useState<string | null>(null);
-  const [savedNotice, setSavedNotice] = useState(false);
-  const [initialised, setInitialised] = useState(false);
-  // ?template=<slug> (from a sent message's "Made from") opens that template.
-  const [editingTemplate, setEditingTemplate] = useState<string | null>(() => searchParams.get("template"));
-  const templateEditorRef = useRef<HTMLDivElement | null>(null);
-  const flowLoaded = Boolean(flowQuery.data);
-  useEffect(() => {
-    if (editingTemplate && flowLoaded) templateEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [editingTemplate, flowLoaded]);
-  const [editingTrigger, setEditingTrigger] = useState(false);
-  const [planEditorOpen, setPlanEditorOpen] = useState(false);
-
-  // New-flow progressive disclosure: section refs for scroll-into-view.
-  const step2Ref = useRef<HTMLElement>(null);
-  const step3Ref = useRef<HTMLElement>(null);
-  const prevTriggerCompleteRef = useRef<boolean | null>(null);
-
-  // Populate form when editing an existing flow
-  useEffect(() => {
-    if (!isNew && flowQuery.data && !initialised) {
-      setForm(formStateFromFlow(flowQuery.data));
-      setInitialised(true);
-    }
-  }, [isNew, flowQuery.data, initialised]);
-
-  // Initialise immediately for new flow. Two prefill params, both from the
-  // retention grid: ?segment=tenure:recency (primary, targets the cell's
-  // current population) and ?transition=from:to with optional &name=
-  // (secondary, catches future transitions only).
-  useEffect(() => {
-    if (isNew && !initialised) {
-      const segment = searchParams.get("segment");
-      const transition = searchParams.get("transition");
-      if (segment) {
-        const [tenure, recency] = segment.split(":");
-        const tenureOpt = TENURE_BUCKET_OPTIONS.find((o) => o.value === tenure);
-        const recencyOpt = RECENCY_BUCKET_OPTIONS.find((o) => o.value === recency);
-        if (tenureOpt && recencyOpt) {
-          setForm({
-            ...defaultFormState(),
-            name: `${tenureOpt.label.split(" (")[0]} · ${recencyOpt.label.split(" (")[0]}`,
-            trigger: { type: "segment", config: { tenure_bucket: tenureOpt.value, recency_bucket: recencyOpt.value } },
-          });
-        }
-      } else if (transition) {
-        const [from, to] = transition.split(":");
-        if (
-          LIFECYCLE_STATES.includes(from ?? "") &&
-          LIFECYCLE_STATES.includes(to ?? "")
-        ) {
-          setForm({
-            ...defaultFormState(),
-            name: searchParams.get("name") ?? "",
-            trigger: { type: "lifecycle_transition", config: { from: from!, to: to! } },
-          });
-        }
-      }
-      setInitialised(true);
-    }
-  }, [isNew, initialised, searchParams]);
-
-  // The existing flow (undefined for new)
-  const existingFlow = isNew ? undefined : flowQuery.data;
-
-  // New flow progressive disclosure gating: step 2 unlocks once the trigger
-  // is fully configured, step 3 once the writer is chosen (auto-selected,
-  // see below).
-  const triggerComplete = triggerProblems(form.trigger).length === 0;
-
-  // As soon as the trigger is complete, step 2 opens with the default writer
-  // (ai_drafted) pre-selected so the writing surface is already visible.
-  useEffect(() => {
-    if (isNew && triggerComplete && !contentModeSelected) {
-      setContentModeSelected(true);
-    }
-  }, [isNew, triggerComplete, contentModeSelected]);
-
-  // Scroll step 2 into view when the user completes the trigger. Prefilled
-  // flows (from the retention grid) are complete on mount; no scroll then.
-  useEffect(() => {
-    const prev = prevTriggerCompleteRef.current;
-    prevTriggerCompleteRef.current = triggerComplete;
-    if (prev === null) return;
-    if (isNew && !prev && triggerComplete) {
-      step2Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [isNew, triggerComplete]);
-
-  // Detect library flow (fixed-copy, no prompt, no LLM)
-  const isLibraryFlow = existingFlow?.source === "library";
-
-  // Detect person-written flow (fixed_content, created from the dashboard)
-  const isFixedContentFlow = existingFlow?.content_mode === "fixed_content" && !isLibraryFlow;
-
-  // Whether an LLM is configured (for AI draft button)
-  const hasLlm = llmQuery.data?.llm !== null && llmQuery.data?.llm !== undefined;
-
-  // prompt_source is read-only when the flow is active (422 from the API).
-  // Archived flows are entirely read-only: archived is terminal.
-  const promptReadOnly =
-    existingFlow !== undefined &&
-    (existingFlow.status === "active" || existingFlow.status === "archived");
-  const flowReadOnly = existingFlow?.status === "archived";
-
-  // Show loading state when fetching an existing flow
-  if (!isNew && (flowQuery.isLoading || !initialised)) {
-    return <EditorSkeleton />;
-  }
-
-  if (!isNew && flowQuery.isError) {
-    return (
-      <div className="mx-auto max-w-6xl">
-        <div
-          className="rounded-md border border-danger bg-danger-soft px-4 py-3"
-          role="alert"
-        >
-          <p className="text-[15px] text-foreground">
-            Failed to load flow:{" "}
-            {flowQuery.error instanceof Error
-              ? flowQuery.error.message
-              : "Unknown error"}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    if (key in fieldErrors) {
-      setFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next[key as string];
-        return next;
-      });
-    }
-  }
-
-  function handlePromptChange(val: string) {
-    setField("prompt_source", val);
-    if (!promptDirty && existingFlow && existingFlow.prompt_source !== val) {
-      setPromptDirty(true);
-    }
-  }
-
-  function clearErrors() {
-    setFieldErrors({});
-    setBannerError(null);
-    setSavedNotice(false);
-  }
-
-  function handleError(err: unknown) {
-    if (err !== null && typeof err === "object" && "kind" in err) {
-      const apiErr = err as FlowApiError;
-      if (apiErr.kind === "validation") {
-        setFieldErrors(extractFieldErrors(apiErr.issues));
-      } else {
-        setBannerError(apiErr.message);
-      }
-    } else {
-      setBannerError(err instanceof Error ? err.message : "An unexpected error occurred.");
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    clearErrors();
-
-    const triggerConfig = buildTriggerConfig(form);
-
-    if (isNew) {
-      try {
-        const created = await createMutation.mutateAsync({
-          name: form.name,
-          trigger_type: form.trigger.type,
-          trigger_config: triggerConfig,
-          prompt_source: form.content_mode === "ai_drafted" ? form.prompt_source : undefined,
-          content_mode: form.content_mode,
+      let current: Flow | undefined = flow;
+      if (!flowId) {
+        current = await createFlow({
+          name: draft.name.trim(),
+          trigger_type: draft.trigger.type,
+          trigger_config: cleanTriggerConfig(draft.trigger),
+          content_mode: contentModeFor(draft),
           steps: [],
-          approval_mode: form.approval_mode,
+          approval_mode: draft.approval_mode,
+          flow_class: draft.flow_class,
+          priority: draft.priority,
+          reentry_policy: draft.reentry_policy,
+          reentry_cooldown_days: draft.reentry_cooldown_days,
+          topic_id: draft.topic_id,
+          ...(draft.prompt !== null ? { prompt_source: draft.prompt } : {}),
         });
-        // Land on the edit page so the core loop (compile, activate) is
-        // immediately available instead of bouncing back to the list.
-        navigate(`/flows/${created.id}/edit`);
-      } catch (err) {
-        handleError(err);
+        flowId = current.id;
+      } else {
+        const patch = { ...changes.patch } as UpdateFlowInput;
+        const mode = contentModeFor(draft);
+        if (mode !== flow!.content_mode && draft.steps.length > 0) patch.content_mode = mode;
+        if (Object.keys(patch).length > 0) current = await updateFlow(flowId, patch);
       }
-    } else {
-      try {
-        // The trigger is immutable after creation, so it is not sent.
-        await updateMutation.mutateAsync({
-          name: form.name,
-          prompt_source: form.content_mode === "ai_drafted" ? form.prompt_source : undefined,
-          approval_mode: form.approval_mode,
-        });
-        setPromptDirty(false);
-        setSavedNotice(true);
-      } catch (err) {
-        handleError(err);
+      const written: EmailTemplateRow[] = [];
+      const copies = isNew
+        ? Object.fromEntries(Object.entries(draft.copies).filter(([slug]) => draft.steps.some((s) => s.template_ref === slug)))
+        : changes.copies;
+      for (const [slug, c] of Object.entries(copies)) {
+        const name = copyName(slug);
+        written.push(await putEmailTemplateBySlug(slug, { ...c, ...(name ? { name } : {}) }));
       }
-    }
-  }
-
-  async function handleSavePlan() {
-    if (!id) return;
-    clearErrors();
-
-    // Validate steps have content
-    const emptySteps = form.steps_data.filter((s) => !s.subject.trim() || !s.body_html.trim());
-    if (emptySteps.length > 0) {
-      setBannerError(`Step ${emptySteps[0]!.order} is missing a subject or body.`);
-      return;
-    }
-    if (form.steps_data.length === 0) {
-      setBannerError("Add at least one step before saving the plan.");
-      return;
-    }
-
-    try {
-      await savePlanMutation.mutateAsync(buildPlanBody(form.steps_data) as any);
-      setSavedNotice(true);
+      if ((isNew && draft.steps.length > 0) || (!isNew && changes.plan)) {
+        current = await saveFlowSteps(flowId, planBody(draft));
+      }
+      if (written.length > 0) {
+        qc.setQueryData<EmailTemplateRow[]>(EMAIL_TEMPLATE_ROWS_KEY, (rows = []) => [...rows.filter((r) => !written.some((w) => w.slug === r.slug)), ...written]);
+      }
+      void qc.invalidateQueries({ queryKey: FLOWS_QUERY_KEY, exact: true });
+      void qc.invalidateQueries({ queryKey: FLOW_EDITOR_CONTEXT_KEY });
+      if (isNew) {
+        if (draft.prompt !== null && hasLlm) await compileFlow(flowId).catch(() => undefined);
+        navigate(`/flows/${flowId}/edit`, { replace: true });
+        return;
+      }
+      if (current) {
+        qc.setQueryData(flowQueryKey(flowId), current);
+        const next = draftFromFlow(current);
+        lastStamp.current = stampOf(current);
+        setSaved(next);
+        setDraft(next);
+      }
+      setShowProblems(false);
+      setNotice("Saved.");
     } catch (err) {
-      handleError(err);
+      const message = errorText(err);
+      void qc.invalidateQueries({ queryKey: EMAIL_TEMPLATE_ROWS_KEY });
+      if (isNew && flowId) {
+        navigate(`/flows/${flowId}/edit`, { replace: true, state: { saveError: `The flow was created, but not everything saved: ${message}` } });
+        return;
+      }
+      if (flowId) void qc.invalidateQueries({ queryKey: flowQueryKey(flowId) });
+      setError(message);
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function handleCompile() {
-    setCompileError(null);
-    try {
-      await compileMutation.mutateAsync();
-    } catch (err) {
-      setCompileError(toMessage(err));
-    }
-  }
+  // Cmd/Ctrl+S saves.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (!archived) void saveRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [archived]);
 
-  async function handleTransition(status: "active" | "paused") {
-    setBannerError(null);
+  async function transition(status: "active" | "paused") {
+    setError(null);
     try {
       await statusMutation.mutateAsync(status);
     } catch (err) {
-      setBannerError(toMessage(err));
+      setError(errorText(err));
     }
   }
 
-  async function handleArchive() {
-    setBannerError(null);
+  async function archive() {
+    setError(null);
     try {
       await archiveMutation.mutateAsync();
       navigate("/flows");
     } catch (err) {
-      setBannerError(toMessage(err));
+      setError(errorText(err));
     }
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending || savePlanMutation.isPending;
-  const transitionBusy =
-    statusMutation.isPending || archiveMutation.isPending || isPending;
-  const isCompiling =
-    compileMutation.isPending || existingFlow?.compile_status === "pending";
-
-  // Show the prompt-change warning only when the flow already has a compiled
-  // plan and the user has dirtied the prompt field. The plan will be cleared
-  // on save, so warn before, not after.
-  const showPromptClearWarning =
-    !promptReadOnly &&
-    promptDirty &&
-    existingFlow !== undefined &&
-    existingFlow.compiled_plan !== null;
-
-  const showPlan =
-    !isNew &&
-    existingFlow?.compile_status === "ready" &&
-    existingFlow.compiled_plan !== null;
-
-  // -------------------------------------------------------------------------
-  // Library flow editor: a distinct experience for pre-built flows
-  // -------------------------------------------------------------------------
-
-  if (isLibraryFlow && existingFlow) {
-    return (
-      <div className="mx-auto max-w-6xl">
-        {/* Back link + header */}
-        <div className="mb-8">
-          <Link
-            to="/flows"
-            className="text-[14px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
-          >
-            &larr; Flows
-          </Link>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="font-display text-[24px] font-bold leading-[30px] tracking-[-0.02em] text-foreground sm:text-[28px] sm:leading-[34px]">
-                {existingFlow.name}
-              </h1>
-              <Badge variant={statusVariant(existingFlow.status)}>
-                {existingFlow.status}
-              </Badge>
-              <Badge variant="muted">Fixed copy</Badge>
-            </div>
-            <StatusActions
-              flow={existingFlow}
-              busy={transitionBusy}
-              onTransition={handleTransition}
-              onArchive={handleArchive}
-            />
-          </div>
-        </div>
-
-        {/* Transition error banner */}
-        {bannerError && (
-          <div
-            className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
-            role="alert"
-          >
-            <p className="text-[15px] text-foreground">{bannerError}</p>
-          </div>
-        )}
-
-        {/* Explainer: what this flow is */}
-        <div className="mb-6 rounded-md border border-border bg-sunken px-4 py-3">
-          <p className="text-[14px] leading-relaxed text-foreground">
-            This is a ready-made flow that sends fixed email copy from
-            templates. It works without an LLM key. Click any template
-            below to edit its content.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-10 lg:flex-row lg:gap-8">
-          {/* Main column: the plan and inline template editor */}
-          <div className="min-w-0 flex-1">
-            {/* Compiled plan with clickable template refs */}
-            {existingFlow.compiled_plan && (
-              <div>
-                <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                  Email sequence
-                </p>
-                <CompiledPlanPreview
-                  plan={existingFlow.compiled_plan as UnknownRecord}
-                  onEditTemplate={(slug) => setEditingTemplate(slug)}
-                />
-              </div>
-            )}
-
-            {/* Inline template editor */}
-            {editingTemplate && (
-              <div ref={templateEditorRef} className="mt-6 rounded-lg border border-border bg-card p-6">
-                <TemplateEditorBySlug
-                  slug={editingTemplate}
-                  onClose={() => setEditingTemplate(null)}
-                />
-              </div>
-            )}
-
-            {/* Upgrade path: what AI would change */}
-            <div className="mt-8 rounded-md border border-border bg-sunken px-4 py-4">
-              <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                What changes with an LLM key
-              </p>
-              <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-                With an LLM configured, you can create flows where the AI
-                drafts each email for each contact individually, using your
-                knowledge base for context. Every person gets a message
-                written for their situation instead of the same copy.
-              </p>
-              <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-                This flow keeps working as-is. The AI is for new flows you
-                write from a prompt.
-              </p>
-              <Link
-                to="/settings/llm"
-                className="mt-3 inline-block text-[14px] text-accent-text transition-colors hover:underline"
-              >
-                Configure LLM provider
-              </Link>
-            </div>
-          </div>
-
-          {/* Right rail: details and meta */}
-          <div className="w-full shrink-0 space-y-6 lg:w-72">
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                Details
-              </p>
-              <dl className="space-y-3 text-[14px]">
-                <div>
-                  <dt className="text-muted-foreground">Name</dt>
-                  <dd className="mt-0.5 font-medium text-foreground">{existingFlow.name}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Trigger</dt>
-                  <dd className="mt-0.5 font-mono text-[13px] text-foreground">{existingFlow.trigger_type}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Content</dt>
-                  <dd className="mt-0.5 text-foreground">Fixed templates (no AI)</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Approval</dt>
-                  <dd className="mt-0.5 text-foreground">{existingFlow.approval_mode === "auto" ? "Automatic" : "Manual review"}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="rounded-lg border border-border bg-card p-5">
-              <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                Meta
-              </p>
-              <dl className="space-y-2 text-[14px]">
-                <div>
-                  <dt className="text-muted-foreground">ID</dt>
-                  <dd
-                    className="mt-0.5 truncate font-mono text-[13px] text-muted-foreground"
-                    title={existingFlow.id}
-                  >
-                    {existingFlow.id}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Created</dt>
-                  <dd className="font-mono text-[13px] text-muted-foreground">
-                    {formatDateTime(existingFlow.created_at)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Updated</dt>
-                  <dd className="font-mono text-[13px] text-muted-foreground">
-                    {formatDateTime(existingFlow.updated_at)}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  async function compile() {
+    setCompileError(null);
+    try {
+      await compileMutation.mutateAsync();
+    } catch (err) {
+      setCompileError(errorText(err));
+    }
   }
 
-  // -------------------------------------------------------------------------
-  // Prompt-defined flow editor: the primary experience
-  // -------------------------------------------------------------------------
+  function applyJson() {
+    if (json === null) return;
+    try {
+      const parsed = JSON.parse(json) as { steps?: unknown; exit_conditions?: unknown };
+      if (!Array.isArray(parsed.steps)) throw new Error("the JSON needs a steps list");
+      const exits = Array.isArray(parsed.exit_conditions) ? (parsed.exit_conditions as Json[]) : [];
+      update({ steps: sortSteps(parsed.steps as Json[]), exits });
+      setJson(null);
+      setSelected("trigger");
+    } catch (err) {
+      setError(err instanceof Error ? `JSON: ${err.message}` : "The JSON could not be read.");
+    }
+  }
 
-  // For fixed_content flows (person-written), show the step writing surface
-  const isFixedContentEditor = isNew ? form.content_mode === "fixed_content" : isFixedContentFlow;
+  const canActivate = !!flow && flow.compile_status === "ready" && flow.compiled_plan !== null && !dirty;
+  const transitionBusy = statusMutation.isPending || archiveMutation.isPending || saving;
+  const promptDirty = flow ? draft.prompt !== saved.prompt : false;
 
-  // The writing surface for person-written flows. Shared by both modes; the
-  // save-plan row only makes sense once the flow exists.
-  const fixedContentSurface = (
-    <div>
-      <p className="mb-3 text-[14px] leading-relaxed text-muted-foreground">
-        Write each email in the sequence below. Use {"{{variables}}"} for
-        personalisation - the same copy goes to everyone with their details
-        filled in. Save the plan when you are done, then activate the flow to
-        start sending.
-      </p>
+  const env: EditorEnv = {
+    flowId: flow?.id,
+    canDraftWithAi: !!flow && !changes.plan,
+    hasLlm,
+    links,
+    dataSources: ctx.data?.data_sources ?? [],
+    kbCategories,
+    sample,
+    disabled,
+  };
 
-      {/* Approval info for fixed content flows */}
-      <div className="mb-6 rounded-md border border-border bg-sunken px-4 py-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-          <div className="min-w-0">
-            <p className="text-[14px] font-medium text-foreground">
-              {form.approval_mode === "require"
-                ? "You review each message before it sends"
-                : "Approval is off"}
-            </p>
-            <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">
-              {form.approval_mode === "require"
-                ? "Each message waits for your approval before sending. Turn this off only if you fully trust the copy and the variable fallbacks."
-                : "Since you wrote the copy, each message does not need individual review. Variables and fallbacks can still produce unexpected results - preview against real contacts before activating."}
-            </p>
-          </div>
-          <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[14px] text-foreground">
-            <input
-              type="checkbox"
-              checked={form.approval_mode === "require"}
-              onChange={(e) =>
-                setField("approval_mode", e.target.checked ? "require" : "auto")
-              }
-              disabled={isPending || flowReadOnly}
-              className="h-4 w-4 accent-(--accent-deep)"
-            />
-            Require per-message review
-          </label>
-        </div>
-      </div>
-
-      <StepWriter
-        flowId={id}
-        steps={form.steps_data}
-        onStepsChange={(steps) => setField("steps_data", steps)}
-        disabled={isPending || flowReadOnly}
-        hasLlm={hasLlm}
-        triggerType={form.trigger.type}
-        triggerConfig={buildTriggerConfig(form)}
-        flowName={form.name}
+  let panel: React.ReactNode = null;
+  if (selected === "trigger") {
+    panel = (
+      <TriggerPanel
+        trigger={draft.trigger}
+        onChange={(t: TriggerDraft) => update({ trigger: t })}
+        eventNames={eventNames.data ?? []}
+        dateTraits={ctx.data?.date_traits ?? []}
+        disabled={disabled}
+        isNew={isNew}
+        problems={problemTexts("trigger")}
       />
-
-      {/* Save plan button */}
-      {!isNew && !flowReadOnly && (
-        <div className="mt-6 border-t border-border pt-6">
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              onClick={handleSavePlan}
-              disabled={isPending || form.steps_data.length === 0}
-            >
-              {savePlanMutation.isPending ? "Saving plan..." : "Save plan"}
-            </Button>
-            {existingFlow?.compile_status === "ready" && (
-              <Badge variant="success">ready</Badge>
-            )}
-            {savedNotice && !bannerError && (
-              <span className="text-[14px] text-muted-foreground" role="status">Saved.</span>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  // The AI-drafted surface: the prompt, the review checkbox, and (in edit
-  // mode) compile + the compiled plan.
-  const aiSurface = (
-    <>
-      <div>
-        {!isNew && <Label htmlFor="prompt-source">Prompt</Label>}
-        <p className="mb-3 text-[14px] leading-relaxed text-muted-foreground">
-          Describe what this flow should do, in your own words. Claros
-          compiles it into a deterministic plan you review before anything is
-          sent. The AI then drafts each email for each contact individually.
-        </p>
-
-        {existingFlow?.status === "active" && (
-          <p
-            className="mb-3 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-muted-foreground"
-            role="note"
-          >
-            The prompt is locked while the flow is active. Pause the flow to
-            make changes.
-          </p>
-        )}
-        {existingFlow?.status === "archived" && (
-          <p
-            className="mb-3 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-muted-foreground"
-            role="note"
-          >
-            This flow is archived. Archived is terminal; nothing here can be
-            edited.
-          </p>
-        )}
-
-        {showPromptClearWarning && (
-          <p
-            className="mb-3 rounded-md border border-warning bg-warning-soft px-3.5 py-2.5 text-[14px] text-foreground"
-            role="note"
-          >
-            Saving will clear the existing compiled plan and reset compile
-            status. You will need to recompile before activating the flow.
-          </p>
-        )}
-
-        <Textarea
-          id="prompt-source"
-          value={form.prompt_source}
-          onChange={(e) => handlePromptChange(e.target.value)}
-          className="min-h-44 text-[16px] leading-relaxed"
-          placeholder="When a contact becomes at-risk, send a short check-in email after two days, then a win-back offer after seven."
-          disabled={isPending || promptReadOnly}
-        />
-        <FieldError message={fieldErrors["prompt_source"]} />
-
-        {/* Approvals: a checkbox, not a rail setting. Review is the
-            product's promise, so it lives next to the prompt. */}
-        <div className="mt-5">
-          <label
-            htmlFor="approval-mode"
-            className="flex items-center gap-2.5 text-[14px] font-medium text-foreground"
-          >
-            <input
-              id="approval-mode"
-              type="checkbox"
-              checked={form.approval_mode === "require"}
-              onChange={(e) =>
-                setField("approval_mode", e.target.checked ? "require" : "auto")
-              }
-              disabled={isPending || flowReadOnly}
-              className="h-4 w-4 shrink-0 accent-(--accent-deep)"
-            />
-            Require my review before anything sends
-          </label>
-          {form.approval_mode === "auto" && (
-            <div
-              className="mt-3 rounded-md border border-warning bg-warning-soft px-3.5 py-2.5"
-              role="note"
-            >
-              <p className="text-[14px] leading-relaxed text-foreground">
-                Review is off. Drafts from this flow will send without a human
-                ever seeing them. The AI drafts from your knowledge base and
-                can still get things wrong - wrong tone, wrong fact, wrong
-                moment. What goes out is your responsibility.
-              </p>
-            </div>
-          )}
-          <FieldError message={fieldErrors["approval_mode"]} />
-        </div>
-      </div>
-
-      {/* Compile */}
-      {!isNew && existingFlow && existingFlow.status !== "archived" && (
-        <div className="mt-6 border-t border-border pt-6">
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isCompiling || isPending || !existingFlow.prompt_source}
-              onClick={handleCompile}
-            >
-              {isCompiling ? "Compiling..." : "Compile"}
-            </Button>
-            <Badge
-              variant={compileVariant(existingFlow.compile_status)}
-              pulse={existingFlow.compile_status === "pending"}
-            >
-              {compileLabel(existingFlow.compile_status)}
-            </Badge>
-            {existingFlow.compiled_at && (
-              <span className="font-mono text-[13px] text-muted-foreground">
-                {formatDateTime(existingFlow.compiled_at)}
-              </span>
-            )}
-          </div>
-
-          {/* Compile error shown verbatim - it is the provider's message
-              on the tenant's own key. */}
-          {existingFlow.compile_status === "failed" && existingFlow.compile_error && (
-            <div
-              className="mt-3 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5"
-              role="alert"
-            >
-              <p className="whitespace-pre-wrap break-words font-mono text-[13px] text-foreground">
-                {existingFlow.compile_error}
-              </p>
-            </div>
-          )}
-
-          {/* 422 from the compile POST (archived, no prompt, no LLM config) */}
-          {compileError && (
-            <div
-              className="mt-3 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5"
-              role="alert"
-            >
-              <p className="text-[14px] text-foreground">{compileError}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Compiled plan */}
-      {showPlan && (
-        <div className="mt-6 border-t border-border pt-6">
-          <p className="mb-4 text-[14px] font-medium text-foreground">
-            Compiled plan
-          </p>
-          <CompiledPlanPreview
-            plan={existingFlow.compiled_plan as UnknownRecord}
-            onEditTemplate={(slug) => setEditingTemplate(slug)}
-          />
-        </div>
-      )}
-
-      {/* Inline template editor (for plans that reference templates) */}
-      {editingTemplate && (
-        <div ref={templateEditorRef} className="mt-6 rounded-lg border border-border bg-card p-6">
-          <TemplateEditorBySlug
-            slug={editingTemplate}
-            onClose={() => setEditingTemplate(null)}
-          />
-        </div>
-      )}
-    </>
-  );
-
-  // -------------------------------------------------------------------------
-  // New flow: single column, progressive disclosure, no sidebar
-  // -------------------------------------------------------------------------
-
-  if (isNew) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        {/* Back link + name as the page title */}
-        <div className="mb-10">
-          <Link
-            to="/flows"
-            className="text-[14px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
-          >
-            &larr; Flows
-          </Link>
-          <p className="mt-6 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            New flow
-          </p>
-          <div className="mt-1">
-            <FlowNameInput
-              value={form.name}
-              onChange={(v) => setField("name", v)}
-              disabled={isPending}
-              error={fieldErrors["name"]}
-            />
-          </div>
-        </div>
-
-        {/* Save error banner */}
-        {bannerError && (
-          <div
-            className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
-            role="alert"
-          >
-            <p className="text-[15px] text-foreground">{bannerError}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} noValidate>
-          {/* Step 1: trigger */}
-          <section>
-            <SectionHeading
-              step={1}
-              title="When does this flow start?"
-              description="The trigger decides which contacts enter the flow. You can change it later from the flow's page."
-            />
-            <div className="mt-4">
-              <TriggerEditor
-                draft={form.trigger}
-                onChange={(d) => setField("trigger", d)}
-                disabled={isPending}
-                eventSuggestions={eventNamesQuery.data ?? []}
-              />
-            </div>
-            <FieldError message={fieldErrors["trigger_type"] ?? fieldErrors["trigger_config"]} />
-          </section>
-
-          {/* Step 2: writer */}
-          {triggerComplete && (
-            <section ref={step2Ref} className="mt-10 scroll-mt-8">
-              <SectionHeading step={2} title="Who writes the emails?" />
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  aria-pressed={form.content_mode === "fixed_content"}
-                  onClick={() => {
-                    setField("content_mode", "fixed_content");
-                    setContentModeSelected(true);
-                  }}
-                  className={`rounded-lg border p-4 text-left transition-colors ${
-                    form.content_mode === "fixed_content"
-                      ? "border-accent bg-accent/5"
-                      : "border-border bg-card hover:border-border-strong"
-                  }`}
-                >
-                  <p className="text-[15px] font-semibold text-foreground">
-                    I write them
-                  </p>
-                  <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">
-                    Write each email once. Everyone gets the same copy,
-                    personalised with variables. No LLM provider needed.
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={form.content_mode === "ai_drafted"}
-                  onClick={() => {
-                    setField("content_mode", "ai_drafted");
-                    setContentModeSelected(true);
-                  }}
-                  className={`rounded-lg border p-4 text-left transition-colors ${
-                    form.content_mode === "ai_drafted"
-                      ? "border-accent bg-accent/5"
-                      : "border-border bg-card hover:border-border-strong"
-                  }`}
-                >
-                  <p className="text-[15px] font-semibold text-foreground">
-                    AI drafts each one
-                  </p>
-                  <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">
-                    Describe what you want. The AI drafts a unique email for
-                    each contact using their context. Requires an LLM provider.
-                  </p>
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* Step 3: content */}
-          {triggerComplete && contentModeSelected && (
-            <section ref={step3Ref} className="mt-10 scroll-mt-8">
-              <SectionHeading
-                step={3}
-                title={isFixedContentEditor ? "Write the sequence" : "Describe the flow"}
-              />
-              <div className="mt-5">
-                {isFixedContentEditor ? fixedContentSurface : aiSurface}
-              </div>
-            </section>
-          )}
-
-          {/* Create row */}
-          {triggerComplete && contentModeSelected && (
-            <div className="mt-10 flex items-center gap-3 border-t border-border pt-6">
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Creating..." : "Create flow"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => navigate("/flows")}
-                disabled={isPending}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </form>
-      </div>
+    );
+  } else if (selected === "exits") {
+    panel = <ExitsPanel exits={draft.exits} onChange={(exits) => update({ exits })} eventNames={eventNames.data ?? []} disabled={disabled} />;
+  } else if (selected === "prompt" && draft.prompt !== null) {
+    panel = (
+      <PromptPanel
+        prompt={draft.prompt}
+        onChange={(v) => update({ prompt: v })}
+        flow={flow}
+        promptDirty={promptDirty}
+        locked={flow?.status === "active"}
+        disabled={disabled}
+        hasLlm={hasLlm}
+        compiling={compileMutation.isPending || flow?.compile_status === "pending"}
+        compileError={compileError}
+        onCompile={() => void compile()}
+      />
+    );
+  } else if (typeof selected === "number" && draft.steps[selected]) {
+    const i = selected;
+    const step = draft.steps[i]!;
+    const ref = stepMode(step) === "fixed" ? String(step.template_ref) : null;
+    const usedBy = ref ? (ctx.data?.templates.find((t) => t.slug === ref)?.used_by_flows ?? []) : [];
+    panel = (
+      <StepPanel
+        key={`${i}-${String(step.order)}`}
+        index={i}
+        count={draft.steps.length}
+        step={step}
+        previousDelayLabel={i > 0 ? describeDelay(draft.steps[i - 1]?.delay) : ""}
+        isSchedule={draft.trigger.type === "date_schedule"}
+        copy={ref ? copyOf(ref) : undefined}
+        sharedWith={usedBy.filter((f) => f !== flow?.id).length}
+        env={env}
+        problems={problemTexts(i)}
+        onStep={(patch) => updateStep(i, patch)}
+        onCopy={(c) => {
+          if (ref) setDraft((d) => ({ ...d, copies: { ...d.copies, [ref]: c } }));
+          setNotice(null);
+        }}
+        onMode={(m) => setMode(i, m)}
+        onMove={(dir) => {
+          update({ steps: moveStep(draft.steps, i, dir) });
+          setSelected(i + dir);
+        }}
+        onRemove={() => {
+          update({ steps: draft.steps.filter((_, j) => j !== i) });
+          setSelected(draft.steps.length > 1 ? Math.max(0, i - 1) : "trigger");
+        }}
+      />
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Edit flow: name as title, read-only trigger, meta-only rail
-  // -------------------------------------------------------------------------
+  const nameProblem = showProblems && problems.some((p) => p.where === "name");
 
   return (
-    <div className="mx-auto max-w-6xl">
-      {/* Back link + header */}
-      <div className="mb-8">
-        <Link
-          to="/flows"
-          className="text-[14px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
-        >
-          &larr; Flows
-        </Link>
-        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
-            <FlowNameInput
-              value={form.name}
-              onChange={(v) => setField("name", v)}
-              disabled={isPending || flowReadOnly}
-              error={fieldErrors["name"]}
-            />
-            <div className="flex shrink-0 items-center gap-2 pt-2">
-              {existingFlow && (
-                <Badge variant={statusVariant(existingFlow.status)}>
-                  {existingFlow.status}
-                </Badge>
-              )}
-              {existingFlow && !isFixedContentFlow && (
-                <Badge variant="neutral">AI-drafted</Badge>
-              )}
-              {isFixedContentFlow && (
-                <Badge variant="muted">Person-written</Badge>
-              )}
+    <div className="mx-auto max-w-7xl">
+      {/* Header */}
+      <div>
+        <Link to="/flows" className="text-[14px] text-muted-foreground transition-colors hover:text-foreground">&larr; Flows</Link>
+        <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-0 flex-1 basis-80">
+                <FlowNameInput value={draft.name} onChange={(v) => update({ name: v })} disabled={disabled} />
+              </div>
+              {flow && <Badge variant={statusVariant(flow.status)}>{flow.status}</Badge>}
+              {isNew && <Badge variant="neutral">not saved yet</Badge>}
             </div>
+            {nameProblem && <p className="mt-1 text-[13px] text-danger" role="alert">Give the flow a name.</p>}
+            <p className="mt-1.5 max-w-3xl text-[15px] leading-relaxed text-muted-foreground">{summarizeFlow(draft)}</p>
           </div>
-          {existingFlow && (
-            <div className="shrink-0 pt-0 sm:pt-2">
-              <StatusActions
-                flow={existingFlow}
-                busy={transitionBusy}
-                onTransition={handleTransition}
-                onArchive={handleArchive}
-              />
+          {flow && !archived && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-1.5">
+              {confirmArchive ? (
+                <>
+                  <span className="text-[14px] text-muted-foreground">Archive for good? It cannot be undone.</span>
+                  <Button size="sm" variant="destructive" disabled={transitionBusy} onClick={() => void archive()}>Archive</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmArchive(false)}>Cancel</Button>
+                </>
+              ) : (
+                <>
+                  {(flow.status === "draft" || flow.status === "paused") && (
+                    <Button
+                      size="sm"
+                      disabled={transitionBusy || !canActivate}
+                      title={dirty ? "Save your changes first." : canActivate ? undefined : "Add at least one email and save before activating."}
+                      onClick={() => void transition("active")}
+                    >
+                      <Play size={16} strokeWidth={1.5} aria-hidden="true" />
+                      {flow.status === "paused" ? "Resume" : "Activate"}
+                    </Button>
+                  )}
+                  {flow.status === "active" && (
+                    <Button size="sm" variant="outline" disabled={transitionBusy} onClick={() => void transition("paused")}>
+                      <Pause size={16} strokeWidth={1.5} aria-hidden="true" />
+                      Pause
+                    </Button>
+                  )}
+                  <MoreMenu
+                    items={[
+                      { label: "Edit the emails as JSON", onClick: () => setJson(JSON.stringify(planBody(draft), null, 2)) },
+                      { label: "Copy flow ID", onClick: () => void navigator.clipboard?.writeText(flow.id).catch(() => undefined) },
+                      { label: "Archive flow", onClick: () => setConfirmArchive(true), danger: true },
+                    ]}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Save / transition error banner */}
-      {bannerError && (
-        <div
-          className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
-          role="alert"
-        >
-          <p className="text-[15px] text-foreground">{bannerError}</p>
+      {/* Banners */}
+      <div className="mt-5 space-y-3 empty:hidden">
+        {flow?.slug && !archived && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-warning bg-warning-soft px-4 py-2.5 text-[14px] text-foreground" role="note">
+            <span className="min-w-0 flex-1 basis-96">
+              <span className="font-semibold">Managed in config as code</span> (slug <code className="font-mono text-[13px]">{flow.slug}</code>). The next{" "}
+              <code className="font-mono text-[13px]">claros apply</code> of a document that lists this flow replaces edits made here. Change the document, or export it again after editing.
+            </span>
+            <Link to="/settings/config" className="shrink-0 text-[14px] font-medium text-accent-text hover:underline">Config as code</Link>
+          </div>
+        )}
+        {archived && (
+          <p className="rounded-lg border border-border bg-secondary px-4 py-2.5 text-[14px] text-muted-foreground" role="note">
+            This flow is archived. Archived is final; nothing here can be changed.
+          </p>
+        )}
+        {flow?.status === "active" && dirty && (
+          <p className="rounded-lg border border-border bg-sunken px-4 py-2.5 text-[14px] text-muted-foreground" role="note">
+            The flow keeps running on the saved version until you save.
+          </p>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div role="tablist" className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
+        {([["emails", "Emails"], ["settings", "Delivery settings"]] as const).map(([value, label]) => (
+          <button
+            key={value}
+            role="tab"
+            type="button"
+            aria-selected={tab === value}
+            onClick={() => setTab(value)}
+            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[15px] font-medium transition-colors ${tab === value ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "settings" ? (
+        <div className="mt-6">
+          <DeliverySettings draft={draft} onChange={(patch) => update(patch)} topics={topics.data?.topics ?? []} disabled={disabled} flow={flow} />
+        </div>
+      ) : json !== null ? (
+        <div className="mt-6 rounded-xl border border-border bg-card p-5">
+          <h2 className="text-[17px] font-semibold text-foreground">The emails as JSON</h2>
+          <p className="mt-0.5 text-[14px] text-muted-foreground">
+            The steps and exit conditions in the config document shape (see the Flows guide). Applying puts them in the draft; saving stores them.
+          </p>
+          <Textarea aria-label="Steps as JSON" className="mt-3 min-h-[28rem] font-mono text-[12px]" value={json} onChange={(e) => setJson(e.target.value)} />
+          <div className="mt-3 flex gap-2">
+            <Button type="button" onClick={applyJson}>Apply to draft</Button>
+            <Button type="button" variant="ghost" onClick={() => setJson(null)}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:gap-8">
+          <FlowTimeline
+            draft={draft}
+            selected={selected}
+            onSelect={select}
+            copyOf={copyOf}
+            sample={sample.values}
+            problemsAt={problemsAt}
+            onAdd={addStep}
+            canAddAi={hasLlm}
+            disabled={disabled}
+          />
+          <div ref={panelRef} className="scroll-mt-6 rounded-xl border border-border bg-card p-5 sm:p-6">
+            {panel ?? <p className="text-[14px] text-muted-foreground">Select a part of the flow on the left to edit it.</p>}
+          </div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} noValidate>
-        <div className="flex flex-col gap-10 lg:flex-row lg:gap-8">
-          {/* Main column */}
-          <div className="min-w-0 flex-1">
-            {existingFlow && !editingTrigger && (
-              <TriggerSummary flow={existingFlow} onEdit={flowReadOnly ? undefined : () => setEditingTrigger(true)} />
-            )}
-            {existingFlow && editingTrigger && (
-              <TriggerEditCard flow={existingFlow} suggestions={eventNamesQuery.data ?? []} onDone={() => setEditingTrigger(false)} />
-            )}
-            {existingFlow && <FlowTopicPicker flow={existingFlow} disabled={flowReadOnly} />}
-
-            <div className="mt-8">
-              {isFixedContentEditor ? fixedContentSurface : aiSurface}
+      {/* Save bar */}
+      {!archived && (dirty || error || notice) && (
+        <div className="sticky bottom-0 z-20 mt-8 border-t border-border bg-background/95 py-3 backdrop-blur">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1 basis-64 text-[14px]" role="status">
+              {error ? (
+                <span className="text-danger">{error}</span>
+              ) : notice ? (
+                <span className="text-muted-foreground">{notice}</span>
+              ) : isNew ? (
+                <span className="text-muted-foreground">Not saved yet. Creating saves the flow as a draft; nothing sends until you activate it.</span>
+              ) : (
+                <span className="text-muted-foreground">Unsaved changes.</span>
+              )}
             </div>
-
-            {existingFlow && !flowReadOnly && (
-              <div className="mt-8 rounded-lg border border-border bg-card p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[15px] font-semibold text-foreground">Plan editor</p>
-                    <p className="mt-0.5 text-[13px] text-muted-foreground">
-                      Write the steps out: choose steps, context sources, knowledge base, sender name, eyebrow and preheader, links, expiry and conditions.
-                      {existingFlow.prompt_source ? " Saving replaces the compiled plan until the prompt is compiled again." : ""}
-                    </p>
-                  </div>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setPlanEditorOpen((v) => !v)}>
-                    {planEditorOpen ? "Close" : "Open"}
-                  </Button>
-                </div>
-                {planEditorOpen && (
-                  <div className="mt-5">
-                    <PlanEditor
-                      key={existingFlow.compiled_at ?? "none"}
-                      initial={planFromFlow(existingFlow.compiled_plan, existingFlow.steps)}
-                      saving={saveStepsMutation.isPending}
-                      onSave={async (body) => {
-                        await saveStepsMutation.mutateAsync(body);
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Save row */}
-            {!flowReadOnly && (
-              <div className="mt-8 flex items-center gap-3 border-t border-border pt-6">
-                <Button type="submit" disabled={isPending}>
-                  {isPending ? "Saving..." : "Save changes"}
+            {dirty && (
+              <>
+                <Button type="button" variant="ghost" disabled={saving} onClick={discard}>
+                  {isNew ? "Cancel" : "Discard"}
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => navigate("/flows")}
-                  disabled={isPending}
-                >
-                  Cancel
+                <Button type="button" disabled={saving} onClick={() => void save()}>
+                  {saving ? "Saving..." : isNew ? "Create flow" : "Save changes"}
                 </Button>
-                {savedNotice && !bannerError && (
-                  <span className="text-[14px] text-muted-foreground" role="status">
-                    Saved.
-                  </span>
-                )}
-              </div>
+              </>
             )}
           </div>
-
-          {/* Right rail: flow settings and meta */}
-          {existingFlow && (
-            <div className="w-full shrink-0 space-y-6 lg:w-72">
-              <FlowSettingsCard flow={existingFlow} disabled={flowReadOnly} />
-              <div className="rounded-lg border border-border bg-card p-5">
-                <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                  Meta
-                </p>
-                <dl className="space-y-2 text-[14px]">
-                  <div>
-                    <dt className="text-muted-foreground">ID</dt>
-                    <dd
-                      className="mt-0.5 truncate font-mono text-[13px] text-muted-foreground"
-                      title={existingFlow.id}
-                    >
-                      {existingFlow.id}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Created</dt>
-                    <dd className="font-mono text-[13px] text-muted-foreground">
-                      {formatDateTime(existingFlow.created_at)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Updated</dt>
-                    <dd className="font-mono text-[13px] text-muted-foreground">
-                      {formatDateTime(existingFlow.updated_at)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
-          )}
         </div>
-      </form>
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+function EditorSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl">
+      <Skeleton className="h-4 w-16" />
+      <Skeleton className="mt-4 h-8 w-72" />
+      <Skeleton className="mt-3 h-4 w-[32rem] max-w-full" />
+      <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[360px_1fr]">
+        <div className="space-y-3">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+        <Skeleton className="h-96 w-full" />
+      </div>
+    </div>
+  );
+}
+
+export default function FlowEditorPage() {
+  const { id } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const flowQuery = useFlowWithPolling(id ?? "");
+  const templatesQuery = useEmailTemplateRows();
+  const ctx = useFlowEditorContext();
+  const [start, setStart] = useState<{ draft: EditorDraft; select: Selection } | null>(() => {
+    const prefill = id ? null : prefillFromSearch(searchParams);
+    return prefill ? { draft: prefill, select: "trigger" } : null;
+  });
+  const saveError = (location.state as { saveError?: string } | null)?.saveError ?? null;
+
+  if (!id) {
+    if (!start) {
+      return <StartScreen hasLlm={ctx.data?.has_llm ?? false} dateTraits={ctx.data?.date_traits ?? []} onPick={(draft, select) => setStart({ draft, select })} />;
+    }
+    return <FlowWorkspace initialDraft={start.draft} initialSelection={start.select} templates={templatesQuery.data ?? []} />;
+  }
+
+  if (flowQuery.isError) {
+    return (
+      <div className="mx-auto max-w-7xl rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
+        <p className="text-[15px] text-foreground">Failed to load flow: {flowQuery.error instanceof Error ? flowQuery.error.message : "unknown error"}</p>
+      </div>
+    );
+  }
+  if (!flowQuery.data || templatesQuery.isLoading) return <EditorSkeleton />;
+
+  const flow = flowQuery.data;
+  const initial = draftFromFlow(flow);
+  // ?template=<slug> (linked from Sent Mail) opens the email that uses it.
+  const templateSlug = searchParams.get("template");
+  const linked = templateSlug ? initial.steps.findIndex((s) => s.template_ref === templateSlug) : -1;
+  return (
+    <FlowWorkspace
+      key={flow.id}
+      flow={flow}
+      initialDraft={initial}
+      initialSelection={linked >= 0 ? linked : initial.steps.length > 0 ? 0 : initial.prompt !== null ? "prompt" : "trigger"}
+      templates={templatesQuery.data ?? []}
+      initialError={saveError}
+    />
   );
 }

@@ -16,6 +16,8 @@ import {
   saveFlowPlan,
   saveFlowSteps,
   draftFlowStep,
+  fetchFlowEditorContext,
+  fetchEmailTemplateRows,
   type CreateFlowInput,
   type UpdateFlowInput,
   type DraftStepInput,
@@ -180,4 +182,17 @@ export function useSaveFlowSteps(id: string) {
       void qc.invalidateQueries({ queryKey: flowQueryKey(id) });
     },
   });
+}
+
+export const EMAIL_TEMPLATE_ROWS_KEY = ["email-templates", "rows"] as const;
+export const FLOW_EDITOR_CONTEXT_KEY = ["flows", "editor-context"] as const;
+
+/** Named links, context sources, date traits and templates for the flow editor's pickers. */
+export function useFlowEditorContext() {
+  return useQuery({ queryKey: FLOW_EDITOR_CONTEXT_KEY, queryFn: fetchFlowEditorContext, staleTime: 30_000 });
+}
+
+/** Every email template of the product with its content (fixed-copy steps read theirs from here). */
+export function useEmailTemplateRows() {
+  return useQuery({ queryKey: EMAIL_TEMPLATE_ROWS_KEY, queryFn: fetchEmailTemplateRows, staleTime: 0 });
 }

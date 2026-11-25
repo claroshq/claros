@@ -116,7 +116,9 @@ export interface Flow {
   trigger_type: "lifecycle_transition" | "event" | "segment" | "manual" | "date_property" | "date_schedule";
   trigger_config: Record<string, unknown>;
   steps: unknown;
-  source: "manual" | "library" | "brain_suggested";
+  source: "manual" | "library" | "brain_suggested" | "config";
+  /** Config-as-code slug; null for dashboard flows. Absent on servers before v0.8.8. */
+  slug?: string | null;
   content_mode: "ai_drafted" | "fixed_content";
   status: "draft" | "active" | "paused" | "archived";
   approval_mode: "require" | "auto";
@@ -198,6 +200,11 @@ export interface CreateFlowInput {
   content_mode?: Flow["content_mode"];
   steps: [];
   approval_mode?: Flow["approval_mode"];
+  flow_class?: Flow["flow_class"];
+  priority?: number;
+  reentry_policy?: Flow["reentry_policy"];
+  reentry_cooldown_days?: number;
+  topic_id?: string | null;
 }
 
 export interface UpdateFlowInput {
@@ -341,6 +348,65 @@ export interface DraftStepInput {
   subject?: string;
   body_html?: string;
   context?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Flow editor context and step copy
+// ---------------------------------------------------------------------------
+
+export interface FlowEditorTemplate {
+  slug: string;
+  name: string;
+  subject: string;
+  /** Ids of the (not archived) flows whose plan references the template. */
+  used_by_flows: string[];
+}
+
+export interface FlowEditorContext {
+  links: Array<{ name: string; url: string }>;
+  data_sources: string[];
+  date_traits: string[];
+  has_llm: boolean;
+  templates: FlowEditorTemplate[];
+}
+
+/** GET /v1/flows/editor-context - pickers for the flow editor. */
+export async function fetchFlowEditorContext(): Promise<FlowEditorContext> {
+  const res = await apiFetch("/v1/flows/editor-context");
+  if (!res.ok) throw new Error(`/v1/flows/editor-context returned ${res.status}`);
+  return res.json() as Promise<FlowEditorContext>;
+}
+
+export interface StepCopy {
+  subject: string;
+  body_html: string;
+  body_text: string | null;
+}
+
+export interface EmailTemplateRow extends StepCopy {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** GET /v1/email-templates - every template of the product, with content. */
+export async function fetchEmailTemplateRows(): Promise<EmailTemplateRow[]> {
+  const res = await apiFetch("/v1/email-templates");
+  if (!res.ok) throw new Error(`/v1/email-templates returned ${res.status}`);
+  const body = (await res.json()) as { templates?: EmailTemplateRow[] };
+  return body.templates ?? [];
+}
+
+/** PUT /v1/email-templates/by-slug/:slug - create or update a step's fixed copy. */
+export async function putEmailTemplateBySlug(slug: string, input: StepCopy & { name?: string }): Promise<EmailTemplateRow> {
+  const res = await apiFetch(`/v1/email-templates/by-slug/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = (await res.json().catch(() => null)) as { template?: EmailTemplateRow; error?: string } | null;
+  if (!res.ok || !body?.template) throw new Error(body?.error ?? `Saving the email copy failed (${res.status}).`);
+  return body.template;
 }
 
 export interface DraftStepResult {
