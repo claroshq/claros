@@ -42,8 +42,8 @@
  * by reap. A generation_failed message can be re-queued by the operator via
  * POST /v1/messages/:id/retry after the configuration fault is fixed.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 import { marked, Renderer, Lexer, type Token, type Tokens } from "marked";
 import {
   decide,
@@ -120,45 +120,9 @@ export async function claimContentBatch(
 ): Promise<ContentCandidate[]> {
   if (tenantIds.length === 0) return [];
 
-  const tenantFilter = sql.join(tenantIds.map((id) => sql`${id}`), sql`, `);
-
-  const rows = await db.execute<{
-    id: string;
-    tenant_id: string;
-    contact_id: string;
-    flow_id: string;
-    membership_id: string;
-    flow_step_order: number | null;
-    brain_action_type: string | null;
-  }>(sql`
-    WITH candidates AS (
-      SELECT lm.id
-      FROM lifecycle_messages lm
-      WHERE lm.status = 'pending_generation'
-        AND lm.tenant_id IN (${tenantFilter})
-      ORDER BY lm.created_at ASC
-      LIMIT ${batchLimit}
-      FOR UPDATE OF lm SKIP LOCKED
-    ),
-    claimed AS (
-      UPDATE lifecycle_messages
-      SET status = 'generating', updated_at = ${now}
-      WHERE id IN (SELECT id FROM candidates)
-      RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type
-    )
-    SELECT id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type
-    FROM claimed
-  `);
-
-  return rows.rows.map((row) => ({
-    id: row.id,
-    tenantId: row.tenant_id,
-    contactId: row.contact_id,
-    flowId: row.flow_id,
-    membershipId: row.membership_id,
-    flowStepOrder: row.flow_step_order,
-    brainActionType: row.brain_action_type,
-  }));
+  // The claim (FOR UPDATE SKIP LOCKED + status = 'generating') is one statement
+  // inside the Store; see WorkerContentQueries.claimContentBatch.
+  return storeFor(db).workerContent.claimContentBatch({ now, limit: batchLimit, tenantIds });
 }
 
 // ---------------------------------------------------------------------------
@@ -199,14 +163,10 @@ export async function processContentTick(
   if (tenantIds && tenantIds.length > 0) {
     resolvedTenantIds = tenantIds;
   } else {
-    const tenantRows = await db.execute<{ tenant_id: string }>(sql`
-      SELECT DISTINCT tenant_id
-      FROM lifecycle_messages
-      WHERE status = 'pending_generation'
-    `);
+    const pendingTenantIds = await storeFor(db).workerContent.listTenantsWithPendingGeneration();
 
-    if (tenantRows.rows.length === 0) return stats;
-    resolvedTenantIds = tenantRows.rows.map((r) => r.tenant_id);
+    if (pendingTenantIds.length === 0) return stats;
+    resolvedTenantIds = pendingTenantIds;
   }
 
   // Step 2: Claim batch atomically.
@@ -269,17 +229,13 @@ async function failPermanently(
   reason: string,
   now: Date,
 ): Promise<ContentOutcome> {
-  const result = await db.execute<{ id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = 'failed',
-      brain_reasoning = ${`generation_failed: ${reason}`},
-      updated_at = ${now}
-    WHERE id = ${candidate.id}
-      AND status = ${fromStatus}
-    RETURNING id
-  `);
-  if (result.rows.length === 0) {
+  const won = await storeFor(db).workerContent.markFailed(
+    candidate.id,
+    fromStatus,
+    `generation_failed: ${reason}`,
+    now,
+  );
+  if (!won) {
     return "error";
   }
   console.error(
@@ -388,18 +344,9 @@ export async function processOneContentMessage(
         ? `${decision.action}: ${decision.reasoning}`
         : decision.action;
 
-      const skipResult = await db.execute<{ id: string }>(sql`
-        UPDATE lifecycle_messages
-        SET
-          status = 'skipped',
-          brain_reasoning = ${reasoning},
-          updated_at = ${now}
-        WHERE id = ${candidate.id}
-          AND status = 'generating'
-        RETURNING id
-      `);
+      const skipWon = await storeFor(db).workerContent.markSkipped(candidate.id, reasoning, now);
 
-      if (skipResult.rows.length === 0) {
+      if (!skipWon) {
         // CAS failed - another actor moved the row.
         return "error";
       }
@@ -410,18 +357,13 @@ export async function processOneContentMessage(
     // decision.action === "contact" - proceed to draft.
 
     // 5. Advance to awaiting_content (CAS: must still be at generating)
-    const awaitResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET
-        status = 'awaiting_content',
-        brain_reasoning = ${decision.reasoning ?? null},
-        updated_at = ${now}
-      WHERE id = ${candidate.id}
-        AND status = 'generating'
-      RETURNING id
-    `);
+    const awaitWon = await storeFor(db).workerContent.markAwaitingContent(
+      candidate.id,
+      decision.reasoning ?? null,
+      now,
+    );
 
-    if (awaitResult.rows.length === 0) {
+    if (!awaitWon) {
       // CAS failed - another actor moved the row.
       return "error";
     }
@@ -469,21 +411,14 @@ export async function processOneContentMessage(
       const bodyText = markdownToText(body_markdown);
       const gateReasoning = `value_gated: ${assessResult.assessment.reasoning}`;
 
-      const gatedResult = await db.execute<{ id: string }>(sql`
-        UPDATE lifecycle_messages
-        SET
-          status = 'value_gated',
-          subject = ${subject},
-          body_html = ${bodyHtml},
-          body_text = ${bodyText},
-          brain_reasoning = ${gateReasoning},
-          updated_at = ${now}
-        WHERE id = ${candidate.id}
-          AND status = 'awaiting_content'
-        RETURNING id
-      `);
+      const gatedWon = await storeFor(db).workerContent.markValueGated(
+        candidate.id,
+        { subject, bodyHtml, bodyText },
+        gateReasoning,
+        now,
+      );
 
-      if (gatedResult.rows.length === 0) {
+      if (!gatedWon) {
         // CAS failed - another actor moved the row.
         return "error";
       }
@@ -501,29 +436,20 @@ export async function processOneContentMessage(
     // If the flow has approval_mode = 'auto', skip pending_approval and go
     // directly to 'approved'. This avoids blocking auto-approved flows on
     // human review while preserving the default require-approval path.
-    const flowRow = await db.execute<{ approval_mode: string | null }>(sql`
-      SELECT approval_mode FROM flows WHERE id = ${candidate.flowId}
-    `);
-    const approvalMode = flowRow.rows[0]?.approval_mode ?? "require";
+    const approvalMode = (await storeFor(db).workerContent.getFlowApprovalMode(candidate.flowId)) ?? "require";
     const targetStatus = approvalMode === "auto" ? "approved" : "pending_approval";
     const approvedAt = approvalMode === "auto" ? now : null;
 
     // 10. Write content and advance to target status (CAS: awaiting_content)
-    const finalResult = await db.execute<{ id: string }>(sql`
-      UPDATE lifecycle_messages
-      SET
-        status = ${targetStatus},
-        subject = ${subject},
-        body_html = ${bodyHtml},
-        body_text = ${bodyText},
-        approved_at = ${approvedAt},
-        updated_at = ${now}
-      WHERE id = ${candidate.id}
-        AND status = 'awaiting_content'
-      RETURNING id
-    `);
+    const finalWon = await storeFor(db).workerContent.completeDraft(
+      candidate.id,
+      targetStatus,
+      { subject, bodyHtml, bodyText },
+      approvedAt,
+      now,
+    );
 
-    if (finalResult.rows.length === 0) {
+    if (!finalWon) {
       // CAS failed - another actor moved the row.
       return "error";
     }
@@ -560,20 +486,9 @@ async function processTemplateMessage(
   now: Date,
 ): Promise<ContentOutcome> {
   // 1. Look up the template by slug + tenant
-  const templateRow = await db.execute<{
-    subject: string;
-    body_html: string;
-    body_text: string | null;
-  }>(sql`
-    SELECT subject, body_html, body_text
-    FROM templates
-    WHERE tenant_id = ${candidate.tenantId}
-      AND slug = ${templateSlug}
-      AND is_active = true
-    LIMIT 1
-  `);
+  const template = await storeFor(db).workerContent.getActiveTemplate(candidate.tenantId, templateSlug);
 
-  if (templateRow.rows.length === 0) {
+  if (template === null) {
     return failPermanently(
       db,
       candidate,
@@ -583,45 +498,16 @@ async function processTemplateMessage(
     );
   }
 
-  const template = templateRow.rows[0]!;
-
   // 2. Build template context from the candidate's contact/tenant/flow data
-  const contactRow = await db.execute<{
-    first_name: string | null;
-    last_name: string | null;
-    email: string | null;
-    external_id: string;
-    properties: Record<string, unknown> | null;
-  }>(sql`
-    SELECT
-      properties->>'first_name' AS first_name,
-      properties->>'last_name' AS last_name,
-      email,
-      external_id,
-      properties
-    FROM contacts
-    WHERE id = ${candidate.contactId}
-      AND tenant_id = ${candidate.tenantId}
-    LIMIT 1
-  `);
+  const contact = await storeFor(db).workerContent.getTemplateContact(candidate.tenantId, candidate.contactId);
 
-  if (contactRow.rows.length === 0) {
+  if (contact === null) {
     return "error"; // Contact not found - integrity issue
   }
 
-  const contact = contactRow.rows[0]!;
+  const tenantName = (await storeFor(db).workerContent.getTenantName(candidate.tenantId)) ?? "Unknown";
 
-  const tenantRow = await db.execute<{ name: string }>(sql`
-    SELECT name FROM tenants WHERE id = ${candidate.tenantId} LIMIT 1
-  `);
-
-  const tenantName = tenantRow.rows[0]?.name ?? "Unknown";
-
-  const flowRow = await db.execute<{ name: string }>(sql`
-    SELECT name FROM flows WHERE id = ${candidate.flowId} LIMIT 1
-  `);
-
-  const flowName = flowRow.rows[0]?.name ?? "Unknown";
+  const flowName = (await storeFor(db).workerContent.getFlowName(candidate.flowId)) ?? "Unknown";
 
   const ctx: TemplateContext = {
     contact: {
@@ -654,30 +540,25 @@ async function processTemplateMessage(
   }
 
   // 4. Determine target status based on flow's approval_mode
-  const approvalRow = await db.execute<{ approval_mode: string | null }>(sql`
-    SELECT approval_mode FROM flows WHERE id = ${candidate.flowId}
-  `);
-  const approvalMode = approvalRow.rows[0]?.approval_mode ?? "require";
+  const approvalMode = (await storeFor(db).workerContent.getFlowApprovalMode(candidate.flowId)) ?? "require";
   const targetStatus = approvalMode === "auto" ? "approved" : "pending_approval";
   const approvedAt = approvalMode === "auto" ? now : null;
 
   // 5. Write rendered content and advance status (CAS: generating)
-  const finalResult = await db.execute<{ id: string }>(sql`
-    UPDATE lifecycle_messages
-    SET
-      status = ${targetStatus},
-      subject = ${renderResult.subject},
-      body_html = ${renderResult.bodyHtml},
-      body_text = ${renderResult.bodyText},
-      approved_at = ${approvedAt},
-      brain_reasoning = ${"template_rendered: " + templateSlug},
-      updated_at = ${now}
-    WHERE id = ${candidate.id}
-      AND status = 'generating'
-    RETURNING id
-  `);
+  const finalWon = await storeFor(db).workerContent.completeTemplate(
+    candidate.id,
+    targetStatus,
+    {
+      subject: renderResult.subject,
+      bodyHtml: renderResult.bodyHtml,
+      bodyText: renderResult.bodyText,
+    },
+    approvedAt,
+    "template_rendered: " + templateSlug,
+    now,
+  );
 
-  if (finalResult.rows.length === 0) {
+  if (!finalWon) {
     return "error"; // CAS failed
   }
 

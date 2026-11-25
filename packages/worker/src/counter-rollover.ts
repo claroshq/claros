@@ -12,8 +12,8 @@
  * are touched, and the UPDATE is a single round-trip regardless of how many
  * contacts qualify.
  */
-import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { storeFor } from "@claros/store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,15 +41,7 @@ export async function processCounterRollover(
   db: Db,
   now: Date,
 ): Promise<CounterRolloverResult> {
-  const result = await db.execute(sql`
-    UPDATE contacts
-    SET
-      event_count_bucket_prev = event_count_bucket_current,
-      event_count_bucket_current = 0,
-      last_counter_reset_at = ${now}
-    WHERE last_counter_reset_at IS NULL
-       OR last_counter_reset_at < ${now}::timestamptz - interval '15 days'
-  `);
+  const contactsRolled = await storeFor(db).workerCounterRollover.rollEngagementCounters(now);
 
-  return { contactsRolled: result.rowCount ?? 0 };
+  return { contactsRolled };
 }

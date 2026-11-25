@@ -11,9 +11,8 @@
  *
  * The processing logic reuses processOneMessage from drain.ts.
  */
-import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { lifecycleMessages } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { DrainMessageJobData } from "@claros/core";
 import { processOneMessage, type DrainCandidate, type MessageOutcome } from "./drain.js";
 import type { TransportResolver } from "./transport.js";
@@ -64,33 +63,13 @@ export async function handleDrainMessage(
 
   // Attempt to claim this single message (CAS: approved -> sending)
   // Also check scheduled_send_at constraint (must be null or <= now)
-  const claimed = await db.execute<{
-    id: string;
-    tenant_id: string;
-    contact_id: string;
-    flow_id: string;
-    flow_step_order: number | null;
-    subject: string | null;
-    body_html: string | null;
-    body_text: string | null;
-    retry_count: number | null;
-  }>(sql`
-    UPDATE lifecycle_messages
-    SET status = 'sending', updated_at = ${now}
-    WHERE id = ${messageId}
-      AND tenant_id = ${tenantId}
-      AND status = 'approved'
-      AND (scheduled_send_at IS NULL OR scheduled_send_at <= ${now})
-    RETURNING id, tenant_id, contact_id, flow_id, flow_step_order,
-              subject, body_html, body_text, retry_count
-  `);
+  const row = await storeFor(db).workerDrainMessage.claimApprovedMessage(tenantId, messageId, now);
 
-  if (claimed.rows.length === 0) {
+  if (row === null) {
     // Already claimed by cron drain, not yet ready, or in a different status
     return { claimed: false };
   }
 
-  const row = claimed.rows[0]!;
   const candidate: DrainCandidate = {
     id: row.id,
     tenantId: row.tenant_id,
