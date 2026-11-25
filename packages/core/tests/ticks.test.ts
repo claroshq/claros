@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dueTicks, QUEUE } from "../src/index.js";
+import { dueTicks, isPeriodicJob, tickName, TICK_INTERVAL_MINUTES, QUEUE } from "../src/index.js";
 
 const at = (iso: string) => new Date(iso);
 
@@ -36,6 +36,35 @@ describe("dueTicks", () => {
       }
     }
     expect(hits).toEqual(["2026-11-25T00:15:00Z"]);
+  });
+
+  it("the alerts digest is due once a day, on the 07:00 UTC tick", () => {
+    const hits: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += 5) {
+        const iso = `2026-11-25T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`;
+        if (dueTicks(at(iso)).includes(QUEUE.ALERTS_DIGEST)) hits.push(iso);
+      }
+    }
+    expect(hits).toEqual(["2026-11-25T07:00:00Z"]);
+  });
+
+  it("every periodic job has an interval for the late-tick check", () => {
+    for (const q of [
+      QUEUE.SCAN,
+      QUEUE.DRAIN,
+      QUEUE.REAP,
+      QUEUE.COUNTER_ROLLOVER,
+      QUEUE.PARTITION_MAINTENANCE,
+      QUEUE.CONTENT_GENERATION,
+      QUEUE.GRID_SNAPSHOT,
+      QUEUE.ALERTS_DIGEST,
+    ]) {
+      expect(isPeriodicJob(q)).toBe(true);
+      expect(TICK_INTERVAL_MINUTES[q]).toBeGreaterThan(0);
+    }
+    expect(isPeriodicJob(QUEUE.DRAIN_MESSAGE)).toBe(false);
+    expect(tickName(QUEUE.CONTENT_GENERATION)).toBe("content-generation");
   });
 
   it("partition maintenance is never due (Postgres only)", () => {

@@ -5,7 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const runJob = vi.fn();
-vi.mock("@claros/worker/handlers", () => ({ runJob: (...args: unknown[]) => runJob(...args) }));
+const recordDeadLetter = vi.fn();
+vi.mock("@claros/worker/handlers", () => ({
+  runJob: (...args: unknown[]) => runJob(...args),
+  recordDeadLetter: (...args: unknown[]) => recordDeadLetter(...args),
+}));
 
 import { consumeDeadJobs, consumeJobs, queueEnqueue, retryDelaySeconds } from "../src/jobs.js";
 import type { JobMessage, Message, MessageBatch } from "../src/bindings.js";
@@ -26,6 +30,7 @@ const deps = { db: {} as never, enqueue: vi.fn() };
 
 beforeEach(() => {
   runJob.mockReset();
+  recordDeadLetter.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -91,11 +96,15 @@ describe("consumeJobs", () => {
 });
 
 describe("consumeDeadJobs", () => {
-  it("logs and acks dead jobs without running them", () => {
-    const dead = message({ name: "claros.compile", data: { flow_id: "f" } }, 4);
-    consumeDeadJobs(batch("claros-jobs-dlq", [dead]));
+  it("logs, records and acks dead jobs without running them", async () => {
+    const dead = message({ name: "claros.compile", data: { flow_id: "f", tenant_id: "t" } }, 4);
+    await consumeDeadJobs(batch("claros-jobs-dlq", [dead]), deps.db);
     expect(runJob).not.toHaveBeenCalled();
     expect(dead.ack).toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("dead job claros.compile"), '{"flow_id":"f"}');
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("dead job claros.compile"),
+      '{"flow_id":"f","tenant_id":"t"}',
+    );
+    expect(recordDeadLetter).toHaveBeenCalledWith(deps.db, "claros.compile", { flow_id: "f", tenant_id: "t" }, 4);
   });
 });

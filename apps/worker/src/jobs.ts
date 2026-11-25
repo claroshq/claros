@@ -3,7 +3,7 @@
  * chain, and the consumers of JOBS and its dead letter queue.
  */
 import type { EnqueueFn } from "@claros/api";
-import { runJob, type JobDeps } from "@claros/worker/handlers";
+import { recordDeadLetter, runJob, type JobDeps } from "@claros/worker/handlers";
 import type { JobMessage, MessageBatch, Queue } from "./bindings.js";
 
 /**
@@ -58,14 +58,14 @@ export async function consumeJobs(batch: MessageBatch<JobMessage>, deps: JobDeps
 
 /**
  * Dead letter queue: jobs that failed on every retry. Logged with their
- * payload and acknowledged; alerting on them is a later addition.
+ * payload, recorded as a dead_letter ops event (an alert mail within one
+ * content tick) and acknowledged. Recording never throws.
  */
-export function consumeDeadJobs(batch: MessageBatch<JobMessage>): void {
+export async function consumeDeadJobs(batch: MessageBatch<JobMessage>, db: JobDeps["db"]): Promise<void> {
   for (const message of batch.messages) {
-    console.error(
-      `[queue] dead job ${message.body?.name ?? "unknown"} after ${message.attempts} attempts:`,
-      JSON.stringify(message.body?.data ?? null),
-    );
+    const name = message.body?.name ?? "unknown";
+    console.error(`[queue] dead job ${name} after ${message.attempts} attempts:`, JSON.stringify(message.body?.data ?? null));
+    await recordDeadLetter(db, name, message.body?.data ?? null, message.attempts);
     message.ack();
   }
 }

@@ -13,6 +13,9 @@
  * auto-approved) -> drain-message -> Resend call with List-Unsubscribe
  * headers -> message 'sent'. Then the cron handler at 00:15 UTC enqueues the
  * periodic jobs due at that tick and they run on D1 without failures.
+ * Alerts: a job on the dead letter queue and 20 bad Resend webhook
+ * signatures each mail the alert recipient once, through the oldest
+ * product's transport, within one content tick.
  *
  * Fixtures are written with the SQLite schema directly (no session login:
  * login areas may still be "not implemented for D1 yet").
@@ -101,7 +104,8 @@ beforeAll(async () => {
       compatibilityDate: compatibilityDate(),
       compatibilityFlags: ["nodejs_compat"],
       d1Databases: { DB: "claros-e2e" },
-      queueProducers: { JOBS: { queueName: "claros-jobs" } },
+      // DLQ: a producer for the dead letter queue, so the test can dead-letter a job directly.
+      queueProducers: { JOBS: { queueName: "claros-jobs" }, DLQ: { queueName: "claros-jobs-dlq" } },
       queueConsumers: {
         "claros-jobs": { maxBatchSize: 10, maxBatchTimeout: 1, maxRetries: 3, deadLetterQueue: "claros-jobs-dlq" },
         "claros-jobs-dlq": { maxBatchSize: 10, maxBatchTimeout: 1 },
@@ -391,6 +395,88 @@ describe("Workers runtime: cron", () => {
     // up as a retry or dead-letter line from the consumer.
     await new Promise((r) => setTimeout(r, 1500));
     expect(logs.filter((l) => l.includes("[queue]"))).toEqual([]);
+  }, 60_000);
+});
+
+describe("Workers runtime: alerts", () => {
+  const RECIPIENT = "ops-e2e@example.com";
+  const alertMails = () =>
+    outbound
+      .filter((c) => c.url === "https://api.resend.com/emails")
+      .map((c) => JSON.parse(c.body) as { to: string | string[]; subject: string; headers?: Record<string, string> })
+      .filter((m) => ([] as string[]).concat(m.to).includes(RECIPIENT));
+  // A 5-minute tick that only runs content generation (and with it the alert tick).
+  // Done when its heartbeat (written after the alert tick) moves.
+  const contentTick = async (iso: string) => {
+    const before = Date.now();
+    const worker = await mf.getWorker();
+    await worker.scheduled({ cron: "*/5 * * * *", scheduledTime: new Date(iso) });
+    await waitFor("the content tick to finish", async () => {
+      const [beat] = await db
+        .select()
+        .from(schema.instanceSettings)
+        .where(eq(schema.instanceSettings.key, "tick.content-generation"));
+      return beat && beat.updatedAt.getTime() >= before ? beat : null;
+    });
+  };
+
+  beforeAll(async () => {
+    await db.insert(schema.instanceSettings).values({ key: "alerts.email", value: RECIPIENT });
+  });
+
+  it("a dead-lettered job is recorded and mailed once", async () => {
+    const dlq = await mf.getQueueProducer("DLQ");
+    await dlq.send({ name: QUEUE.COMPILE, data: { flow_id: randomUUID(), tenant_id: tenantId } });
+    await waitFor("the dead letter to be recorded", async () => {
+      const rows = await db.select().from(schema.opsEvents).where(eq(schema.opsEvents.kind, "dead_letter"));
+      return rows.length > 0 ? rows : null;
+    });
+
+    await contentTick("2026-11-25T10:05:00Z");
+    const mail = await waitFor("the alert mail", async () =>
+      alertMails().find((m) => m.subject.includes(`Job ${QUEUE.COMPILE} failed on every retry`)) ?? null,
+    );
+    // Transactional: no List-Unsubscribe.
+    expect(mail.headers?.["List-Unsubscribe"]).toBeUndefined();
+
+    await contentTick("2026-11-25T10:10:00Z");
+    expect(alertMails().filter((m) => m.subject.includes("failed on every retry"))).toHaveLength(1);
+  }, 60_000);
+
+  it("20 bad Resend webhook signatures alert once", async () => {
+    const hookTenant = randomUUID();
+    await db.insert(schema.tenants).values({ id: hookTenant, name: "Hooks", slug: "workers-e2e-hooks" });
+    const envelope = encrypt(
+      JSON.stringify({ apiKey: "re_fake_hooks", webhookSecret: randomBytes(24).toString("base64") }),
+      parseEncryptionKey(ENCRYPTION_KEY),
+    );
+    await db.insert(schema.transportConfigs).values({
+      tenantId: hookTenant,
+      provider: "resend",
+      config: sql`json(${envelope})`,
+      isActive: true,
+      fromEmail: "hello@hooks.test",
+    });
+    for (let i = 0; i < 20; i++) {
+      const res = await mf.dispatchFetch(`http://localhost/webhooks/resend/${hookTenant}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "svix-id": `msg_${i}`,
+          "svix-timestamp": String(Math.floor(Date.now() / 1000)),
+          "svix-signature": "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        },
+        body: JSON.stringify({ type: "email.opened", data: { email_id: "re_x" } }),
+      });
+      expect(res.status).toBe(400);
+    }
+
+    await contentTick("2026-11-25T10:20:00Z");
+    await waitFor("the webhook alert mail", async () =>
+      alertMails().find((m) => m.subject.includes("Resend webhooks are failing")) ?? null,
+    );
+    await contentTick("2026-11-25T10:25:00Z");
+    expect(alertMails().filter((m) => m.subject.includes("Resend webhooks are failing"))).toHaveLength(1);
   }, 60_000);
 });
 

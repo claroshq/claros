@@ -87,8 +87,11 @@ export interface WorkerDrainQueries {
   deferClaim(messageId: string, sendAt: Date, now: Date): Promise<boolean>;
   /** CAS sending -> suppressed (with status_reason when given); true when this call won. */
   markSuppressed(messageId: string, now: Date, reason?: string): Promise<boolean>;
-  /** Set recipient_address while the message is still 'sending' (CAS); true when this call won. */
-  setRecipientAddress(messageId: string, email: string, now: Date): Promise<boolean>;
+  /**
+   * Set recipient_address (and transport_id when given: the transport about to
+   * send it) while the message is still 'sending' (CAS); true when this call won.
+   */
+  setRecipientAddress(messageId: string, email: string, now: Date, transportId?: string | null): Promise<boolean>;
   /**
    * CAS sending -> sent with sent_at and provider_message_id (and transport_id when given);
    * true when this call won.

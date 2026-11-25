@@ -18,6 +18,7 @@ import {
   MapPin,
   Boxes,
   Tags,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "../../components/page-header.js";
@@ -76,7 +77,10 @@ export default function SettingsLayout() {
   if (products.data?.instance_admin) {
     groups.push({
       label: "Instance",
-      items: [{ to: "/settings/products", label: "Products", icon: Boxes }],
+      items: [
+        { to: "/settings/products", label: "Products", icon: Boxes },
+        { to: "/settings/health", label: "Health", icon: Activity },
+      ],
     });
   }
 

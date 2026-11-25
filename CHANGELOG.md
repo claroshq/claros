@@ -24,6 +24,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 - Cloudflare Email Service transport (`cloudflare`), for transactional mail only: the REST API with an account id and API token, or the Workers `send_email` binding `EMAIL`. A non-transactional message routed to it fails with `status_reason = transport_policy`, and routing refuses it as the default transport (400).
 - SMTP on Cloudflare Workers uses `worker-mailer`.
 - Resend sends carry `reply_to` (transport Reply-To, else the branding Reply-To) and tags `claros_tenant`, `claros_message_id` and `claros_flow`.
+- Operational alerts (G25), on Postgres + Node and on Workers + D1: dead-lettered jobs, job exceptions, late periodic jobs, send error rates and provider authentication errors, approved mail left unsent (no usable transport or no `UNSUBSCRIBE_SIGNING_KEY`), Resend webhook failures and LLM error rates are recorded as events (kept 30 days) and grouped into alerts. Error and critical alerts are mailed within 5 minutes, repeats at most hourly, at most 10 alert mails per hour; a daily digest goes out at 07:00 UTC. Alert mail is transactional and goes through a product's transactional route. Settings `alerts.email` (default: the oldest instance admin), `alerts.enabled` and `alerts.via_product`. `GET /v1/instance/health`, `POST /v1/instance/alerts/:fingerprint/resolve` and `/mute`, and a Settings, Health page for instance admins. See [Alerts and health](docs/guide/ALERTS.md).
 
 ### Changed
 
@@ -35,6 +36,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Upgrade notes
 
+- Migration `0026_ops_alerts` (SQLite `0006`) adds the `ops_events` and `ops_alerts` tables. A new periodic job, `claros.alerts-digest` (daily 07:00 UTC), is scheduled on start. Installs without an alert recipient mail the oldest instance admin once a transport exists; set `alerts.enabled` to `false` to keep alerts on the Health page only.
+- A permanent provider failure now records the provider's error as the message's `status_reason` (`provider_error: ...`), and the drain records the sending transport on the message before the send (`transport_id`), so failed sends are attributed to their transport.
 - Migration `0025_topics_transports` (SQLite `0005`) adds the `topics` and `contact_topics` tables, nullable `flows.topic_id`, `lifecycle_messages.topic_id`, `transport_id` and `status_reason`, and nullable `transport_configs.kind`, `name` and `reply_to`; existing transports get `kind` = their provider. Nothing else changes until topics or a second transport are configured.
 - Two database migrations, applied on boot or with `scripts/migrate.sh`. `0024_claim_tokens` only adds the `claim_tokens` table. `0023_instance_layer` only adds the `memberships` and `instance_settings` tables, new nullable `tenants` columns (`archived_at`, `public_host`, `locale`) and `config_version`, `users.instance_role`, and `api_keys.tenant_id` becomes nullable for future instance keys. It backfills one membership per existing user and the instance admins described above.
 

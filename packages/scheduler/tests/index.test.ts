@@ -103,10 +103,16 @@ describe("startScheduler - registration pattern", () => {
     expect(entry.cron).toBe("*/5 * * * *");
   });
 
+  it("ALERTS_DIGEST is scheduled daily at 07:00 UTC", async () => {
+    await startScheduler(mockBoss as never);
+    expect(schedules.find((s) => s.queue === QUEUE.ALERTS_DIGEST)?.cron).toBe("0 7 * * *");
+  });
+
   it("registers exactly as many schedules as there are cron-triggered queues", async () => {
     await startScheduler(mockBoss as never);
-    // Seven cron schedules: SCAN + DRAIN + REAP + COUNTER_ROLLOVER + PARTITION_MAINTENANCE + CONTENT_GENERATION + GRID_SNAPSHOT.
-    expect(schedules).toHaveLength(7);
+    // Eight cron schedules: SCAN + DRAIN + REAP + COUNTER_ROLLOVER + PARTITION_MAINTENANCE + CONTENT_GENERATION
+    // + GRID_SNAPSHOT + ALERTS_DIGEST.
+    expect(schedules).toHaveLength(8);
   });
 
   it("does NOT call boss.work()", async () => {

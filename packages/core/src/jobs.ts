@@ -173,6 +173,16 @@ export const QUEUE = {
    * Idempotent: re-running on the same day overwrites that day's rows.
    */
   GRID_SNAPSHOT: "claros.grid-snapshot",
+
+  /**
+   * Alerts digest: the daily operational digest mail (open alerts, the last
+   * 24 hours of ops events, sends and failures per product, pending
+   * approvals) and the retention of ops_events (30 days).
+   * Payload: empty.
+   * Handler: packages/worker (alerts.ts).
+   * Schedule: daily at 07:00 UTC (pg-boss "0 7 * * *", Workers: the 07:00 tick).
+   */
+  ALERTS_DIGEST: "claros.alerts-digest",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -287,3 +297,9 @@ export interface DrainMessageJobData {
  * retention-grid cell populations for the current UTC day.
  */
 export type GridSnapshotJobData = Record<string, never>;
+
+/**
+ * ALERTS_DIGEST job: no payload. The worker reads ops_events, ops_alerts and
+ * message counts and mails the digest when there is something to report.
+ */
+export type AlertsDigestJobData = Record<string, never>;

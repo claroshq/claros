@@ -162,8 +162,8 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
       return casFromSending(messageId, { status: "suppressed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) });
     },
 
-    setRecipientAddress(messageId, email, now) {
-      return casFromSending(messageId, { recipientAddress: email, updatedAt: now });
+    setRecipientAddress(messageId, email, now, transportId) {
+      return casFromSending(messageId, { recipientAddress: email, updatedAt: now, ...(transportId ? { transportId } : {}) });
     },
 
     markSent(messageId, providerMessageId, now, transportId) {

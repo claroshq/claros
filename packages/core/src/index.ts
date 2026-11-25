@@ -36,9 +36,12 @@ export {
   type ProcessMessageJobData,
   type DrainMessageJobData,
   type GridSnapshotJobData,
+  type AlertsDigestJobData,
 } from "./jobs.js";
 
-export { dueTicks } from "./ticks.js";
+export { dueTicks, TICK_INTERVAL_MINUTES, TICK_LATE_FACTOR, isPeriodicJob, tickName } from "./ticks.js";
+
+export * from "./alerts.js";
 
 export {
   matchesLifecycleTransition,

@@ -24,11 +24,12 @@
  *   See apps/server/src/main.ts for per-role connection totals.
  */
 import { PgBoss, fromDrizzle } from "pg-boss";
-import type { Job } from "pg-boss";
+import type { JobWithMetadata } from "pg-boss";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { QUEUE } from "@claros/core";
 import { runJob, type JobDeps } from "./handlers.js";
 import { buildTenantTransportResolver } from "./transport-resolver.js";
+import { recordDeadLetter } from "./alerts.js";
 
 export { fromDrizzle };
 export * from "./handlers.js";
@@ -95,21 +96,42 @@ export async function startWorker(boss: PgBoss, db: Db): Promise<void> {
 
   for (const [queue, pollingIntervalSeconds] of POLLING) {
     const jobDeps = queue === QUEUE.DRAIN_MESSAGE ? drainMessageDeps : deps;
-    await boss.work<Record<string, unknown>>(
+    await boss.work(
       queue,
-      { pollingIntervalSeconds },
-      async (jobs: Job<Record<string, unknown>>[]) => {
+      { pollingIntervalSeconds, includeMetadata: true as const },
+      async (jobs: JobWithMetadata<Record<string, unknown>>[]) => {
         if (PERIODIC.has(queue)) {
           // Cron-triggered singleton: one run per batch, the payload is empty.
-          await runJob(queue, jobs[0]?.data ?? {}, jobDeps);
+          await runWithDeadLetter(db, queue, jobs[0], jobs[0]?.data ?? {}, jobDeps);
           return;
         }
         for (const job of jobs) {
           // Throws on failure: pg-boss marks the job failed and retries per retryLimit.
-          await runJob(queue, job.data, jobDeps);
+          await runWithDeadLetter(db, queue, job, job.data, jobDeps);
         }
       },
     );
+  }
+}
+
+/**
+ * Run a job; when it fails on its last attempt (retries exhausted), record a
+ * dead letter ops event before pg-boss marks it failed for good.
+ */
+async function runWithDeadLetter(
+  db: Db,
+  queue: string,
+  job: JobWithMetadata<Record<string, unknown>> | undefined,
+  data: Record<string, unknown>,
+  deps: JobDeps,
+): Promise<void> {
+  try {
+    await runJob(queue, data, deps);
+  } catch (err) {
+    if (job && typeof job.retryLimit === "number" && job.retryCount >= job.retryLimit) {
+      await recordDeadLetter(db, queue, data, job.retryCount + 1, err);
+    }
+    throw err;
   }
 }
 
@@ -122,6 +144,7 @@ const PERIODIC = new Set<string>([
   QUEUE.PARTITION_MAINTENANCE,
   QUEUE.CONTENT_GENERATION,
   QUEUE.GRID_SNAPSHOT,
+  QUEUE.ALERTS_DIGEST,
 ]);
 
 /** work() registration order and polling interval (seconds) per queue. */
@@ -139,4 +162,5 @@ const POLLING: ReadonlyArray<readonly [string, number]> = [
   [QUEUE.PROCESS_MESSAGE, 2],
   [QUEUE.GRID_SNAPSHOT, 30],
   [QUEUE.DRAIN_MESSAGE, 2],
+  [QUEUE.ALERTS_DIGEST, 30],
 ];

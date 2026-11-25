@@ -113,6 +113,16 @@ vi.mock("../src/transport-resolver.js", () => ({
 vi.mock("pg-boss", () => {
   throw new Error("pg-boss must not be imported by @claros/worker/handlers");
 });
+const alerts = vi.hoisted(() => ({
+  recordJobFailure: vi.fn(async () => undefined),
+  recordTickRun: vi.fn(async () => undefined),
+  recordDrainFaults: vi.fn(async () => undefined),
+  checkSendErrors: vi.fn(async () => undefined),
+  recordLlmCalls: vi.fn(async () => undefined),
+  runAlertTick: vi.fn(async () => ({ lateTicks: [], resolved: 0, mailed: 0, storm: false })),
+  runDigest: vi.fn(async () => ({ sent: false, deletedEvents: 0 })),
+}));
+vi.mock("../src/alerts.js", () => alerts);
 vi.mock("@claros/store", () => ({
   storeFor: () => ({ workerIndex: { getAnyTenantSettings: async () => null } }),
 }));
@@ -125,6 +135,7 @@ let deps: JobDeps;
 
 beforeEach(() => {
   calls.length = 0;
+  for (const fn of Object.values(alerts)) fn.mockClear();
   enqueued = [];
   deps = {
     db,
@@ -252,5 +263,72 @@ describe("runJob failures", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(runJob(QUEUE.COMPILE, { flow_id: "f", tenant_id: "t" }, deps)).rejects.toThrow("boom");
     spy.mockRestore();
+  });
+});
+
+describe("runJob alerts", () => {
+  it("a failing job is recorded as an ops event once, then rethrown", async () => {
+    const { handleCompileJob } = await import("../src/compile.js");
+    const boom = new Error("boom");
+    vi.mocked(handleCompileJob).mockRejectedValueOnce(boom);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(runJob(QUEUE.COMPILE, { flow_id: "f", tenant_id: "t" }, deps)).rejects.toThrow("boom");
+    spy.mockRestore();
+    expect(alerts.recordJobFailure).toHaveBeenCalledTimes(1);
+    expect(alerts.recordJobFailure).toHaveBeenCalledWith(db, QUEUE.COMPILE, { flow_id: "f", tenant_id: "t" }, boom);
+    expect(alerts.recordTickRun).not.toHaveBeenCalled();
+  });
+
+  it("periodic jobs record their heartbeat; other jobs do not", async () => {
+    await runJob(QUEUE.REAP, {}, deps);
+    expect(alerts.recordTickRun).toHaveBeenCalledWith(db, QUEUE.REAP);
+    alerts.recordTickRun.mockClear();
+    await runJob(QUEUE.COMPILE, { flow_id: "f", tenant_id: "t" }, deps);
+    expect(alerts.recordTickRun).not.toHaveBeenCalled();
+  });
+
+  it("the content tick runs the alert tick, also when the content work fails", async () => {
+    await runJob(QUEUE.CONTENT_GENERATION, {}, deps);
+    expect(alerts.runAlertTick).toHaveBeenCalledTimes(1);
+
+    const { processContentTick } = await import("../src/content.js");
+    const boom = new Error("content down");
+    vi.mocked(processContentTick).mockRejectedValueOnce(boom);
+    await expect(runJob(QUEUE.CONTENT_GENERATION, {}, deps)).rejects.toThrow("content down");
+    expect(alerts.runAlertTick).toHaveBeenCalledTimes(2);
+    // Recorded before the alert tick, and only once.
+    expect(alerts.recordJobFailure).toHaveBeenCalledTimes(1);
+    expect(alerts.recordJobFailure.mock.invocationCallOrder[0]).toBeLessThan(alerts.runAlertTick.mock.invocationCallOrder[1]!);
+  });
+
+  it("the content tick records LLM calls per product", async () => {
+    const { processContentTick } = await import("../src/content.js");
+    vi.mocked(processContentTick).mockResolvedValueOnce({
+      claimed: 1, advanced: 0, skipped: 0, valueGated: 0, failed: 0, errors: 1,
+      llmCalls: { t1: { calls: 2, errors: 1 } },
+    } as never);
+    await runJob(QUEUE.CONTENT_GENERATION, {}, deps);
+    expect(alerts.recordLlmCalls).toHaveBeenCalledWith(db, "t1", { calls: 2, errors: 1 }, expect.any(Date));
+  });
+
+  it("process-message records its LLM calls", async () => {
+    mocks.processResult = { claimed: true, outcome: "error", llm: { calls: 1, errors: 1 } } as never;
+    await runJob(QUEUE.PROCESS_MESSAGE, { tenant_id: "t", message_id: "m" }, deps);
+    expect(alerts.recordLlmCalls).toHaveBeenCalledWith(db, "t", { calls: 1, errors: 1 });
+  });
+
+  it("the drain records configuration faults and checks send errors", async () => {
+    const { processDrainTick } = await import("../src/drain.js");
+    const faults = [{ tenantId: "t", fault: "no_transport" }];
+    vi.mocked(processDrainTick).mockResolvedValueOnce({ candidatesFetched: 0, configFaults: faults } as never);
+    await runJob(QUEUE.DRAIN, {}, deps);
+    expect(alerts.recordDrainFaults).toHaveBeenCalledWith(db, faults, expect.any(Date));
+    expect(alerts.checkSendErrors).toHaveBeenCalledWith(db, expect.any(Date));
+  });
+
+  it("the alerts digest job runs the digest", async () => {
+    const resolver = vi.fn(async () => null);
+    await runJob(QUEUE.ALERTS_DIGEST, {}, { ...deps, resolveTransport: resolver });
+    expect(alerts.runDigest).toHaveBeenCalledWith(db, { resolveTransport: resolver });
   });
 });
