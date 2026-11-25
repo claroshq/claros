@@ -11,6 +11,8 @@
 export interface ApiFlowRow {
   id: string;
   tenantId: string;
+  /** Config-as-code slug (null for flows created in the dashboard). */
+  slug?: string | null;
   name: string;
   description: string | null;
   priority: number | null;
@@ -59,7 +61,10 @@ export interface ApiFlowPatch {
   topicId?: string | null;
 }
 
-export interface ApiFlowsQueries {
+import type { ContactConditionQueries } from "./shared-conditions.js";
+
+/** Audience lookups (trigger `where`, P5b manual enrollment) come from ContactConditionQueries. */
+export interface ApiFlowsQueries extends ContactConditionQueries {
   /** Insert a flow and return the full row. */
   createFlow(values: {
     tenantId: string;
@@ -128,4 +133,8 @@ export interface ApiFlowsQueries {
   findActiveLlmConfig(tenantId: string): Promise<{ config: string } | null>;
   /** Tenant display name, or null when the tenant does not exist. */
   findTenantName(tenantId: string): Promise<string | null>;
+  /** P5b: one keyset page (by id, after afterId) of the tenant's contact ids. */
+  listContactIdsPage(args: { tenantId: string; afterId: string | null; limit: number }): Promise<string[]>;
+  /** P5b: contacts of the tenant with these external ids (unknown ids are left out). */
+  findContactsByExternalIds(args: { tenantId: string; externalIds: string[] }): Promise<Array<{ id: string; externalId: string }>>;
 }

@@ -160,6 +160,7 @@ export async function handleAdvanceMembership(
         (await storeFor(db).workerAdvanceMembership.getContactTraits({ tenantId, contactId: membership.contactId })) ?? {},
       countSends: (f) =>
         storeFor(db).workerAdvanceMembership.countSends({ tenantId, contactId: membership.contactId, ...f }),
+      lifecycleState: () => storeFor(db).workerAdvanceMembership.lookupLifecycleState({ tenantId, contactId: membership.contactId }),
     }),
     dateUnchanged: dateUnchangedCheck(db, tenantId, membership, flowRow.compiledPlan),
   };

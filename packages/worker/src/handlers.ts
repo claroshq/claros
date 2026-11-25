@@ -39,6 +39,7 @@ import { processReapTick } from "./reap.js";
 import { processCounterRollover } from "./counter-rollover.js";
 import { processPartitionMaintenance } from "./partition-maintenance.js";
 import { processContentTick } from "./content.js";
+import { runApprovalsDigest } from "./approvals-digest.js";
 import type { TransportResolver } from "./transport.js";
 import { buildTenantTransportResolver } from "./transport-resolver.js";
 import { handleAdvanceMembership } from "./advance-membership.js";
@@ -97,6 +98,7 @@ export {
   type TextShellInput,
 } from "@claros/core";
 export { processReapTick } from "./reap.js";
+export { runApprovalsDigest, localDateHour, APPROVALS_DIGEST_HOUR } from "./approvals-digest.js";
 export type { ReapTickResult } from "./reap.js";
 export { processCounterRollover } from "./counter-rollover.js";
 export type { CounterRolloverResult } from "./counter-rollover.js";
@@ -331,6 +333,10 @@ async function runJobInner(name: string, data: unknown, deps: JobDeps): Promise<
         await recordFailureOnce(deps, name, data, err);
       }
       await runAlertTick(db, { resolveTransport: deps.resolveTransport });
+      // P5b: the daily waiting-approvals mail (settings.approvals.daily_digest).
+      await runApprovalsDigest(db, new Date(), { resolveTransport: deps.resolveTransport }).catch((err) =>
+        console.error("[approvals-digest] failed:", err),
+      );
       if (failure) throw failure.err;
       return;
     }
@@ -455,8 +461,13 @@ async function runJobInner(name: string, data: unknown, deps: JobDeps): Promise<
 async function runScan(db: Db): Promise<void> {
   const now = new Date();
 
+  // P5b: archived products are not scanned (no transitions, enrollments or
+  // new messages) until they are unarchived.
+  const tenantIds = await storeFor(db).workerIndex.listActiveTenantIds();
+  if (tenantIds.length === 0) return;
+
   // Phase 1: time-based lifecycle transitions
-  const phase1 = await phaseTimeTransitions(db, now);
+  const phase1 = await phaseTimeTransitions(db, now, tenantIds);
   console.log(
     `[scan] time-transitions: ${phase1.tenantsProcessed} tenants, ` +
       `${phase1.contactsEvaluated} contacts evaluated, ` +
@@ -476,7 +487,7 @@ async function runScan(db: Db): Promise<void> {
 
   // Phase 2b: enroll contacts into segment-triggered flows (retention
   // grid cells). Bounded per flow per run by SEGMENT_ENROLLMENT_CAP.
-  const phase2b = await phaseSegmentEnrollment(db, now);
+  const phase2b = await phaseSegmentEnrollment(db, now, tenantIds);
   if (phase2b.flowsEvaluated > 0) {
     console.log(
       `[scan] segment-enrollment: ${phase2b.flowsEvaluated} segment flows, ` +
@@ -486,7 +497,7 @@ async function runScan(db: Db): Promise<void> {
   }
 
   // Phase 2c: date-property triggers and schedules (G3), and step expiry.
-  const phase2c = await phaseDateEnrollment(db, now);
+  const phase2c = await phaseDateEnrollment(db, now, tenantIds);
   if (phase2c.flowsEvaluated > 0 || phase2c.expiredCancelled > 0) {
     console.log(
       `[scan] date-enrollment: ${phase2c.flowsEvaluated} date flows, ` +
@@ -496,7 +507,7 @@ async function runScan(db: Db): Promise<void> {
   }
 
   // Phase 3: step advancement and message creation
-  const phase3 = await phaseStepAdvancement(db, now);
+  const phase3 = await phaseStepAdvancement(db, now, tenantIds);
   console.log(
     `[scan] step-advancement: ${phase3.tenantsProcessed} tenants, ` +
       `${phase3.membershipsEvaluated} memberships evaluated, ` +
@@ -508,7 +519,7 @@ async function runScan(db: Db): Promise<void> {
 
   // Phase 4: engagement_depth computation for engaged contacts.
   // Runs unconditionally every tick (one aggregate query per tenant).
-  const phase4 = await phaseEngagementDepth(db, now);
+  const phase4 = await phaseEngagementDepth(db, now, tenantIds);
   if (phase4.contactsUpdated > 0) {
     console.log(
       `[scan] engagement-depth: ${phase4.tenantsProcessed} tenants, ` +

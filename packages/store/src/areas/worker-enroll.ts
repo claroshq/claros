@@ -38,5 +38,7 @@ export interface WorkerEnrollQueries {
      * (a second attempt returns reason 'concurrent_enrollment').
      */
     anchorAt?: Date | null;
+    /** P5b: properties of the event that enrolls the contact, kept on the membership ({{event.*}}). */
+    triggerProperties?: Record<string, unknown> | null;
   }): Promise<WorkerEnrollResult[]>;
 }

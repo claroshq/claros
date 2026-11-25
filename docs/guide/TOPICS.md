@@ -18,6 +18,10 @@ The suppression list always wins: a suppressed address (product-wide unsubscribe
 
 A topic is subscribed by default. Clear `default_subscribed` for opt-in topics: a contact then receives that topic's mail only after subscribing.
 
+A topic with `mirror_only` set only mirrors a consent your app keeps elsewhere (a newsletter tool, for example): contacts' statuses for it are kept (identify `topics`, the preference page) and reported by webhooks, but no flow may send on it. Creating or editing a flow on it is refused, and setting `mirror_only` on a topic a flow uses answers 409.
+
+An identify call whose `topics` changes a contact's effective status for a topic emits `contact.subscribed` or `contact.unsubscribed` ([webhooks](WEBHOOKS.md)).
+
 ## Creating topics
 
 In the dashboard: Settings, Topics. Over the API (owner role for writes):
@@ -29,8 +33,8 @@ curl -X POST https://claros.example.com/v1/topics \
 ```
 
 - `GET /v1/topics` lists the product's topics.
-- `POST /v1/topics` creates one: `slug` (1 to 63 characters of `a-z`, `0-9`, `_` and `-`, fixed after creation), `name`, `kind`, optional `description` and `default_subscribed` (default `true`). A duplicate slug answers 409.
-- `PATCH /v1/topics/:id` changes `name`, `kind`, `description` or `default_subscribed`.
+- `POST /v1/topics` creates one: `slug` (1 to 63 characters of `a-z`, `0-9`, `_` and `-`, fixed after creation), `name`, `kind`, optional `description`, `default_subscribed` (default `true`) and `mirror_only` (default `false`). A duplicate slug answers 409.
+- `PATCH /v1/topics/:id` changes `name`, `kind`, `description`, `default_subscribed` or `mirror_only`.
 
 ## Giving a flow a topic
 

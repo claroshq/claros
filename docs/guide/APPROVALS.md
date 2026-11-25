@@ -32,4 +32,10 @@ The dashboard Approvals screen offers all of these. Keyboard: `j`/`k` move throu
 ## Reaching reviewers (v0.8)
 
 - An [admin key](API_KEYS.md) with the `messages` scope can list, approve, reject, edit, regenerate and cancel from your own tools.
-- The `message.pending_approval` [webhook](WEBHOOKS.md) tells you that messages are waiting. It is batched: at most one per product and endpoint per 15 minutes, sent at the end of the window, with `pending_count`, the number of messages waiting at delivery time.
+- The `message.pending_approval` [webhook](WEBHOOKS.md) tells you that messages are waiting. It is batched: at most one per product and endpoint per window (the endpoint's `batch_interval_minutes`, 1 to 1440, default 15), sent at the end of the window, with `pending_count`, the number of messages waiting at delivery time.
+- With `settings.approvals.daily_digest: true` ([config](CONFIG.md#settings)), the product's owners get one mail a day, from 08:00 in the product's timezone (`throttle.tenant_timezone`, else UTC), saying how many drafts wait and linking to the Approvals page. It goes through the product's transactional route (no List-Unsubscribe headers) and is skipped on days nothing waits.
+
+## Value gate and LLM budget (v0.8)
+
+- Every AI draft passes the value gate (the assess step) before it reaches the queue. `settings.brain.assess.enabled: false` turns the gate off for the product; `settings.brain.assess.threshold` (1 to 10) asks the gate for a score as well and holds back drafts that score below it (status `value_gated`, the score in the reasoning).
+- `settings.llm_daily_token_budget` caps the LLM tokens a product uses per UTC day (every call counts: compile, decide, draft, assess, choose, opening line). Once it is spent, messages that need the LLM wait at `pending_generation` with `status_reason = llm_budget` and are drafted after midnight UTC. The Approvals page shows how many drafts wait for the budget. Fixed-content messages without an AI opening line are not affected.

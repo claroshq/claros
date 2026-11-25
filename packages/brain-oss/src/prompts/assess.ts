@@ -53,7 +53,17 @@ export interface AssessPromptContext {
   subject: string;
   /** The markdown body produced by brain.draft(). */
   body_markdown: string;
+  /**
+   * P5b (settings.brain.assess.threshold): ask for a 1-10 score as well; a
+   * draft scoring below the threshold fails the gate.
+   */
+  threshold?: number;
 }
+
+/** Appended to the system prompt when a score threshold is set. */
+export const ASSESS_SCORE_SUFFIX = `
+
+SCORE: also return "score", an integer from 1 (worthless to this contact) to 10 (clearly valuable), in the same JSON object: {"verdict": ..., "score": <1-10>, "reasoning": ...}.`;
 
 // ---------------------------------------------------------------------------
 // System prompt
@@ -150,7 +160,7 @@ export function buildAssessMessages(ctx: AssessPromptContext): ChatMessage[] {
   userParts.push(`\n${body_markdown}`);
 
   return [
-    { role: "system", content: SYSTEM_PROMPT + productSystemSuffix(draftCtx) },
+    { role: "system", content: SYSTEM_PROMPT + (ctx.threshold ? ASSESS_SCORE_SUFFIX : "") + productSystemSuffix(draftCtx) },
     { role: "user", content: userParts.join("\n") },
   ];
 }

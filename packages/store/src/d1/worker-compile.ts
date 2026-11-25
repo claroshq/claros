@@ -3,8 +3,8 @@
  *
  * markCompileReady / markCompileFailed are guarded UPDATE ... RETURNING (CAS pending -> x).
  */
-import { and, eq } from "drizzle-orm";
-import { flows, kbEntries, templates } from "@claros/db/schema-sqlite";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { flows, kbEntries, templates, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { WorkerCompileQueries } from "../areas/worker-compile.js";
 
@@ -33,6 +33,20 @@ export function d1WorkerCompile(db: D1Db): WorkerCompileQueries {
         .from(kbEntries)
         .where(and(eq(kbEntries.tenantId, tenantId), eq(kbEntries.isActive, true)));
       return rows.map((r) => r.title);
+    },
+
+    async listActiveKbCategories(tenantId) {
+      const rows = await db
+        .selectDistinct({ category: kbEntries.category })
+        .from(kbEntries)
+        .where(and(eq(kbEntries.tenantId, tenantId), eq(kbEntries.isActive, true), isNotNull(kbEntries.category)));
+      return rows.map((r) => r.category as string).sort();
+    },
+
+    async getTenantSettings(tenantId) {
+      const rows = await db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+      const v = rows[0]?.settings;
+      return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
     },
 
     async markCompileReady(flowId, plan) {

@@ -12,10 +12,10 @@
  */
 import {
   stepConditionSchema,
+  planExitConditionSchema,
   isContactCondition,
   evaluateContactCondition,
-  type StepCondition,
-  type PlanExitCondition,
+  evaluateConditionTree,
   type ContactConditionContext,
 } from "@claros/core";
 
@@ -93,7 +93,7 @@ export async function evaluateStepCondition(
   eventChecker: EventChecker,
   referenceSince: Date,
 ): Promise<ConditionResult> {
-  // Validate shape against the schema
+  // Validate shape against the schema (a leaf, a combinator or a list).
   const parsed = stepConditionSchema.safeParse(condition);
   if (!parsed.success) {
     return {
@@ -101,39 +101,67 @@ export async function evaluateStepCondition(
       message: `unrecognized condition shape: ${JSON.stringify(condition)}`,
     };
   }
+  return evaluateTreeResult(parsed.data, (leaf) => evaluateStepLeaf(leaf, contact, eventChecker, referenceSince));
+}
 
-  const cond: StepCondition = parsed.data;
+/**
+ * Evaluate a condition tree (combinators and lists, see @claros/core
+ * evaluateConditionTree) whose leaves give ConditionResults. The first
+ * unknown_shape met is the result.
+ */
+async function evaluateTreeResult(
+  cond: unknown,
+  leaf: (c: unknown) => Promise<ConditionResult>,
+): Promise<ConditionResult> {
+  let unknown: ConditionResult | null = null;
+  const r = await evaluateConditionTree(cond, async (c) => {
+    const res = await leaf(c);
+    if (res.outcome === "unknown_shape") {
+      unknown ??= res;
+      return null;
+    }
+    return res.outcome === "pass";
+  });
+  if (r === null) return unknown ?? { outcome: "unknown_shape", message: `unrecognized condition shape: ${JSON.stringify(cond)}` };
+  return r ? { outcome: "pass" } : { outcome: "fail" };
+}
 
-  if (isContactCondition(cond)) {
-    return contactCondition(cond, eventChecker);
+async function evaluateStepLeaf(
+  leaf: unknown,
+  contact: ContactState,
+  eventChecker: EventChecker,
+  referenceSince: Date,
+): Promise<ConditionResult> {
+  if (isContactCondition(leaf)) {
+    return contactCondition(leaf, eventChecker);
   }
+  const cond = (leaf ?? {}) as Record<string, unknown>;
 
   if ("date_unchanged" in cond) {
     const unchanged = eventChecker.dateUnchanged ? await eventChecker.dateUnchanged() : true;
     return unchanged ? { outcome: "pass" } : { outcome: "fail" };
   }
 
-  if ("lifecycle_state" in cond) {
+  if (typeof cond.lifecycle_state === "string") {
     return contact.lifecycleState === cond.lifecycle_state
       ? { outcome: "pass" }
       : { outcome: "fail" };
   }
 
-  if ("lifecycle_state_not" in cond) {
+  if (typeof cond.lifecycle_state_not === "string") {
     return contact.lifecycleState !== cond.lifecycle_state_not
       ? { outcome: "pass" }
       : { outcome: "fail" };
   }
 
-  if ("event_since_step" in cond) {
+  if (typeof cond.event_since_step === "string") {
     const found = await eventChecker.hasEventSince(cond.event_since_step, referenceSince);
     return found ? { outcome: "pass" } : { outcome: "fail" };
   }
 
-  // TypeScript exhaustiveness check - should never reach here
   return {
     outcome: "unknown_shape",
-    message: `unrecognized condition shape: ${JSON.stringify(condition)}`,
+    message: `unrecognized condition shape: ${JSON.stringify(leaf)}`,
   };
 }
 
@@ -155,6 +183,25 @@ export async function evaluateStepCondition(
  * @param membershipEnteredAt - The time the membership was entered (for event lookups)
  */
 export async function evaluatePlanExitCondition(
+  exitCondition: unknown,
+  contact: ContactState,
+  eventChecker: EventChecker,
+  membershipEnteredAt: Date,
+): Promise<ConditionResult> {
+  // P5b: an entry may combine exit leaves with {all}, {any}, {not}.
+  if (exitCondition !== null && typeof exitCondition === "object" && !Array.isArray(exitCondition)) {
+    const keys = Object.keys(exitCondition);
+    if (keys.length === 1 && (keys[0] === "all" || keys[0] === "any" || keys[0] === "not")) {
+      if (!planExitConditionSchema.safeParse(exitCondition).success) {
+        return { outcome: "unknown_shape", message: `unrecognized exit condition shape: ${JSON.stringify(exitCondition)}` };
+      }
+      return evaluateTreeResult(exitCondition, (leaf) => evaluatePlanExitLeaf(leaf, contact, eventChecker, membershipEnteredAt));
+    }
+  }
+  return evaluatePlanExitLeaf(exitCondition, contact, eventChecker, membershipEnteredAt);
+}
+
+async function evaluatePlanExitLeaf(
   exitCondition: unknown,
   contact: ContactState,
   eventChecker: EventChecker,

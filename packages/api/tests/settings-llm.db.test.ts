@@ -171,6 +171,7 @@ beforeEach(async () => {
 async function cleanup() {
   for (const slug of [SLUG_A, SLUG_B]) {
     await db.execute(sql`DELETE FROM llm_configs WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${slug})`);
+    await db.execute(sql`DELETE FROM tenant_daily_usage WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${slug})`);
     await db.execute(sql`DELETE FROM sessions WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${slug})`);
     await db.execute(sql`DELETE FROM users WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${slug})`);
     await db.execute(sql`DELETE FROM tenants WHERE slug = ${slug}`);

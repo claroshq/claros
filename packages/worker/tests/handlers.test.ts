@@ -132,7 +132,12 @@ const alerts = vi.hoisted(() => ({
 }));
 vi.mock("../src/alerts.js", () => alerts);
 vi.mock("@claros/store", () => ({
-  storeFor: () => ({ workerIndex: { getAnyTenantSettings: async () => null } }),
+  storeFor: () => ({ workerIndex: { getAnyTenantSettings: async () => null, listActiveTenantIds: async () => ["t1"] } }),
+}));
+vi.mock("../src/approvals-digest.js", () => ({
+  runApprovalsDigest: vi.fn(async () => ({ sent: [] })),
+  localDateHour: () => ({ date: "2026-01-01", hour: 0 }),
+  APPROVALS_DIGEST_HOUR: 8,
 }));
 
 import { runJob, type JobDeps } from "../src/handlers.js";

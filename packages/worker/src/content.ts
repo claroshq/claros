@@ -53,7 +53,7 @@ import {
   type DecidePromptContext,
   type DraftPromptContext,
 } from "@claros/brain-oss";
-import { resolveTenantProvider } from "./provider-resolver.js";
+import { resolveTenantProvider, overLlmBudget } from "./provider-resolver.js";
 import { assembleContext } from "./context-assembler.js";
 import { applyBudgetForBothPaths, draftContextToDecideContext, checkAssessBudget } from "./context-budget.js";
 import { renderTemplate, renderLenient, type TemplateContext } from "./template-renderer.js";
@@ -95,6 +95,8 @@ export interface ContentTickResult {
   /** Permanent failures terminally marked 'failed' this tick. */
   failed: number;
   errors: number;
+  /** Messages put back because the product's daily LLM budget is spent (P5b). */
+  deferred: number;
   /** LLM calls (decide, draft, assess) and their failures per product this tick. */
   llmCalls: Record<string, LlmCallStats>;
 }
@@ -176,6 +178,7 @@ export async function processContentTick(
     valueGated: 0,
     failed: 0,
     errors: 0,
+    deferred: 0,
     llmCalls: {},
   };
 
@@ -216,6 +219,9 @@ export async function processContentTick(
       case "error":
         stats.errors++;
         break;
+      case "deferred":
+        stats.deferred++;
+        break;
     }
   }
 
@@ -226,7 +232,8 @@ export async function processContentTick(
 // Per-message processing
 // ---------------------------------------------------------------------------
 
-export type ContentOutcome = "advanced" | "skipped" | "value_gated" | "failed" | "error";
+/** deferred (P5b): the product's daily LLM budget is spent; the message waits (status_reason llm_budget). */
+export type ContentOutcome = "advanced" | "skipped" | "value_gated" | "failed" | "error" | "deferred";
 
 /**
  * HTTP statuses from the LLM provider that no retry can fix: the key is
@@ -251,11 +258,13 @@ async function failPermanently(
   reason: string,
   now: Date,
 ): Promise<ContentOutcome> {
+  // P5b: message.failed also on content-generation failures.
   const won = await storeFor(db).workerContent.markFailed(
     candidate.id,
     fromStatus,
     `generation_failed: ${reason}`,
     now,
+    { tenantId: candidate.tenantId, outbox: [{ event: "message.failed", payload: { message_id: candidate.id, reason: "generation_failed" } }] },
   );
   if (!won) {
     return "error";
@@ -315,6 +324,14 @@ export async function processOneContentMessage(
     const info = await storeFor(db).workerContent.getRenderInfo({ tenantId: candidate.tenantId, flowId: candidate.flowId });
     const extras: RenderExtras = { links: productLinks(info?.settings), context: undefined };
     const step = assembled.step;
+    // P5b: {{event.*}}, the properties of the event that enrolled the contact.
+    extras.event = await storeFor(db).workerContent.getMembershipTriggerProperties({ tenantId: candidate.tenantId, membershipId: candidate.membershipId });
+    // P5b: the daily LLM token budget. A message that needs the LLM waits
+    // (back to pending_generation, status_reason llm_budget) until the next UTC day.
+    const needsLlm = step?.type === "choose" || !assembled.templateRef;
+    if (needsLlm && (await overLlmBudget(db, candidate.tenantId, info?.settings, now))) {
+      return deferForBudget(db, candidate, now);
+    }
     /** What this message is drafted from: the step, or the candidate a choose step picked. */
     const eff: {
       context?: CompiledStep["context"];
@@ -324,6 +341,7 @@ export async function processOneContentMessage(
       template_ref?: string;
       brain_instruction?: string;
       action_type: string;
+      allowed_links?: string[];
     } = {
       context: step?.context,
       on_empty: step?.on_empty,
@@ -332,6 +350,7 @@ export async function processOneContentMessage(
       template_ref: assembled.templateRef,
       brain_instruction: assembled.draftCtx.brain_instruction,
       action_type: candidate.brainActionType ?? "nurture_value",
+      allowed_links: step?.allowed_links,
     };
     let chosen = false;
 
@@ -395,6 +414,7 @@ export async function processOneContentMessage(
       eff.template_ref = c.template_ref;
       eff.brain_instruction = c.brain_instruction ?? step.brain_instruction;
       eff.action_type = c.action_type;
+      if (c.allowed_links) eff.allowed_links = c.allowed_links;
       if (r.pick.snapshot) extras.context = r.pick.snapshot;
       if (r.pick.kbEntry) extras.kb = { title: r.pick.kbEntry.title, content: r.pick.kbEntry.content };
       chosen = true;
@@ -451,6 +471,13 @@ export async function processOneContentMessage(
       }
       await storeFor(db).workerContent.saveMessageMeta({ tenantId: candidate.tenantId, messageId: candidate.id, meta: { kbEntryId: entry.id } });
       extras.kb = { title: entry.title, content: entry.content };
+    }
+
+    // P5b: allowed_links narrows the named links (and the link allowlist) to these names.
+    const restricted = eff.allowed_links !== undefined;
+    if (restricted) {
+      const all = extras.links ?? {};
+      extras.links = Object.fromEntries(Object.entries(all).filter(([name]) => eff.allowed_links!.includes(name)));
     }
 
     if (eff.template_ref) {
@@ -518,7 +545,9 @@ export async function processOneContentMessage(
       draftCtx = {
         ...draftCtx,
         ...(Object.keys(extras.links ?? {}).length > 0 ? { allowed_links: extras.links } : {}),
-        ...(textRuleStrings(info?.settings).length > 0 ? { text_rules: textRuleStrings(info?.settings) } : {}),
+        ...(textRuleStrings(info?.settings).length > 0 || step?.single_cta
+          ? { text_rules: [...textRuleStrings(info?.settings), ...(step?.single_cta ? [SINGLE_CTA_RULE] : [])] }
+          : {}),
         ...(guidelines ? { guidelines } : {}),
         ...(info?.locale ? { locale: info.locale } : {}),
       };
@@ -540,6 +569,7 @@ export async function processOneContentMessage(
             flow: { name: info?.flowName ?? "" },
             context: extras.context,
             links: extras.links,
+            event: extras.event,
           }),
         };
       }
@@ -631,13 +661,19 @@ export async function processOneContentMessage(
       }
       // The allowlist is on once the product declares links or tracked
       // domains; without either, drafts keep the v0.6 behaviour.
-      const domains = trackedDomains(info?.settings);
-      const allowlistOn = Object.keys(extras.links ?? {}).length > 0 || domains.length > 0;
+      // allowed_links (P5b): only the step's named links (and context URLs), no other tracked-domain URL.
+      const domains = restricted ? [] : trackedDomains(info?.settings);
+      const allowlistOn = restricted || Object.keys(extras.links ?? {}).length > 0 || domains.length > 0;
       const bad = allowlistOn
         ? findDisallowedLinks(`${subject}\n${body_markdown}`, { links: extras.links ?? {}, trackedDomains: domains, context: extras.context })
         : [];
       if (bad.length > 0) {
         return blocked("link_not_allowed", `link_not_allowed: ${bad.join(", ")}`);
+      }
+      // single_cta (P5b): at most one link (the footer and unsubscribe links are added at send time).
+      if (step?.single_cta) {
+        const links = distinctLinks(`${subject}\n${body_markdown}`);
+        if (links.length > 1) return blocked("single_cta", `single_cta: the draft has ${links.length} links (${links.join(", ")})`);
       }
     }
 
@@ -650,12 +686,12 @@ export async function processOneContentMessage(
     // A 'fail' verdict terminates the message at 'value_gated' (draft preserved
     // for audit). A gate call error leaves the message at 'awaiting_content' for
     // reap - it is NOT marked value_gated. Only a validated 'fail' verdict gates.
-    const assessResult = await assess(provider, {
-      draftCtx,
-      subject,
-      body_markdown,
-    });
-    countCall(assessResult.ok);
+    // P5b: settings.brain.assess: enabled false skips the gate; threshold asks for a score.
+    const assessCfg = assessSettings(info?.settings);
+    const assessResult = assessCfg.enabled
+      ? await assess(provider, { draftCtx, subject, body_markdown, ...(assessCfg.threshold ? { threshold: assessCfg.threshold } : {}) })
+      : ({ ok: true, assessment: { verdict: "pass", reasoning: "value gate disabled" } } as const);
+    if (assessCfg.enabled) countCall(assessResult.ok);
 
     if (!assessResult.ok) {
       if (isPermanentLlmFailure(assessResult.statusCode)) {
@@ -777,6 +813,7 @@ async function processTemplateMessage(
   // G29: a {{brain.opening}} slot gets one AI-drafted opening line; fixed
   // templates without the slot make no LLM call.
   if (ai && OPENING_SLOT.test(`${template.subject}\n${template.body_html}\n${template.body_text ?? ""}`)) {
+    if (await overLlmBudget(db, candidate.tenantId, ai.settings, now)) return deferForBudget(db, candidate, now);
     const providerResult = await resolveTenantProvider(db, candidate.tenantId);
     if (!providerResult.ok) return failPermanently(db, candidate, "generating", providerResult.reason, now);
     const r = await draftOpening(providerResult.provider, { ctx: ai.draftCtx, templateSubject: template.subject, templateBody: template.body_html });
@@ -816,6 +853,7 @@ async function processTemplateMessage(
     links: extras.links,
     brain: extras.brain,
     kb: extras.kb,
+    event: extras.event,
   };
 
   // 3. Render the template
@@ -871,6 +909,31 @@ export interface RenderExtras {
   links?: Record<string, string>;
   brain?: { opening?: string };
   kb?: { title: string; content: string };
+  /** P5b: the triggering event's properties ({{event.*}}). */
+  event?: Record<string, unknown> | null;
+}
+
+/** Writing rule given to the model for single_cta steps (P5b). */
+export const SINGLE_CTA_RULE = "Use at most one link in the whole email: a single call to action.";
+
+/** Distinct http(s) URLs in a draft (markdown links and bare URLs), trailing punctuation dropped. */
+export function distinctLinks(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/https?:\/\/[^\s)<>"'\]]+/g)) out.add(m[0].replace(/[.,;:!?]+$/, ""));
+  return [...out];
+}
+
+/** settings.brain.assess (P5b): enabled (default true) and an optional score threshold (1-10). */
+export function assessSettings(settings: Record<string, unknown> | null | undefined): { enabled: boolean; threshold: number | null } {
+  const a = (settings?.brain as { assess?: { enabled?: unknown; threshold?: unknown } } | undefined)?.assess;
+  const threshold = typeof a?.threshold === "number" && a.threshold >= 1 && a.threshold <= 10 ? Math.round(a.threshold) : null;
+  return { enabled: a?.enabled !== false, threshold };
+}
+
+/** Put a claimed message back to pending_generation with status_reason llm_budget (P5b). */
+async function deferForBudget(db: Db, candidate: ContentCandidate, now: Date): Promise<ContentOutcome> {
+  const won = await storeFor(db).workerContent.releaseForBudget(candidate.id, now);
+  return won ? "deferred" : "error";
 }
 
 /** Most characters of settings.brain.guidelines given to the model (about 3,000 tokens). */
@@ -900,6 +963,6 @@ function queueEvents(candidate: ContentCandidate, targetStatus: string, now: Dat
   const batch = pendingApprovalBatch(now);
   return {
     tenantId: candidate.tenantId,
-    outbox: [{ event: "message.pending_approval", payload: { message_id: candidate.id }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt }],
+    outbox: [{ event: "message.pending_approval", payload: { message_id: candidate.id }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt, batched: true }],
   };
 }

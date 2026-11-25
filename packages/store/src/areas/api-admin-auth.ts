@@ -21,4 +21,11 @@ export interface ApiAdminAuthQueries {
    * keys never match.
    */
   findActiveAdminKeyByHash(keyHash: string): Promise<ActiveAdminKeyRow | null>;
+  /**
+   * The non-revoked instance key (kind 'instance', no product) with this
+   * SHA-256 hash, or null. Admin and ingestion keys never match.
+   */
+  findActiveInstanceKeyByHash(keyHash: string): Promise<{ id: string; scopes: string[] } | null>;
+  /** The product with this slug (id, slug, archived_at), or null. */
+  findProductBySlug(slug: string): Promise<{ id: string; slug: string; archivedAt: Date | null } | null>;
 }

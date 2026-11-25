@@ -26,7 +26,7 @@ export interface ProcessMessageResult {
   /** Whether the message was claimed (was still at pending_generation). */
   claimed: boolean;
   /** Outcome from content processing, if claimed. */
-  outcome?: "advanced" | "skipped" | "value_gated" | "failed" | "error";
+  outcome?: "advanced" | "skipped" | "value_gated" | "failed" | "error" | "deferred";
   /** LLM calls made for the message, if claimed. */
   llm?: LlmCallStats;
 }

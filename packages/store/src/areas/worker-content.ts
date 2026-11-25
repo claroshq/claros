@@ -139,6 +139,10 @@ export interface WorkerContentQueries extends ContactConditionQueries {
   ): Promise<boolean>;
   /** CAS generating -> skipped with brain_reasoning; true when this call won. */
   markSkipped(messageId: string, reasoning: string, now: Date): Promise<boolean>;
+  /** P5b: generating -> pending_generation with status_reason 'llm_budget' (CAS); the daily LLM budget is spent. */
+  releaseForBudget(messageId: string, now: Date): Promise<boolean>;
+  /** P5b: properties of the event that enrolled the membership ({{event.*}}), or null. */
+  getMembershipTriggerProperties(input: { tenantId: string; membershipId: string }): Promise<Record<string, unknown> | null>;
   /** CAS generating -> awaiting_content with brain_reasoning; true when this call won. */
   markAwaitingContent(messageId: string, reasoning: string | null, now: Date): Promise<boolean>;
   /** CAS awaiting_content -> value_gated, storing the draft and reasoning; true when this call won. */

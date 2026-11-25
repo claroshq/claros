@@ -7,12 +7,14 @@
 import { eq, and, inArray, gt, lte, isNotNull, sql } from "drizzle-orm";
 import { contacts, flows, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import { d1ContactConditions } from "./contact-conditions.js";
 import type { WorkerScanSegmentEnrollmentQueries } from "../areas/worker-scan-segment-enrollment.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function d1WorkerScanSegmentEnrollment(db: D1Db): WorkerScanSegmentEnrollmentQueries {
   return {
+    ...d1ContactConditions(db),
     async listTenants(tenantIds) {
       if (tenantIds && tenantIds.length > 0) {
         const out: { id: string; settings: unknown }[] = [];
@@ -68,6 +70,28 @@ export function d1WorkerScanSegmentEnrollment(db: D1Db): WorkerScanSegmentEnroll
             tenure.maxDays === null ? undefined : gt(contacts.firstSeenAt, ago(tenure.maxDays)),
             lte(contacts.lastSeenAt, ago(recency.minDays)),
             recency.maxDays === null ? undefined : gt(contacts.lastSeenAt, ago(recency.maxDays)),
+            sql`NOT EXISTS (
+              SELECT 1 FROM flow_memberships fm
+              WHERE fm.contact_id = ${contacts.id}
+                AND fm.flow_id = ${flowId}
+                AND fm.status = 'active'
+            )`,
+            afterId === null ? undefined : gt(contacts.id, afterId),
+          ),
+        )
+        .orderBy(contacts.id)
+        .limit(limit);
+    },
+
+    async listStateContactsPage({ tenantId, flowId, states, depths, afterId, limit }) {
+      return db
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.tenantId, tenantId),
+            states && states.length > 0 ? inArray(contacts.lifecycleState, states) : undefined,
+            depths && depths.length > 0 ? inArray(contacts.engagementDepth, depths) : undefined,
             sql`NOT EXISTS (
               SELECT 1 FROM flow_memberships fm
               WHERE fm.contact_id = ${contacts.id}

@@ -4,7 +4,7 @@
  *   GET   /v1/topics        list the product's topics (member)
  *   POST  /v1/topics        create a topic (owner)
  *                           { slug, name, kind, description?, default_subscribed? }
- *   PATCH /v1/topics/:id    update name, kind, description, default_subscribed (owner);
+ *   PATCH /v1/topics/:id    update name, kind, description, default_subscribed, mirror_only (owner);
  *                           the slug is fixed after creation
  *
  * kind: marketing | lifecycle | transactional. A flow with a topic sends
@@ -34,6 +34,7 @@ const createTopicSchema = z.object({
   kind: kindSchema,
   description: z.string().max(2000).nullable().optional(),
   default_subscribed: z.boolean().optional(),
+  mirror_only: z.boolean().optional(),
 });
 
 const updateTopicSchema = z
@@ -42,6 +43,7 @@ const updateTopicSchema = z
     kind: kindSchema.optional(),
     description: z.string().max(2000).nullable().optional(),
     default_subscribed: z.boolean().optional(),
+  mirror_only: z.boolean().optional(),
   })
   .strict();
 
@@ -53,6 +55,7 @@ export function serializeTopic(row: TopicRow) {
     kind: row.kind,
     description: row.description,
     default_subscribed: row.defaultSubscribed,
+    mirror_only: row.mirrorOnly,
     created_at: row.createdAt,
   };
 }
@@ -88,6 +91,7 @@ export default function topicsRoutes() {
       kind: body.kind,
       description: body.description ?? null,
       defaultSubscribed: body.default_subscribed ?? true,
+      mirrorOnly: body.mirror_only ?? false,
     });
     if (!row) return c.json({ error: `A topic with slug "${body.slug}" already exists.` }, 409);
     return c.json({ topic: serializeTopic(row) }, 201);
@@ -100,6 +104,14 @@ export default function topicsRoutes() {
     if (!parsed.success) return validationError(c, parsed.error.issues);
     const db: Db = c.var.db;
     const body = parsed.data;
+    if (body.mirror_only === true) {
+      // A mirror-only topic carries no mail: no flow (other than archived ones) may use it.
+      const flows = await storeFor(db).apiFlows.listFlows({ tenantId: c.var.tenant!.id, includeArchived: false });
+      const users = flows.filter((f) => (f as { topicId?: string | null }).topicId === id.toLowerCase());
+      if (users.length > 0) {
+        return c.json({ error: `A mirror-only topic carries no mail; flows use this topic: ${users.map((f) => f.slug ?? f.name).join(", ")}.` }, 409);
+      }
+    }
     const row = await storeFor(db).apiTopics.updateTopic({
       tenantId: c.var.tenant!.id,
       id: id.toLowerCase(),
@@ -108,6 +120,7 @@ export default function topicsRoutes() {
         ...(body.kind !== undefined ? { kind: body.kind } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
         ...(body.default_subscribed !== undefined ? { defaultSubscribed: body.default_subscribed } : {}),
+        ...(body.mirror_only !== undefined ? { mirrorOnly: body.mirror_only } : {}),
       },
     });
     if (!row) return c.json({ error: "Topic not found." }, 404);

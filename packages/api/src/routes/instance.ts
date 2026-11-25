@@ -8,6 +8,14 @@
  *                                                  periodic job, failed-job count, alert settings
  *   POST /v1/instance/alerts/:fingerprint/resolve  -> { alert }
  *   POST /v1/instance/alerts/:fingerprint/mute     { hours } -> { alert }
+ *   GET  /v1/instance/keys                         instance keys (no raw values)
+ *   POST /v1/instance/keys                         { label?, scopes } -> 201, raw key ONCE
+ *   POST /v1/instance/keys/:id/revoke              revoke (idempotent)
+ *   DELETE /v1/instance/people/:email              erase the person in every product
+ *
+ * GET /v1/instance and /health also accept an instance key with
+ * instance:read; DELETE /people/:email one with people:erase. Instance keys
+ * are managed by instance admin sessions only.
  *
  * Instance settings are key/value JSON shared by every product of the
  * instance. Users are listed with their home product and memberships.
@@ -24,14 +32,25 @@ import {
   TICK_LATE_FACTOR,
   tickName,
 } from "@claros/core";
-import { storeFor, type OpsAlertRow, type OpsEventRow } from "@claros/store";
+import { storeFor, type InstanceKeyRow, type OpsAlertRow, type OpsEventRow } from "@claros/store";
+import { createHash, randomBytes } from "node:crypto";
 import { createRouter, parseBody, requireInstanceAdmin } from "../http/router.js";
+import { INSTANCE_SCOPES, KEY_PREFIX, requireInstanceAdminOrKey } from "../http/admin-auth.js";
 import type { Db } from "../plugins/db.js";
 
 /** Setting keys: lowercase letters, digits, dot, underscore, hyphen; 1 to 64 characters. */
 const KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 const putSchema = z.object({ value: z.unknown() }).strict();
+
+const createKeySchema = z
+  .object({
+    label: z.string().max(120).optional(),
+    scopes: z.array(z.enum(INSTANCE_SCOPES)).min(1).max(INSTANCE_SCOPES.length),
+  })
+  .strict();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const muteSchema = z.object({ hours: z.number().int().min(1).max(24 * 30) }).strict();
 
@@ -69,7 +88,7 @@ export default function instanceRoutes() {
   const app = createRouter();
   const body = parseBody();
 
-  app.get("/", body, requireInstanceAdmin, async (c) => {
+  app.get("/", body, requireInstanceAdminOrKey("instance:read"), async (c) => {
     const db: Db = c.var.db;
     const [settings, users] = await Promise.all([
       storeFor(db).apiInstance.listSettings(),
@@ -90,7 +109,7 @@ export default function instanceRoutes() {
     });
   });
 
-  app.get("/health", body, requireInstanceAdmin, async (c) => {
+  app.get("/health", body, requireInstanceAdminOrKey("instance:read"), async (c) => {
     const db: Db = c.var.db;
     const store = storeFor(db);
     const now = new Date();
@@ -162,6 +181,59 @@ export default function instanceRoutes() {
     return c.json({ alert: alertJson(alert, await productMap(db), now) });
   });
 
+  app.get("/keys", body, requireInstanceAdminOrKey(), async (c) => {
+    const db: Db = c.var.db;
+    const rows = await storeFor(db).apiInstance.listInstanceKeys();
+    return c.json({ keys: rows.map(instanceKeyJson), scopes: INSTANCE_SCOPES });
+  });
+
+  app.post("/keys", body, requireInstanceAdminOrKey(), async (c) => {
+    const parsed = createKeySchema.safeParse(c.var.body);
+    if (!parsed.success) {
+      return c.json(
+        { error: "Validation failed", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })), scopes: INSTANCE_SCOPES },
+        400,
+      );
+    }
+    const raw = KEY_PREFIX.instance + randomBytes(32).toString("base64url");
+    const row = await storeFor(c.var.db).apiInstance.createInstanceKey({
+      keyHash: createHash("sha256").update(raw).digest("hex"),
+      prefix: raw.slice(0, 8),
+      label: parsed.data.label ?? null,
+      scopes: [...new Set(parsed.data.scopes)],
+      now: new Date(),
+    });
+    return c.json({ key: raw, ...instanceKeyJson(row) }, 201);
+  });
+
+  app.post("/keys/:id/revoke", body, requireInstanceAdminOrKey(), async (c) => {
+    const id = c.req.param("id")!;
+    if (!UUID_RE.test(id)) return c.json({ error: "Key not found." }, 404);
+    const row = await storeFor(c.var.db).apiInstance.revokeInstanceKey({ id: id.toLowerCase(), now: new Date() });
+    if (!row) return c.json({ error: "Key not found." }, 404);
+    return c.json({ success: true });
+  });
+
+  /**
+   * DELETE /v1/instance/people/:email
+   * Erase the person in every product: each product's contact with this
+   * email (ignoring case) is erased as DELETE /v1/contacts/:ref does
+   * (events, memberships, messages, topic statuses; suppressions stay).
+   */
+  app.delete("/people/:email", body, requireInstanceAdminOrKey("people:erase"), async (c) => {
+    const email = decodeURIComponent(c.req.param("email")!).trim();
+    if (!EMAIL_PATTERN.test(email)) return c.json({ error: "Not an email address." }, 400);
+    const db: Db = c.var.db;
+    const people = await storeFor(db).apiInstance.findPeopleByEmail(email);
+    const erased: Array<{ product: string; contact_id: string; external_id: string }> = [];
+    for (const p of people) {
+      if (await storeFor(db).apiContacts.eraseContact({ tenantId: p.tenantId, contactId: p.contactId })) {
+        erased.push({ product: p.tenantSlug, contact_id: p.contactId, external_id: p.externalId });
+      }
+    }
+    return c.json({ erased, count: erased.length });
+  });
+
   app.put("/settings/:key", body, requireInstanceAdmin, async (c) => {
     const key = c.req.param("key")!;
     if (!KEY_PATTERN.test(key)) {
@@ -180,6 +252,19 @@ export default function instanceRoutes() {
   });
 
   return app;
+}
+
+function instanceKeyJson(k: InstanceKeyRow) {
+  return {
+    id: k.id,
+    kind: "instance",
+    prefix: k.prefix,
+    label: k.label,
+    scopes: k.scopes,
+    last_used_at: k.lastUsedAt?.toISOString() ?? null,
+    created_at: k.createdAt?.toISOString() ?? null,
+    revoked_at: k.revokedAt?.toISOString() ?? null,
+  };
 }
 
 type ProductRef = { id: string; slug: string; name: string };

@@ -36,5 +36,12 @@ export function d1ContactConditions(db: D1Db): ContactConditionQueries {
       `);
       return Number(rows[0]?.n ?? 0);
     },
+
+    async lookupLifecycleState({ tenantId, contactId }) {
+      const rows = await db.all<{ lifecycle_state: string }>(sql`
+        SELECT lifecycle_state FROM contacts WHERE id = ${contactId} AND tenant_id = ${tenantId}
+      `);
+      return rows[0]?.lifecycle_state ?? null;
+    },
   };
 }

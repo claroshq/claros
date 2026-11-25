@@ -14,6 +14,10 @@
  *   secret      - server-side ingestion. Prefix clr_sk_.
  *   admin       - management API key of the product (G1), with scopes.
  *                 Prefix clr_ak_. Owner only (create, update, revoke).
+ *
+ * An instance key with the keys:write scope (item 11) may list the
+ * product's keys and create, update and revoke its admin keys; the product
+ * is the one named by X-Claros-Product or ?product=.
  * Keys created before the clr_ prefixes (cl_pub_, cl_live_) keep working.
  *
  * Only the SHA-256 hash of a key is stored. The raw value is returned by
@@ -27,7 +31,7 @@
  * partition.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { RoleRouter } from "../http/router.js";
+import { RoleRouter, allowInstanceKey } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor } from "@claros/store";
@@ -129,7 +133,7 @@ export default function ingestionRoutes() {
    * GET /v1/ingestion/keys
    * All keys for the tenant, active and revoked, oldest first.
    */
-  r.get("/keys", "member", async (c) => {
+  r.get("/keys", "member", allowInstanceKey("keys:write"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const rows = await storeFor(db).apiIngestion.listKeys(tenantId);
@@ -140,13 +144,16 @@ export default function ingestionRoutes() {
    * POST /v1/ingestion/keys
    * Create a key. The response includes `key`, the raw secret, exactly once.
    */
-  r.post("/keys", "member", async (c) => {
+  r.post("/keys", "member", allowInstanceKey("keys:write"), async (c) => {
     const parsed = createKeySchema.safeParse(c.var.body);
     if (!parsed.success) {
       return validationError(c, parsed.error.issues);
     }
     const { kind, label, allowed_origins, scopes } = parsed.data;
 
+    if (c.var.tenant!.apiKeyId && kind !== "admin") {
+      return c.json({ error: "Instance keys manage admin keys only." }, 403);
+    }
     if (kind !== "publishable" && allowed_origins && allowed_origins.length > 0) {
       return c.json({ error: "allowed_origins applies to publishable keys only." }, 400);
     }
@@ -185,7 +192,7 @@ export default function ingestionRoutes() {
    * Update label and/or allowed_origins. allowed_origins is publishable-only.
    * A key belonging to another tenant returns 404.
    */
-  r.patch("/keys/:id", "member", async (c) => {
+  r.patch("/keys/:id", "member", allowInstanceKey("keys:write"), async (c) => {
     const params = { id: c.req.param("id")! };
     const parsed = updateKeySchema.safeParse(c.var.body ?? {});
     if (!parsed.success) {
@@ -202,6 +209,9 @@ export default function ingestionRoutes() {
 
     if (existing.kind === "admin" && c.var.tenant!.userRole !== "owner") {
       return c.json({ error: "Forbidden: only owners manage admin keys." }, 403);
+    }
+    if (c.var.tenant!.apiKeyId && existing.kind !== "admin") {
+      return c.json({ error: "Instance keys manage admin keys only." }, 403);
     }
 
     const updates: { label?: string | null; allowedOrigins?: string[]; scopes?: string[] } = {};
@@ -232,7 +242,7 @@ export default function ingestionRoutes() {
    * POST /v1/ingestion/keys/:id/revoke
    * Sets revoked_at. Idempotent: revoking an already-revoked key returns 200.
    */
-  r.post("/keys/:id/revoke", "member", async (c) => {
+  r.post("/keys/:id/revoke", "member", allowInstanceKey("keys:write"), async (c) => {
     const params = { id: c.req.param("id")! };
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
@@ -244,6 +254,9 @@ export default function ingestionRoutes() {
     const kind = await storeFor(db).apiIngestion.findKeyKind(tenantId, params.id);
     if (kind?.kind === "admin" && c.var.tenant!.userRole !== "owner") {
       return c.json({ error: "Forbidden: only owners manage admin keys." }, 403);
+    }
+    if (c.var.tenant!.apiKeyId && kind?.kind !== "admin") {
+      return c.json({ error: "Instance keys manage admin keys only." }, 403);
     }
 
     if (existing.revokedAt === null) {

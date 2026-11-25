@@ -102,6 +102,7 @@ async function attemptEnrollment(
   now: Date,
   endpoints: OutboxEndpoints = [],
   anchorAt: Date | null = null,
+  triggerProperties: Record<string, unknown> | null = null,
 ): Promise<WorkerEnrollResult> {
   // G5: flow.enrolled after the guarded insert, flow.exited for the evicted
   // membership, both in the insert's batch (the enrolled event is guarded by
@@ -124,7 +125,7 @@ async function attemptEnrollment(
   if (suppressed) return { enrolled: false, reason: "suppressed" };
 
   if (flow.flowClass !== "nurture") {
-    // Critical class: no concurrency limit.
+    // Critical and scheduled classes: no concurrency limit.
     if (anchorAt === null && !(await reentryAllowed(db, contactId, flow, now))) {
       return { enrolled: false, reason: "reentry_blocked" };
     }
@@ -139,6 +140,7 @@ async function attemptEnrollment(
         status: "active",
         enteredAt: now,
         anchorAt,
+        triggerProperties,
       })
       .onConflictDoNothing()
       .returning({ id: flowMemberships.id });
@@ -203,12 +205,14 @@ async function attemptEnrollment(
   // uq_flow_membership_active backstop.
   // insert().select(sql) lists every flow_memberships column in schema order:
   // id, tenant_id, contact_id, flow_id, current_step, status, entered_at,
-  // completed_at, exited_at, exit_reason, condition_error, anchor_at.
+  // completed_at, exited_at, exit_reason, condition_error, anchor_at,
+  // trigger_properties.
   const insert = db
     .insert(flowMemberships)
     .select(sql`
       SELECT ${membershipId}, ${tenantId}, ${contactId}, ${flow.id}, 1, 'active', ${now.getTime()},
-             NULL, NULL, NULL, NULL, ${anchorAt ? anchorAt.getTime() : null}
+             NULL, NULL, NULL, NULL, ${anchorAt ? anchorAt.getTime() : null},
+             ${triggerProperties ? JSON.stringify(triggerProperties) : null}
       WHERE NOT EXISTS (${activeNurtureExists(contactId)})
     `)
     .onConflictDoNothing()
@@ -226,18 +230,19 @@ async function attemptEnrollment(
 
 export function d1WorkerEnroll(db: D1Db): WorkerEnrollQueries {
   return {
-    async enrollContactInFlows({ contactId, tenantId, candidateFlows, now, anchorAt = null }) {
+    async enrollContactInFlows({ contactId, tenantId, candidateFlows, now, anchorAt = null, triggerProperties = null }) {
       if (candidateFlows.length === 0) return [];
 
       const sorted = sortByPriority(candidateFlows);
       const results: WorkerEnrollResult[] = [];
-      const criticalFlows = sorted.filter((f) => f.flowClass === "critical");
+      // Concurrent classes (critical, scheduled) never take the nurture slot.
+      const criticalFlows = sorted.filter((f) => f.flowClass !== "nurture");
       const nurtureFlows = sorted.filter((f) => f.flowClass === "nurture");
       const suppressed = await isSuppressed(db, tenantId, contactId);
       const endpoints = await d1OutboxEndpoints(db, tenantId, [{ event: "flow.enrolled", payload: {} }]);
 
       for (const flow of criticalFlows) {
-        results.push(await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now, endpoints, anchorAt));
+        results.push(await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now, endpoints, anchorAt, triggerProperties));
       }
 
       let nurtureEnrolled = false;
@@ -246,7 +251,7 @@ export function d1WorkerEnroll(db: D1Db): WorkerEnrollQueries {
           results.push({ enrolled: false, reason: "nurture_concurrency:higher_priority_enrolled" });
           continue;
         }
-        const result = await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now, endpoints, anchorAt);
+        const result = await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now, endpoints, anchorAt, triggerProperties);
         results.push(result);
         if (result.enrolled) nurtureEnrolled = true;
         if (!result.enrolled && result.reason.startsWith("nurture_concurrency:existing_priority")) {

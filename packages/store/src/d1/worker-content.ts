@@ -10,7 +10,7 @@
  * Every CAS is a guarded UPDATE ... WHERE id = ? AND status = ? RETURNING id.
  */
 import { and, eq, sql } from "drizzle-orm";
-import { contacts, flows, lifecycleMessages, templates, tenants, kbEntries } from "@claros/db/schema-sqlite";
+import { contacts, flows, flowMemberships, lifecycleMessages, templates, tenants, kbEntries } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
 import { d1ContactConditions } from "./contact-conditions.js";
@@ -102,8 +102,8 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
       return rows.map((r) => r.tenantId);
     },
 
-    markFailed(messageId, fromStatus, reasoning, now) {
-      return cas(messageId, fromStatus, { status: "failed", brainReasoning: reasoning, updatedAt: now });
+    markFailed(messageId, fromStatus, reasoning, now, events) {
+      return cas(messageId, fromStatus, { status: "failed", brainReasoning: reasoning, updatedAt: now }, events, now);
     },
 
     markSkipped(messageId, reasoning, now) {
@@ -111,7 +111,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
     },
 
     markAwaitingContent(messageId, reasoning, now) {
-      return cas(messageId, "generating", { status: "awaiting_content", brainReasoning: reasoning, updatedAt: now });
+      return cas(messageId, "generating", { status: "awaiting_content", brainReasoning: reasoning, statusReason: sql`NULLIF(status_reason, 'llm_budget')` as unknown as string, updatedAt: now });
     },
 
     markValueGated(messageId, { subject, bodyHtml, bodyText }, reasoning, now) {
@@ -144,8 +144,23 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         bodyText,
         approvedAt,
         brainReasoning: reasoning,
+        statusReason: sql`NULLIF(status_reason, 'llm_budget')` as unknown as string,
         updatedAt: now,
       }, events, now);
+    },
+
+    releaseForBudget(messageId, now) {
+      return cas(messageId, "generating", { status: "pending_generation", statusReason: "llm_budget", updatedAt: now });
+    },
+
+    async getMembershipTriggerProperties({ tenantId, membershipId }) {
+      const rows = await db
+        .select({ p: flowMemberships.triggerProperties })
+        .from(flowMemberships)
+        .where(and(eq(flowMemberships.tenantId, tenantId), eq(flowMemberships.id, membershipId)))
+        .limit(1);
+      const p = rows[0]?.p;
+      return p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : null;
     },
 
     async getFlowApprovalMode(flowId) {

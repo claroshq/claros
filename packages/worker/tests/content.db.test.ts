@@ -55,6 +55,7 @@ vi.mock("@claros/brain-oss", async () => {
 
 vi.mock("../src/provider-resolver.js", () => ({
   resolveTenantProvider: (...args: unknown[]) => mockResolveTenantProvider(...args),
+  overLlmBudget: async () => false,
 }));
 
 // Import AFTER mocks are set up

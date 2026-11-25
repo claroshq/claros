@@ -223,6 +223,21 @@ export interface TriggerCheckJobData {
   tenant_id: string;
   contact_id: string;
   event_name: string;
+  /** P5b: the event's properties, kept on the membership for {{event.*}} (absent on older jobs). */
+  event_properties?: Record<string, unknown> | null;
+}
+
+/** Largest event property object kept on a membership ({{event.*}}), in JSON characters. */
+export const MAX_TRIGGER_PROPERTIES_CHARS = 16_384;
+
+/** The event's properties when they are a JSON object of bounded size, else null. */
+export function boundedEventProperties(p: unknown): Record<string, unknown> | null {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+  try {
+    return JSON.stringify(p).length <= MAX_TRIGGER_PROPERTIES_CHARS ? (p as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

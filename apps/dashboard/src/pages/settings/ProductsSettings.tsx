@@ -16,6 +16,7 @@ import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { Section } from "./shared.js";
+import InstanceKeysSettings from "./InstanceKeysSettings.js";
 
 /** "Acme Billing" -> "acme-billing" (the server validates the final value). */
 function slugify(name: string): string {
@@ -66,6 +67,7 @@ export default function ProductsSettings() {
   const list = products.data?.products ?? [];
 
   return (
+    <div className="flex flex-col gap-6">
     <Section
       title="Products"
       configured={null}
@@ -174,5 +176,7 @@ export default function ProductsSettings() {
         </>
       )}
     </Section>
+    <InstanceKeysSettings />
+    </div>
   );
 }

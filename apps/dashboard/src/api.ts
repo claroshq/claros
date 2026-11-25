@@ -47,7 +47,7 @@ export interface LoginResponse {
  * /auth/me is the normal unauthenticated state, not session expiry;
  * fetchMe() handles it directly.
  */
-async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, withProduct(init));
   if (res.status === 401 && clearRefusedProduct()) {
     window.location.assign("/home");
@@ -120,7 +120,7 @@ export interface Flow {
   content_mode: "ai_drafted" | "fixed_content";
   status: "draft" | "active" | "paused" | "archived";
   approval_mode: "require" | "auto";
-  flow_class: "critical" | "nurture";
+  flow_class: "critical" | "nurture" | "scheduled";
   reentry_policy: "once" | "cooldown" | "every_time";
   reentry_cooldown_days: number;
   prompt_source: string | null;
@@ -209,6 +209,10 @@ export interface UpdateFlowInput {
   status?: Flow["status"];
   approval_mode?: Flow["approval_mode"];
   topic_id?: string | null;
+  flow_class?: Flow["flow_class"];
+  priority?: number;
+  reentry_policy?: Flow["reentry_policy"];
+  reentry_cooldown_days?: number;
 }
 
 function parseFlowError(status: number, body: unknown): FlowApiError {
@@ -301,6 +305,27 @@ export async function saveFlowPlan(
 ): Promise<Flow> {
   const res = await apiFetch(`/v1/flows/${id}/plan`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(plan),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body as Flow;
+}
+
+/**
+ * PUT /v1/flows/:id/steps - write the plan as explicit steps (every step
+ * field, conditions with all / any / not). Works for any flow; the plan is
+ * stored as compiled. Throws FlowApiError (400 validation, 422 references).
+ */
+export async function saveFlowSteps(
+  id: string,
+  plan: { steps: Record<string, unknown>[]; exit_conditions?: unknown[] },
+): Promise<Flow> {
+  const res = await apiFetch(`/v1/flows/${id}/steps`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(plan),
   });
@@ -561,6 +586,12 @@ export interface KbEntryPreview {
   tags: string[];
   embedding_status: "pending" | "failed" | null;
   is_active: boolean;
+  /** Category used by kb_select (G18); absent on servers before KB v2. */
+  category?: string | null;
+  /** Stable key from a KB import; read-only in the dashboard. */
+  external_key?: string | null;
+  /** Pinned entries always reach the drafting model. */
+  pinned?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -568,6 +599,8 @@ export interface KbEntryPreview {
 export interface KbEntry extends Omit<KbEntryPreview, "content_preview"> {
   content: string;
   embedding_error: string | null;
+  /** Structured source data (KB import); read-only reference. */
+  data?: unknown;
 }
 
 export interface KbListPage {
@@ -583,6 +616,8 @@ export interface KbEntryInput {
   source_url?: string;
   tags?: string[];
   is_active?: boolean;
+  category?: string | null;
+  pinned?: boolean;
 }
 
 /** GET /v1/kb - cursor-paginated list of previews. */
@@ -878,6 +913,8 @@ export interface Topic {
   kind: TopicKind;
   description: string | null;
   default_subscribed: boolean;
+  /** Consent mirroring only: no flow may send on this topic. Absent on older servers. */
+  mirror_only?: boolean;
   created_at: string;
 }
 
@@ -887,6 +924,7 @@ export interface TopicInput {
   kind: TopicKind;
   description?: string | null;
   default_subscribed?: boolean;
+  mirror_only?: boolean;
 }
 
 /** GET /v1/topics */
@@ -2013,4 +2051,43 @@ export async function putInstanceSetting(key: string, value: unknown): Promise<v
     body: JSON.stringify({ value }),
   });
   if (!res.ok) throw await productError(res, "Could not save the setting");
+}
+
+// ---------------------------------------------------------------------------
+// Instance keys (instance admins): clr_ik_ keys for instance automation
+// ---------------------------------------------------------------------------
+
+export interface InstanceKey {
+  id: string;
+  kind: "instance";
+  prefix: string;
+  label: string | null;
+  scopes: string[];
+  last_used_at: string | null;
+  created_at: string | null;
+  revoked_at: string | null;
+}
+
+/** GET /v1/instance/keys (instance admins). */
+export async function fetchInstanceKeys(): Promise<{ keys: InstanceKey[]; scopes: string[] }> {
+  const res = await apiFetch("/v1/instance/keys");
+  if (!res.ok) throw await productError(res, "Could not load instance keys");
+  return res.json() as Promise<{ keys: InstanceKey[]; scopes: string[] }>;
+}
+
+/** POST /v1/instance/keys (instance admins). The raw key is returned once. */
+export async function createInstanceKey(input: { label?: string; scopes: string[] }): Promise<InstanceKey & { key: string }> {
+  const res = await apiFetch("/v1/instance/keys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await productError(res, "Could not create the key");
+  return res.json() as Promise<InstanceKey & { key: string }>;
+}
+
+/** POST /v1/instance/keys/:id/revoke (instance admins). */
+export async function revokeInstanceKey(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/instance/keys/${encodeURIComponent(id)}/revoke`, { method: "POST" });
+  if (!res.ok) throw await productError(res, "Could not revoke the key");
 }

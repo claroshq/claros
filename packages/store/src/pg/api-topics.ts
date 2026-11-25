@@ -14,6 +14,7 @@ const TOPIC_COLUMNS = {
   kind: topics.kind,
   description: topics.description,
   defaultSubscribed: topics.defaultSubscribed,
+  mirrorOnly: topics.mirrorOnly,
   createdAt: topics.createdAt,
 } as const;
 
@@ -47,6 +48,7 @@ export function pgApiTopics(db: PgDb): ApiTopicsQueries {
           kind: input.kind,
           description: input.description,
           defaultSubscribed: input.defaultSubscribed,
+          mirrorOnly: input.mirrorOnly ?? false,
         })
         .onConflictDoNothing()
         .returning(TOPIC_COLUMNS);
@@ -59,6 +61,7 @@ export function pgApiTopics(db: PgDb): ApiTopicsQueries {
       if (patch.kind !== undefined) set.kind = patch.kind;
       if (patch.description !== undefined) set.description = patch.description;
       if (patch.defaultSubscribed !== undefined) set.defaultSubscribed = patch.defaultSubscribed;
+      if (patch.mirrorOnly !== undefined) set.mirrorOnly = patch.mirrorOnly;
       if (Object.keys(set).length === 0) {
         const rows = await db
           .select(TOPIC_COLUMNS)

@@ -9,4 +9,6 @@
 export interface WorkerIndexQueries {
   /** Settings of one (arbitrary, first returned) tenant, or null when no tenant exists. */
   getAnyTenantSettings(): Promise<{ settings: unknown } | null>;
+  /** P5b: ids of the products that are not archived, ordered by id (the scan runs for these only). */
+  listActiveTenantIds(): Promise<string[]>;
 }

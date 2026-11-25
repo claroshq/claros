@@ -72,6 +72,7 @@ function app(env: Env): Promise<ClarosApp> {
     const assets = env.ASSETS;
     rt.app = buildApp({
       role: "all",
+      runtime: "workers",
       db: rt.db,
       enqueue: rt.enqueue,
       // No startup step on Workers: /claim is open while no user exists and

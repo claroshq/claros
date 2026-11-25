@@ -35,6 +35,8 @@ export default function KbNewPage() {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [category, setCategory] = useState("");
+  const [pinned, setPinned] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -45,6 +47,8 @@ export default function KbNewPage() {
         title: title.trim(),
         content,
         source: "manual",
+        ...(category.trim() !== "" ? { category: category.trim() } : {}),
+        ...(pinned ? { pinned: true } : {}),
       });
       navigate(`/kb/${created.id}`);
     } catch (err) {
@@ -111,6 +115,29 @@ export default function KbNewPage() {
             required
           />
         </div>
+        <div>
+          <label htmlFor="kb-category" className="mb-1.5 block text-[14px] font-medium text-foreground">
+            Category <span className="font-normal text-muted-foreground">(optional, used by a step's kb_select)</span>
+          </label>
+          <Input
+            id="kb-category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="e.g. tip_trick"
+            maxLength={120}
+            disabled={busy}
+          />
+        </div>
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-[14px] text-foreground">
+          <input
+            type="checkbox"
+            checked={pinned}
+            onChange={(e) => setPinned(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[var(--accent)]"
+            disabled={busy}
+          />
+          Pinned (always given to the drafting model)
+        </label>
         <div className="flex items-center gap-3 border-t border-border pt-5">
           <Button type="submit" disabled={busy || title.trim().length === 0 || content.trim().length === 0}>
             {busy ? "Creating..." : "Create entry"}

@@ -1,0 +1,1167 @@
+{
+  "version": 1,
+  "settings": {
+    "locale": "en",
+    "postal_address": "Acme Leads, 1 Example Street, 12345 Springfield",
+    "brand": {
+      "brand_name": "Acme Leads",
+      "logo_url": "https://acme-leads.example/assets/brand/logo-light.svg",
+      "accent_color": "#D2364A",
+      "reply_to": "hello@acme-leads.example",
+      "footer_text": "You are receiving this because you have a Acme Leads account."
+    },
+    "throttle": {
+      "max_emails_per_user_per_day": 1,
+      "max_emails_per_user_per_week": 3,
+      "min_interval_between_emails_hours": 20,
+      "send_window_start": "08:00",
+      "send_window_end": "18:00",
+      "send_window_days": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri"
+      ],
+      "send_window_timezone": "contact_local",
+      "tenant_timezone": "Europe/Madrid",
+      "batch_size_per_tick": 5,
+      "critical_bypass_throttle": true
+    },
+    "links": {
+      "dashboard_url": "https://acme-leads.example/dashboard",
+      "plans_url": "https://acme-leads.example/pricing",
+      "icp_url": "https://acme-leads.example/dashboard/icp",
+      "settings_url": "https://acme-leads.example/dashboard/settings",
+      "billing_url": "https://acme-leads.example/dashboard/settings?tab=billing",
+      "email_settings_url": "https://acme-leads.example/dashboard/settings?tab=email",
+      "mcp_url": "https://acme-leads.example/mcp",
+      "blog_url": "https://acme-leads.example/blog"
+    },
+    "link_tracking": {
+      "domains": [
+        "acme-leads.example"
+      ],
+      "params": {
+        "utm_source": "claros",
+        "utm_medium": "email",
+        "utm_campaign": "{{flow.slug}}",
+        "utm_content": "step-{{step.order}}"
+      },
+      "click_id": true
+    },
+    "brain": {
+      "guidelines": "# Who you are writing as\n\nYou write lifecycle email for Acme Leads, a daily funding-signal lead platform for people who sell: every morning, the companies that just raised, scored against who the user sells to, with the people to contact and machine access through MCP. A feed, not a database.\n\nAlmost every message is a personal note from Sam, the founder, in the first person singular (\"I pulled a few for you\"). He is a techie who knows recently funded companies, outbound and how founders and sales teams work: sharp, warm, never salesy, cheesy, sycophantic or a pushover. He talks to the reader as a smart peer and respects their time. Billing notices (dunning, trial, cancellation confirmation) are from the team (\"we\"). Each step's instruction ends with the signature to use; end with exactly that and write no other sign-off.\n\n# Absolute rules (a breach is as bad as inventing a fact)\n\n1. **Product truth.** The pinned KB entries \"Product facts (new Acme Leads)\" and \"Plans, quota and founding price\" are the only authority on what Acme Leads does. Describe features exactly as written there. Never chain two features into a capability that does not exist (a saved search does not send alerts; Copy context for AI does not write or send the email).\n2. **Retired features do not exist.** Never mention or imply: Ask AI, credits of any kind, Reveal Credits, Find a Person credits, Compose Email, an outreach drafting button, Outreach Check or Fit Analysis, Daily Wrapup, Deal Flow board, snooze as a feature, CRM sync, HubSpot, Salesforce, Zapier, Slack alerts, Funding Pass, company claims, Reports, NPS, referrals, subscription pause, a free trial. Old plan names (Startup, Growth, Scale) only when telling a founding-price subscriber what their plan became. If a KB entry mentions one of these, write around it.\n3. **Plan fit.** Read `traits.plan_tier` (free, pro, business). Recommend only what that plan includes: ICP scoring, Why it fits, the daily ICP email, contacts and CSV export are Pro and Business; webhooks, destinations and the REST API are Business; Free data is 30 days delayed. Skip a KB entry whose `plans` do not include the user's plan. Never write your own upgrade pitch; upgrade copy lives only in the upgrade flows.\n4. **Prices.** Quote a price only from \"Plans, quota and founding price\". If `traits.founding_price` is true, never present the new price as theirs. No discounts, coupons, credits or trials exist; never offer one.\n5. **Freshness.** Never \"real-time\", \"within hours\" or \"the moment it happens\". Allowed: \"Most rounds land the same day they're announced; some take a day or two while we verify.\" For Free users, never promise fresh leads.\n6. **Recency.** Never pitch Acme Leads as a complete or historical database, and never cite \"total raised\".\n7. **Links.** Use only URLs from the product `links` that the step allows, and real URLs inside a context snapshot. Never invent, guess or build a URL. If the link you need is not given, name the place in words.\n8. **Name.** Always \"Acme Leads\", in the subject too. Never \"Acme Leads\" alone.\n9. **No dashes.** No em dash or en dash anywhere, subject included. Join clauses with a comma, a period or a colon; use a plain hyphen for ranges (8-12).\n10. **Never say** \"scraping\", \"AI-powered\", \"seamless\", and never name a data provider (including LinkedIn).\n11. **Facts about the user.** Use only the contact traits, events, KB entries and context snapshot you are given. Unknown is unknown, not zero. Never invent a company, a number, a tenure or an activity.\n\n# Use their context, never recite it\n\nYou see the user's behaviour so the advice fits. Never report it back (\"I noticed you opened...\", \"you have been gone 20 days\", \"you haven't set up...\"). A good salesperson knows a lot and recites none of it. A greeting may name their stage (\"as you're getting going\"), never their tracked actions.\n\n# Shape of every message\n\n- **Lead**: a human greeting (\"Hey Priya,\" or \"Hey there,\" when the name is unknown; never invent one) and a natural reason for writing.\n- **Body**: the substance, said plainly in a few short paragraphs; then a real closing line, often an open door (\"hit reply if you want a hand, I read these\"). No \"Hope this finds you well\", no \"Worth a try\", no \"Let me know!\".\n- **CTA**: one button only when there is a real next step and an allowed link for it; otherwise none.\n- **Emphasis**: at most a couple of **bold** real feature names and one `monospace` UI path. Plain prose by default.\n- **No urgency or FOMO**: no \"last chance\", \"don't miss out\", \"your competitors are ahead\", no fake deadlines. Value shows through real specifics.\n- **Confidence**: when signals are weak, write the same action in general mode. A correct general message beats a wrong personal one.\n\n# Output\n\nReturn the subject, the lead, the body (plain text with blank lines between paragraphs), an optional CTA {label, url from allowed links}, and the KB entry you used (its external_key) when you were given KB candidates.\n",
+      "text_rules": [
+        "No en dash or em dash anywhere, subject included: join clauses with a comma, a period or a colon; use a plain hyphen for ranges.",
+        "The product name is always \"Acme Leads\", never \"Acme Leads\" alone.",
+        "No model sign-off (\"Best,\", \"Cheers,\", \"Warm regards\"): end with exactly the signature the step instruction names.",
+        "Never write \"real-time\", \"within hours\", \"AI-powered\", \"seamless\" or \"scraping\", and never name a data provider.",
+        "Never offer a discount, coupon, credit or free trial; none exist."
+      ],
+      "assess": {
+        "enabled": true
+      }
+    },
+    "data_sources": {
+      "leads": {
+        "url": "https://acme-leads.example/internal/claros/context/leads",
+        "signature": "standard-webhooks",
+        "secret_env": "CLAROS_CONTEXT_SECRET",
+        "timeout_ms": 5000,
+        "modes": [
+          "normal",
+          "inferred"
+        ],
+        "response_shape": "{data:{leads:[{name,url,amount,stage,why}]}, empty}"
+      }
+    },
+    "date_traits": [
+      "created_at",
+      "first_paid_at",
+      "trial_ends_at",
+      "current_period_end",
+      "cancel_at",
+      "pause_resumes_at"
+    ],
+    "activation_events": [
+      "activated"
+    ],
+    "analytics": {
+      "sink": "statsraven",
+      "endpoint": "https://stats.example.com",
+      "secret": "analytics-ingest-token"
+    },
+    "lifecycle": {
+      "activation_window_days": 7,
+      "natural_frequency_days": 7,
+      "at_risk_missed_intervals": 2,
+      "dormant_days": 30,
+      "churned_days": 45,
+      "engagement_depth_window_days": 30,
+      "power_user_percentile": 0.1
+    },
+    "llm_daily_token_budget": 400000,
+    "approvals": {
+      "daily_digest": true
+    }
+  },
+  "topics": [
+    {
+      "slug": "lifecycle",
+      "name": "Tips and product emails",
+      "kind": "lifecycle",
+      "description": "Getting started, tips, and the occasional note from Sam.",
+      "default_subscribed": true
+    },
+    {
+      "slug": "account",
+      "name": "Account and billing",
+      "kind": "transactional",
+      "description": "Trial, payment and subscription notices.",
+      "default_subscribed": true
+    },
+    {
+      "slug": "product_updates",
+      "name": "Product updates",
+      "kind": "marketing",
+      "description": "Announcements about new features.",
+      "default_subscribed": true
+    },
+    {
+      "slug": "weekly_digest",
+      "name": "The Weekly Digest",
+      "kind": "marketing",
+      "description": "Mirror of the newsletter consent kept in the newsletter tool. No flow sends on it.",
+      "default_subscribed": false,
+      "mirror_only": true
+    }
+  ],
+  "transports": {
+    "routing": {
+      "transactional": "cloudflare-send",
+      "default": "resend-main"
+    }
+  },
+  "templates": [
+    {
+      "slug": "welcome_free",
+      "name": "Welcome free",
+      "subject": "Welcome to Acme Leads",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Welcome to Acme Leads. It's a feed, not a database: every company in it just did something that makes it worth a conversation, a new round, a hiring push, an open leadership seat or an acquisition, and each one comes with <strong>Why this matters</strong>, the reason to act.</p>\n<p style=\"margin:0 0 16px\">Two things make the first week pay off:</p>\n<p style=\"margin:0 0 16px\"><strong>Tell it what you sell.</strong> If you skipped it at sign-up, confirm your company profile (<code style=\"font-family:ui-monospace,Menlo,monospace;font-size:0.95em\">Settings → Profile</code>). It is mostly pre-filled and it gives every lead your angle.</p>\n<p style=\"margin:0 0 16px\"><strong>Triage, don't scroll.</strong> Give each company one key: I for Interested, L for Later (with a date to bring it back), S for Skip. The feed learns from every tap.</p>\n<p style=\"margin:0 0 16px\">You're on the free plan, so your feed runs 30 days behind the live one. That's plenty to learn how it works. You can also connect Acme Leads to Claude, ChatGPT or Cursor over MCP (<a href=\"https://acme-leads.example/mcp\">https://acme-leads.example/mcp</a>) and ask about it in plain language.</p>\n<p style=\"margin:0 0 16px\">If anything is unclear, or there's a company or signal you wish we tracked, just reply. It comes straight to me.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Open my feed</a></p>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}},\n\nWelcome to Acme Leads. It's a feed, not a database: every company in it just did something that makes it worth a conversation, a new round, a hiring push, an open leadership seat or an acquisition, and each one comes with Why this matters, the reason to act.\n\nTwo things make the first week pay off:\n\nTell it what you sell. If you skipped it at sign-up, confirm your company profile (Settings → Profile). It is mostly pre-filled and it gives every lead your angle.\n\nTriage, don't scroll. Give each company one key: I for Interested, L for Later (with a date to bring it back), S for Skip. The feed learns from every tap.\n\nYou're on the free plan, so your feed runs 30 days behind the live one. That's plenty to learn how it works. You can also connect Acme Leads to Claude, ChatGPT or Cursor over MCP (https://acme-leads.example/mcp) and ask about it in plain language.\n\nIf anything is unclear, or there's a company or signal you wish we tracked, just reply. It comes straight to me.\n\nOpen my feed: https://acme-leads.example/dashboard\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "activation_1",
+      "name": "Activation 1",
+      "subject": "Two signals that tell you who just got buying power",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}}, a quick one now that you've had a day with Acme Leads.</p>\n<p style=\"margin:0 0 16px\">The round size is the least useful number on a funding card. Two signals do most of the work:</p>\n<p style=\"margin:0 0 16px\"><strong>Spend Intents</strong>: where the company says the new money is going (hiring, product, infrastructure, sales and marketing), each with its source.</p>\n<p style=\"margin:0 0 16px\"><strong>Hiring signals</strong>: which teams are actually growing, read from the company's own career page. GTM Confirmed means sales capital plus real sales hires.</p>\n<p style=\"margin:0 0 16px\">Read them together and you know which department is about to have a budget and a problem. That's the conversation worth starting.</p>\n<p style=\"margin:0 0 16px\">Open your feed and look at the next funding card with that in mind. It takes a minute.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Open my feed</a></p>\n<div style=\"background:#f6f6f7;border-radius:8px;padding:16px 20px;margin:8px 0 16px\"><p style=\"margin:0 0 8px\"><strong>On Pro you also get:</strong></p><ul style=\"margin:0 0 16px;padding-left:20px\"><li>Live data, no 30-day delay</li><li>Your ICP: every company scored for you, with Why it fits</li><li>New ICP matches by email every morning</li><li>The people to contact at freshly funded companies</li><li>CSV export</li></ul></div>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}}, a quick one now that you've had a day with Acme Leads.\n\nThe round size is the least useful number on a funding card. Two signals do most of the work:\n\nSpend Intents: where the company says the new money is going (hiring, product, infrastructure, sales and marketing), each with its source.\n\nHiring signals: which teams are actually growing, read from the company's own career page. GTM Confirmed means sales capital plus real sales hires.\n\nRead them together and you know which department is about to have a budget and a problem. That's the conversation worth starting.\n\nOpen your feed and look at the next funding card with that in mind. It takes a minute.\n\nOpen my feed: https://acme-leads.example/dashboard\n\nOn Pro you also get:\n- Live data, no 30-day delay\n- Your ICP: every company scored for you, with Why it fits\n- New ICP matches by email every morning\n- The people to contact at freshly funded companies\n- CSV export\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "activation_2",
+      "name": "Activation 2",
+      "subject": "Find the right accounts in one sentence",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}}, picking up from the other day.</p>\n<p style=\"margin:0 0 16px\">You don't have to click through filters one by one. Two things do it faster:</p>\n<p style=\"margin:0 0 16px\"><strong>Search with ⌘K</strong>: type a sentence like \"B2B SaaS in Germany that raised a seed or Series A\" and pick \"Search in Discover\". It turns your words into filters you can see and adjust.</p>\n<p style=\"margin:0 0 16px\"><strong>Lists</strong>: when a set looks right, save it to a list, say \"First touches this week\". Next time it's one click instead of the same search again.</p>\n<p style=\"margin:0 0 16px\">Try one sentence that describes who you sell to. You'll see the shape of your market in a minute.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Open my feed</a></p>\n<div style=\"background:#f6f6f7;border-radius:8px;padding:16px 20px;margin:8px 0 16px\"><p style=\"margin:0 0 8px\"><strong>On Pro you also get:</strong></p><ul style=\"margin:0 0 16px;padding-left:20px\"><li>Live data, no 30-day delay</li><li>Your ICP: every company scored for you, with Why it fits</li><li>New ICP matches by email every morning</li><li>The people to contact at freshly funded companies</li><li>CSV export</li></ul></div>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}}, picking up from the other day.\n\nYou don't have to click through filters one by one. Two things do it faster:\n\nSearch with ⌘K: type a sentence like \"B2B SaaS in Germany that raised a seed or Series A\" and pick \"Search in Discover\". It turns your words into filters you can see and adjust.\n\nLists: when a set looks right, save it to a list, say \"First touches this week\". Next time it's one click instead of the same search again.\n\nTry one sentence that describes who you sell to. You'll see the shape of your market in a minute.\n\nOpen my feed: https://acme-leads.example/dashboard\n\nOn Pro you also get:\n- Live data, no 30-day delay\n- Your ICP: every company scored for you, with Why it fits\n- New ICP matches by email every morning\n- The people to contact at freshly funded companies\n- CSV export\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "activation_3",
+      "name": "Activation 3",
+      "subject": "From a good-fit company to a first message",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}}, one last piece and you've got the whole loop.</p>\n<p style=\"margin:0 0 16px\">When a company is worth a message, two features take it from here:</p>\n<p style=\"margin:0 0 16px\"><strong>Copy context for AI</strong>: one button on the company page copies the trigger, its evidence links and the angles worth using. Paste it into the assistant you already use and ask for three lines that name what the round forces them to do next. You edit it and send it from your own mail.</p>\n<p style=\"margin:0 0 16px\"><strong>MCP</strong>: connect Acme Leads to Claude, ChatGPT or Cursor (<a href=\"https://acme-leads.example/mcp\">https://acme-leads.example/mcp</a>) and ask your assistant about the feed directly: \"which companies in my space raised this month and are hiring sales?\"</p>\n<p style=\"margin:0 0 16px\">Pick one company you marked Interested and try the first one today.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Open my feed</a></p>\n<div style=\"background:#f6f6f7;border-radius:8px;padding:16px 20px;margin:8px 0 16px\"><p style=\"margin:0 0 8px\"><strong>On Pro you also get:</strong></p><ul style=\"margin:0 0 16px;padding-left:20px\"><li>Live data, no 30-day delay</li><li>Your ICP: every company scored for you, with Why it fits</li><li>New ICP matches by email every morning</li><li>The people to contact at freshly funded companies</li><li>CSV export</li></ul></div>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}}, one last piece and you've got the whole loop.\n\nWhen a company is worth a message, two features take it from here:\n\nCopy context for AI: one button on the company page copies the trigger, its evidence links and the angles worth using. Paste it into the assistant you already use and ask for three lines that name what the round forces them to do next. You edit it and send it from your own mail.\n\nMCP: connect Acme Leads to Claude, ChatGPT or Cursor (https://acme-leads.example/mcp) and ask your assistant about the feed directly: \"which companies in my space raised this month and are hiring sales?\"\n\nPick one company you marked Interested and try the first one today.\n\nOpen my feed: https://acme-leads.example/dashboard\n\nOn Pro you also get:\n- Live data, no 30-day delay\n- Your ICP: every company scored for you, with Why it fits\n- New ICP matches by email every morning\n- The people to contact at freshly funded companies\n- CSV export\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "subscribe_nudge",
+      "name": "Subscribe nudge",
+      "subject": "Your next prospect, while the coffee's still warm",
+      "body_html": "<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">You stopped by our plans a little while ago. No pitch, just the one thing I wish someone had told me sooner.</p>\n<p style=\"margin:0 0 16px\">The hard part of outbound was never writing the email. It's finding someone actually worth emailing today.</p>\n<p style=\"margin:0 0 16px\">That's what Acme Leads does on Pro. Every morning you open a fresh feed of companies in motion: a new round, a hiring push, an open leadership seat. Each one is scored against who you sell to, tells you why it fits and why now, and lists the people to contact. Your next prospect is already there.</p>\n<p style=\"margin:0 0 16px\">No lists to clean, no guessing about timing.</p>\n<p style=\"margin:0 0 16px\">Still deciding? Just reply and tell me what you're selling. I'll tell you honestly whether it's a fit.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/pricing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">See the plans</a></p>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hi {{contact.first_name|there}},\n\nYou stopped by our plans a little while ago. No pitch, just the one thing I wish someone had told me sooner.\n\nThe hard part of outbound was never writing the email. It's finding someone actually worth emailing today.\n\nThat's what Acme Leads does on Pro. Every morning you open a fresh feed of companies in motion: a new round, a hiring push, an open leadership seat. Each one is scored against who you sell to, tells you why it fits and why now, and lists the people to contact. Your next prospect is already there.\n\nNo lists to clean, no guessing about timing.\n\nStill deciding? Just reply and tell me what you're selling. I'll tell you honestly whether it's a fit.\n\nSee the plans: https://acme-leads.example/pricing\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "upgrade_1",
+      "name": "Upgrade 1",
+      "subject": "You hit the limit because it's working",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}}, you just reached this month's free limit, which means you're putting Acme Leads to real work.</p>\n<p style=\"margin:0 0 16px\">Here's what opens up on Pro:</p>\n<p style=\"margin:0 0 16px\"><strong>Live data</strong>: most rounds the same day they are announced, instead of 30 days later.</p>\n<p style=\"margin:0 0 16px\"><strong>Your ICP</strong>: every company scored for you, with <strong>Why it fits</strong> next to why now.</p>\n<p style=\"margin:0 0 16px\"><strong>Daily ICP email</strong>: new matches in your inbox on mornings when there are any.</p>\n<p style=\"margin:0 0 16px\"><strong>Contacts</strong>: the people to reach at every company with a signal in the last 30 days.</p>\n<p style=\"margin:0 0 16px\"><strong>More room</strong>: 1,000 unique companies a month, plus CSV export.</p>\n<p style=\"margin:0 0 16px\">Your free limit resets next month either way. If you're finding companies worth your time now, Pro is where it starts paying back.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/pricing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">See your plan options</a></p>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}}, you just reached this month's free limit, which means you're putting Acme Leads to real work.\n\nHere's what opens up on Pro:\n\nLive data: most rounds the same day they are announced, instead of 30 days later.\n\nYour ICP: every company scored for you, with Why it fits next to why now.\n\nDaily ICP email: new matches in your inbox on mornings when there are any.\n\nContacts: the people to reach at every company with a signal in the last 30 days.\n\nMore room: 1,000 unique companies a month, plus CSV export.\n\nYour free limit resets next month either way. If you're finding companies worth your time now, Pro is where it starts paying back.\n\nSee your plan options: https://acme-leads.example/pricing\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "upgrade_2",
+      "name": "Upgrade 2",
+      "subject": "One honest question",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}}, just checking back in. No pressure at all.</p>\n<p style=\"margin:0 0 16px\">No pitch, just one honest question: what's holding you back?</p>\n<p style=\"margin:0 0 16px\">Reply to this email and tell me. I read every one, and if Acme Leads isn't the right fit for what you sell, I'd rather tell you that than sell you a plan.</p>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}}, just checking back in. No pressure at all.\n\nNo pitch, just one honest question: what's holding you back?\n\nReply to this email and tell me. I read every one, and if Acme Leads isn't the right fit for what you sell, I'd rather tell you that than sell you a plan.\n\nSam\nFounder, Acme Leads\n",
+      "category": "lifecycle"
+    },
+    {
+      "slug": "trial_ending",
+      "name": "Trial ending",
+      "subject": "Your Acme Leads trial ends in 3 days",
+      "body_html": "<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Your Acme Leads trial ends in 3 days. To keep the live feed, your ICP scoring and the daily ICP email, choose a plan before then. Everything you've set up stays as it is.</p>\n<p style=\"margin:0 0 16px\">If you're still deciding, reply here and we'll help you figure out whether it's a fit.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/pricing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">View plans</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n",
+      "body_text": "Hi {{contact.first_name|there}},\n\nYour Acme Leads trial ends in 3 days. To keep the live feed, your ICP scoring and the daily ICP email, choose a plan before then. Everything you've set up stays as it is.\n\nIf you're still deciding, reply here and we'll help you figure out whether it's a fit.\n\nView plans: https://acme-leads.example/pricing\n\nThe Acme Leads team\n",
+      "category": "account"
+    },
+    {
+      "slug": "dunning_1",
+      "name": "Dunning 1",
+      "subject": "Your Acme Leads payment didn't go through",
+      "body_html": "{{#traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}}, a quick heads-up about your subscription, nothing dramatic.</p>\n<p style=\"margin:0 0 16px\">Your last payment didn't go through. It's usually just an expired or replaced card. You can fix it in under a minute from your billing settings, and your access stays on while you sort it.</p>\n<p style=\"margin:0 0 16px\">One thing worth knowing: you're on a founding price. It stays yours as long as the subscription keeps running, so it's worth updating the card this week.</p>\n<p style=\"margin:0 0 16px\">If the charge keeps failing or something looks off, reply here and we'll sort it out with you.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/settings?tab=billing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Update payment</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}{{^traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}}, a quick heads-up about your subscription, nothing dramatic.</p>\n<p style=\"margin:0 0 16px\">Your last payment didn't go through. It's usually just an expired or replaced card. You can fix it in under a minute from your billing settings, and your access stays on while you sort it.</p>\n<p style=\"margin:0 0 16px\">If the charge keeps failing or something looks off, reply here and we'll sort it out with you.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/settings?tab=billing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Update payment</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}",
+      "body_text": "{{#traits.founding_price}}Hi {{contact.first_name|there}}, a quick heads-up about your subscription, nothing dramatic.\n\nYour last payment didn't go through. It's usually just an expired or replaced card. You can fix it in under a minute from your billing settings, and your access stays on while you sort it.\n\nOne thing worth knowing: you're on a founding price. It stays yours as long as the subscription keeps running, so it's worth updating the card this week.\n\nIf the charge keeps failing or something looks off, reply here and we'll sort it out with you.\n\nUpdate payment: https://acme-leads.example/dashboard/settings?tab=billing\n\nThe Acme Leads team\n{{/traits.founding_price}}{{^traits.founding_price}}Hi {{contact.first_name|there}}, a quick heads-up about your subscription, nothing dramatic.\n\nYour last payment didn't go through. It's usually just an expired or replaced card. You can fix it in under a minute from your billing settings, and your access stays on while you sort it.\n\nIf the charge keeps failing or something looks off, reply here and we'll sort it out with you.\n\nUpdate payment: https://acme-leads.example/dashboard/settings?tab=billing\n\nThe Acme Leads team\n{{/traits.founding_price}}",
+      "category": "account"
+    },
+    {
+      "slug": "dunning_2",
+      "name": "Dunning 2",
+      "subject": "Reminder: your Acme Leads payment is still pending",
+      "body_html": "{{#traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Your last Acme Leads payment is still outstanding. Updating the card from your billing settings fixes it, and nothing else changes on your side.</p>\n<p style=\"margin:0 0 16px\">Your founding price stays yours only while the subscription runs without a break, so please don't let this one lapse.</p>\n<p style=\"margin:0 0 16px\">Questions or a problem with the charge? Just reply.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/settings?tab=billing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Update payment</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}{{^traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Your last Acme Leads payment is still outstanding. Updating the card from your billing settings fixes it, and nothing else changes on your side.</p>\n<p style=\"margin:0 0 16px\">Questions or a problem with the charge? Just reply.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/settings?tab=billing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Update payment</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}",
+      "body_text": "{{#traits.founding_price}}Hi {{contact.first_name|there}},\n\nYour last Acme Leads payment is still outstanding. Updating the card from your billing settings fixes it, and nothing else changes on your side.\n\nYour founding price stays yours only while the subscription runs without a break, so please don't let this one lapse.\n\nQuestions or a problem with the charge? Just reply.\n\nUpdate payment: https://acme-leads.example/dashboard/settings?tab=billing\n\nThe Acme Leads team\n{{/traits.founding_price}}{{^traits.founding_price}}Hi {{contact.first_name|there}},\n\nYour last Acme Leads payment is still outstanding. Updating the card from your billing settings fixes it, and nothing else changes on your side.\n\nQuestions or a problem with the charge? Just reply.\n\nUpdate payment: https://acme-leads.example/dashboard/settings?tab=billing\n\nThe Acme Leads team\n{{/traits.founding_price}}",
+      "category": "account"
+    },
+    {
+      "slug": "dunning_3",
+      "name": "Dunning 3",
+      "subject": "Last reminder about your Acme Leads payment",
+      "body_html": "{{#traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">We still couldn't collect your last Acme Leads payment. If the card isn't updated, the subscription will end and your account moves to the free plan.</p>\n<p style=\"margin:0 0 16px\">If it ends, your founding price ends with it: you can always come back, but at the regular price.</p>\n<p style=\"margin:0 0 16px\">It takes a minute from your billing settings. If something's wrong on our side, reply and we'll fix it.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/settings?tab=billing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Update payment</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}{{^traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">We still couldn't collect your last Acme Leads payment. If the card isn't updated, the subscription will end and your account moves to the free plan.</p>\n<p style=\"margin:0 0 16px\">It takes a minute from your billing settings. If something's wrong on our side, reply and we'll fix it.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/settings?tab=billing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Update payment</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}",
+      "body_text": "{{#traits.founding_price}}Hi {{contact.first_name|there}},\n\nWe still couldn't collect your last Acme Leads payment. If the card isn't updated, the subscription will end and your account moves to the free plan.\n\nIf it ends, your founding price ends with it: you can always come back, but at the regular price.\n\nIt takes a minute from your billing settings. If something's wrong on our side, reply and we'll fix it.\n\nUpdate payment: https://acme-leads.example/dashboard/settings?tab=billing\n\nThe Acme Leads team\n{{/traits.founding_price}}{{^traits.founding_price}}Hi {{contact.first_name|there}},\n\nWe still couldn't collect your last Acme Leads payment. If the card isn't updated, the subscription will end and your account moves to the free plan.\n\nIt takes a minute from your billing settings. If something's wrong on our side, reply and we'll fix it.\n\nUpdate payment: https://acme-leads.example/dashboard/settings?tab=billing\n\nThe Acme Leads team\n{{/traits.founding_price}}",
+      "category": "account"
+    },
+    {
+      "slug": "cancellation_confirmed",
+      "name": "Cancellation confirmed",
+      "subject": "Your Acme Leads subscription has ended",
+      "body_html": "{{#traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Your Acme Leads subscription has ended and your account is on the free plan now. Your lists, triage and settings are saved, so you can pick up where you left off.</p>\n<p style=\"margin:0 0 16px\">If you subscribe again later, it will be at the regular price; the founding price doesn't carry over a break.</p>\n<p style=\"margin:0 0 16px\">If you'd tell us what we could have done better, just reply. It's optional, and it really helps.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/pricing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">See plans</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}{{^traits.founding_price}}<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Your Acme Leads subscription has ended and your account is on the free plan now. Your lists, triage and settings are saved, so you can pick up where you left off.</p>\n<p style=\"margin:0 0 16px\">If you'd tell us what we could have done better, just reply. It's optional, and it really helps.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/pricing\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">See plans</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n{{/traits.founding_price}}",
+      "body_text": "{{#traits.founding_price}}Hi {{contact.first_name|there}},\n\nYour Acme Leads subscription has ended and your account is on the free plan now. Your lists, triage and settings are saved, so you can pick up where you left off.\n\nIf you subscribe again later, it will be at the regular price; the founding price doesn't carry over a break.\n\nIf you'd tell us what we could have done better, just reply. It's optional, and it really helps.\n\nSee plans: https://acme-leads.example/pricing\n\nThe Acme Leads team\n{{/traits.founding_price}}{{^traits.founding_price}}Hi {{contact.first_name|there}},\n\nYour Acme Leads subscription has ended and your account is on the free plan now. Your lists, triage and settings are saved, so you can pick up where you left off.\n\nIf you'd tell us what we could have done better, just reply. It's optional, and it really helps.\n\nSee plans: https://acme-leads.example/pricing\n\nThe Acme Leads team\n{{/traits.founding_price}}",
+      "category": "account"
+    },
+    {
+      "slug": "subscription_confirmed",
+      "name": "Subscription confirmed",
+      "subject": "Your Acme Leads plan is live",
+      "body_html": "<p style=\"margin:0 0 16px\">Hey {{contact.first_name|there}}, thanks for subscribing. Your plan is active now.</p>\n<p style=\"margin:0 0 16px\">Start with your ICP. It's mostly drafted from your company profile, so it's a matter of checking the chips. Once it's saved, My feed ranks every company for you with <strong>Why it fits</strong>, and new matches arrive by email on mornings when there are any.</p>\n<p style=\"margin:0 0 16px\">From there: open a freshly funded company to see the people to contact, and use <strong>Copy context for AI</strong> when you're ready to write the first message.</p>\n<p style=\"margin:0 0 16px\">Reply any time. It comes straight to me.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard/icp\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Set up your ICP</a></p>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hey {{contact.first_name|there}}, thanks for subscribing. Your plan is active now.\n\nStart with your ICP. It's mostly drafted from your company profile, so it's a matter of checking the chips. Once it's saved, My feed ranks every company for you with Why it fits, and new matches arrive by email on mornings when there are any.\n\nFrom there: open a freshly funded company to see the people to contact, and use Copy context for AI when you're ready to write the first message.\n\nReply any time. It comes straight to me.\n\nSet up your ICP: https://acme-leads.example/dashboard/icp\n\nSam\nFounder, Acme Leads\n",
+      "category": "account"
+    },
+    {
+      "slug": "plan_changed",
+      "name": "Plan changed",
+      "subject": "Your Acme Leads plan has changed",
+      "body_html": "<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">Your Acme Leads plan is now {{event.new_plan_display}}. The change is active immediately, along with its limits and features.</p>\n<p style=\"margin:0 0 16px\">Questions about your plan? Just reply.</p>\n<p style=\"margin:24px 0\"><a href=\"https://acme-leads.example/dashboard\" style=\"display:inline-block;background:#D2364A;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600\">Open Acme Leads</a></p>\n<p style=\"margin:16px 0 0\">The Acme Leads team</p>\n",
+      "body_text": "Hi {{contact.first_name|there}},\n\nYour Acme Leads plan is now {{event.new_plan_display}}. The change is active immediately, along with its limits and features.\n\nQuestions about your plan? Just reply.\n\nOpen Acme Leads: https://acme-leads.example/dashboard\n\nThe Acme Leads team\n",
+      "category": "account"
+    },
+    {
+      "slug": "plan_migration_notice",
+      "name": "Plan migration notice",
+      "subject": "Your Acme Leads plan just got an upgrade, same price",
+      "body_html": "<p style=\"margin:0 0 16px\">Hi {{contact.first_name|there}},</p>\n<p style=\"margin:0 0 16px\">We've rebuilt Acme Leads from the ground up, and as one of our early customers you get something for it.</p>\n<p style=\"margin:0 0 16px\">Your {{contact.properties.old_plan_name}} plan is now <strong>{{contact.properties.plan_tier_display}}</strong>. You keep paying <strong>{{contact.properties.current_price_display}}</strong>. Nothing to do on your side; your card, invoices and renewal date stay the same.</p>\n<p style=\"margin:0 0 16px\">One thing worth knowing: this founding price stays yours for as long as your subscription runs without a break. If you cancel, you can always come back, but at the regular price.</p>\n<p style=\"margin:0 0 16px\">Questions? Just reply to this email.</p>\n<p style=\"margin:16px 0 0\">Sam<br>Founder, Acme Leads</p>\n",
+      "body_text": "Hi {{contact.first_name|there}},\n\nWe've rebuilt Acme Leads from the ground up, and as one of our early customers you get something for it.\n\nYour {{contact.properties.old_plan_name}} plan is now {{contact.properties.plan_tier_display}}. You keep paying {{contact.properties.current_price_display}}. Nothing to do on your side; your card, invoices and renewal date stay the same.\n\nOne thing worth knowing: this founding price stays yours for as long as your subscription runs without a break. If you cancel, you can always come back, but at the regular price.\n\nQuestions? Just reply to this email.\n\nSam\nFounder, Acme Leads\n",
+      "category": "account"
+    }
+  ],
+  "flows": [
+    {
+      "slug": "welcome_free",
+      "name": "Welcome (free sign-up)",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "nurture",
+      "priority": 50,
+      "approval_mode": "auto",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "signed_up",
+        "where": [
+          {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          }
+        ]
+      },
+      "reentry": {
+        "policy": "once"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "welcome_free",
+          "delay": "0m",
+          "window_policy": "immediate",
+          "template_ref": "welcome_free",
+          "preheader": "Your feed of freshly funded companies, and the two things worth doing first.",
+          "eyebrow": "WELCOME",
+          "from_name": "Sam from Acme Leads"
+        }
+      ]
+    },
+    {
+      "slug": "activation",
+      "name": "Activation series (free, days 1, 3, 7)",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "nurture",
+      "priority": 40,
+      "approval_mode": "require",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "signed_up",
+        "where": [
+          {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          {
+            "trait": {
+              "key": "first_paid_at",
+              "op": "not_exists"
+            }
+          }
+        ]
+      },
+      "reentry": {
+        "policy": "once"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "activation_1",
+          "delay": "1d",
+          "window_policy": "respect_window",
+          "template_ref": "activation_1",
+          "condition": {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          "preheader": "Where the new money is going, and who they are hiring to spend it.",
+          "eyebrow": "GETTING STARTED",
+          "from_name": "Sam from Acme Leads"
+        },
+        {
+          "order": 2,
+          "action_type": "activation_2",
+          "delay": "2d",
+          "window_policy": "respect_window",
+          "template_ref": "activation_2",
+          "condition": {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          "preheader": "Describe your market in plain words and let Discover build the filters.",
+          "eyebrow": "NEXT STEP",
+          "from_name": "Sam from Acme Leads"
+        },
+        {
+          "order": 3,
+          "action_type": "activation_3",
+          "delay": "4d",
+          "window_policy": "respect_window",
+          "template_ref": "activation_3",
+          "condition": {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          "preheader": "Copy context for AI, and let your own assistant write the first draft.",
+          "eyebrow": "PUTTING IT TOGETHER",
+          "from_name": "Sam from Acme Leads"
+        }
+      ],
+      "exit_conditions": [
+        {
+          "event": "activated"
+        },
+        {
+          "event": "icp_configured"
+        },
+        {
+          "event": "subscription_started"
+        },
+        {
+          "event": "search_limit_hit"
+        },
+        {
+          "trait": {
+            "key": "plan_tier",
+            "op": "neq",
+            "value": "free"
+          }
+        }
+      ]
+    },
+    {
+      "slug": "icp_setup_nudge",
+      "name": "Set up your ICP (paid, no ICP yet)",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "scheduled",
+      "priority": 60,
+      "approval_mode": "require",
+      "content_mode": "ai_drafted",
+      "trigger": {
+        "type": "date_schedule",
+        "anchor": "first_paid_at",
+        "offsets": [
+          "1d",
+          "3d",
+          "7d",
+          "14d",
+          "30d"
+        ],
+        "repeat": "30d",
+        "max_sends": 7,
+        "send_at_local": "09:30",
+        "where": {
+          "all": [
+            {
+              "trait": {
+                "key": "icp_configured",
+                "op": "neq",
+                "value": true
+              }
+            },
+            {
+              "trait": {
+                "key": "plan_tier",
+                "op": "in",
+                "value": [
+                  "pro",
+                  "business"
+                ]
+              }
+            },
+            {
+              "trait": {
+                "key": "payment_status",
+                "op": "eq",
+                "value": "paid"
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "icp_setup_nudge",
+          "delay": "0m",
+          "window_policy": "respect_window",
+          "brain_instruction": "# icp_setup_nudge\n\nShow three example companies that look like a fit, from the context snapshot, then one ask: set up your ICP so matches like these are ranked for you and arrive every morning.\n\n- Lead with the examples, not the ask. Each one: **name**, stage and amount if present, and its `why` in one line. Never invent a reason or a fit score; these are inferred, so say \"these look like a fit for what you sell\", not \"your ICP matches\".\n- Then the point in one or two sentences: once the ICP is set, My feed ranks every company 0-100 for them, each shows **Why it fits**, and the daily ICP email brings new matches on mornings when there are any. It is mostly pre-filled; two minutes.\n- Exactly one CTA: `icp_url`, label \"Set up your ICP\".\n- Vary the opening by send number (given below, 1-7): first sends are a welcome-to-the-plan nudge; later ones a brief, low-pressure reminder. Never guilt (\"you still haven't...\"), never count the reminders.\n- If the snapshot is empty, skip the examples and keep it to three short sentences.\n- They pay for this; respect that. Short. Voice: Sam, \"I\".\n\n---\n\n## Links this step allows\n\nUse only these URLs, and only where the instruction above calls for them:\n- icp_url: https://acme-leads.example/dashboard/icp\n\n---\n\n## Send number\n\nThis is send 1 of at most 7 in this flow.\n\n---\n\n## Signature\n\nEnd the message with exactly this signature and nothing after it:\nSam\nFounder, Acme Leads\n",
+          "from_name": "Sam from Acme Leads",
+          "eyebrow": "SET IT ONCE",
+          "context": [
+            {
+              "source": "leads",
+              "mode": "inferred",
+              "limit": 3
+            }
+          ],
+          "on_empty": "send",
+          "on_error": "defer",
+          "allowed_links": [
+            "icp_url",
+            "settings_url"
+          ],
+          "single_cta": true
+        }
+      ],
+      "exit_conditions": [
+        {
+          "any": [
+            {
+              "event": "icp_configured"
+            },
+            {
+              "trait": {
+                "key": "icp_configured",
+                "op": "eq",
+                "value": true
+              }
+            },
+            {
+              "trait": {
+                "key": "payment_status",
+                "op": "neq",
+                "value": "paid"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "nurture",
+      "name": "Nurture (choose one action)",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "nurture",
+      "priority": 10,
+      "approval_mode": "require",
+      "content_mode": "ai_drafted",
+      "trigger": {
+        "type": "segment",
+        "lifecycle_states": [
+          "engaged",
+          "resurrected",
+          "at_risk",
+          "dormant"
+        ],
+        "where": {
+          "not": {
+            "all": [
+              {
+                "trait": {
+                  "key": "payment_status",
+                  "op": "eq",
+                  "value": "free"
+                }
+              },
+              {
+                "lifecycle_state": "dormant"
+              },
+              {
+                "first_contact": true
+              }
+            ]
+          }
+        }
+      },
+      "reentry": {
+        "policy": "cooldown",
+        "cooldown_days": 7
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "nurture",
+          "delay": "0m",
+          "window_policy": "respect_window",
+          "type": "choose",
+          "allow_none": true,
+          "brain_instruction": "Pick the ONE action that would genuinely help this user right now, or `none`.\n\nCandidates (only the eligible ones are shown to you):\n- `onboarding_rescue`: the user signed up and has gone quiet before reaching first value. One concrete next step to a first win (company profile, ICP on paid plans, first triage, connecting MCP).\n- `tip_trick`: one piece of real tradecraft about selling into funded companies (timing, buyers, messaging, deliverability), tied lightly to where it applies in Acme Leads.\n- `feature_edu`: an engaged user who has not used a feature that fits how they work.\n- `curated_leads`: a few real leads from their ICP, when the context returns enough of them.\n\nHow to choose:\n- Read the lifecycle state, plan tier, tenure and recent activity. Cooling or at-risk users get one well-aimed touch (rescue or a strong tip); engaged users can take a feature or leads; dormant users are sparse, so choose `none` unless one candidate is clearly worth it.\n- Prefer giving (tips, leads) over teaching a feature when it is the first message in a long time.\n- Never choose a candidate whose substance would need a feature the user's plan lacks.\n- `none` is a good answer when nothing fits; the flow cooldown decides when we look again.\n\nReturn {\"choice\": \"<action_type>\" | \"none\", \"reason\": \"<one or two sentences, supportable by the given context only>\"}.\n\n---\n\nThis is the user's first message from us in a while, or ever. Give, do not ask: deliver value and request nothing.\n\n- **New user (signed up in the last 14 days or just paid):** a warm, brief welcome and straight to the fastest real result. Never say or imply we \"went quiet\", \"are reappearing\" or are \"re-introducing ourselves\", and do not re-explain Acme Leads from scratch.\n- **Returning user, paid:** a short \"it's been a while\" by first name, then straight to value. No product re-explanation, no promises about what you will send.\n- **Returning user, free:** a one-sentence re-introduction of who you are is fine, then value. No promises about future emails.\n- A single gentle note that they can step off with the link below is the only forward reference allowed.\n\n---\n\n# onboarding_rescue\n\nThe user signed up but has not reached first value. Pull them to ONE concrete first win, not a tour.\n\nBuild the step from the chosen KB candidate (its \"Step or value\" and \"Why it matters\" are ground truth) and return its key. Without candidates, point to one genuine first win in general terms.\n\nFrame it as a helpful next step (\"now that you're set up, the fastest first win is...\"). Never point out their inaction (\"we noticed you haven't...\").\n\nOn the company profile step: never frame the product as generic or blind until taught, and never imply it cannot recognise the user's company. The point is handing over what it cannot know: what they sell and who they sell to, which shapes Why it fits (paid) and Copy context for AI.\n\nCTA must match the step: ICP → `icp_url` (paid only), company profile → `settings_url`, first triage or first search → `dashboard_url`, connecting MCP → `mcp_url` or the steps in words. No matching link, no button. Voice: Sam, \"I\".\n\n---\n\n# tip_trick\n\nGive ONE high-value piece of tradecraft. The chosen KB candidate's \"Core insight\" and \"Supporting points\" ARE the tip; pick the best fit for this user's role and stage and return its key. If your tip could have been written for almost any entry, you have not grounded it: go back to the entry's actual point.\n\nDepth, not a button-pointer. Teach why it is true and when to reach for it. Name a Acme Leads feature at most once, only as the place to act on the idea (for example: mark a lead **Later** with a return date, read **Spend Intents** next to the hiring signals, open **Why this matters** for the angle). Never make \"open the similar-companies panel\", \"run a search\" or \"save a list\" the point of the tip.\n\nGreet, give the one tip, close like a person. CTA only with `dashboard_url` (or `blog_url`) when the tip lives there. Voice: Sam, \"I\".\n\n---\n\n# feature_edu\n\nTeach ONE capability that fills a gap in how this user works, from the chosen KB candidate (\"What it does\", \"When to suggest\") and the product facts. Return its key.\n\nExplain it the way a sharp colleague would: what it actually does, why it changes their workflow, when to reach for it. Good fits in the new product: **Copy context for AI** (draft in their own assistant from real facts), **MCP** (ask their assistant about the feed), triage with **Later** dates, **Why it fits** (paid), the daily ICP email (paid), export (paid), webhooks (Business), ⌘K search into Discover. Never announce a feature for its own sake and never one their plan lacks.\n\nCTA: `icp_url` for an ICP step (paid), `mcp_url` for MCP, otherwise `dashboard_url` or `blog_url`. Voice: Sam, \"I\".\n\n---\n\n# curated_leads\n\nHand the user a few REAL leads from the context snapshot (`leads[]`: name, url, amount, stage, why). Truthful above all, presented humbly: worth a look, not a guarantee.\n\n- Use each lead's `why` essentially verbatim (trim to one tight line, add nothing). If `why` is empty, write a short honest line from the fields you have. Never add a score, a fit claim or a funding detail that is not in the row.\n- These come from the user's ICP, so a light \"a few that fit who you sell to\" is fair. Never claim a perfect fit.\n- Format each lead as its own block, blank line between blocks:\n  **Company name**, stage, amount (only fields present)\n  Why: the real reason.\n- Fewer than three good leads: keep it short, do not pad.\n- Mention once, lightly, that the daily ICP email can bring these every morning (it is on their plan).\n\nCTA: `dashboard_url`, label like \"See them in your feed\". Voice: Sam, \"I\".\n\n---\n\n## Links this step allows\n\nUse only these URLs, and only where the instruction above calls for them:\n- dashboard_url: https://acme-leads.example/dashboard\n- icp_url: https://acme-leads.example/dashboard/icp\n- settings_url: https://acme-leads.example/dashboard/settings\n- mcp_url: https://acme-leads.example/mcp\n- blog_url: https://acme-leads.example/blog\n\n---\n\n## Signature\n\nEnd the message with exactly this signature and nothing after it:\nSam\nFounder, Acme Leads\n",
+          "from_name": "Sam from Acme Leads",
+          "candidates": [
+            {
+              "action_type": "onboarding_rescue",
+              "eyebrow": "GETTING STARTED",
+              "cooldown": "14d",
+              "allowed_links": [
+                "dashboard_url",
+                "icp_url",
+                "settings_url",
+                "mcp_url"
+              ],
+              "when": [
+                {
+                  "lifecycle_state": "at_risk"
+                }
+              ],
+              "kb_select": {
+                "category": "onboarding_rescue",
+                "exclude_used": true,
+                "pick": "best_match",
+                "tags_any_from_trait": "plan_tier"
+              }
+            },
+            {
+              "action_type": "tip_trick",
+              "eyebrow": "QUICK TIP",
+              "cooldown": "14d",
+              "allowed_links": [
+                "dashboard_url",
+                "blog_url"
+              ],
+              "kb_select": {
+                "category": "tip_trick",
+                "exclude_used": true,
+                "pick": "best_match",
+                "tags_any_from_trait": "plan_tier"
+              }
+            },
+            {
+              "action_type": "feature_edu",
+              "eyebrow": "DID YOU KNOW",
+              "cooldown": "14d",
+              "allowed_links": [
+                "dashboard_url",
+                "icp_url",
+                "mcp_url",
+                "blog_url"
+              ],
+              "kb_select": {
+                "category": "feature_edu",
+                "exclude_used": true,
+                "pick": "best_match",
+                "tags_any_from_trait": "plan_tier"
+              }
+            },
+            {
+              "action_type": "curated_leads",
+              "eyebrow": "FRESH FOR YOU",
+              "cooldown": "14d",
+              "allowed_links": [
+                "dashboard_url"
+              ],
+              "when": [
+                {
+                  "trait": {
+                    "key": "icp_match_count",
+                    "op": "gt",
+                    "value": 4
+                  }
+                },
+                {
+                  "trait": {
+                    "key": "icp_digest_enabled",
+                    "op": "neq",
+                    "value": true
+                  }
+                }
+              ],
+              "context": [
+                {
+                  "source": "leads",
+                  "mode": "normal",
+                  "limit": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "subscribe_nudge",
+      "name": "Viewed pricing, did not subscribe (free)",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "nurture",
+      "priority": 70,
+      "approval_mode": "require",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "pricing_viewed",
+        "where": [
+          {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          }
+        ]
+      },
+      "reentry": {
+        "policy": "once"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "subscribe_nudge",
+          "delay": "4h",
+          "window_policy": "respect_window",
+          "template_ref": "subscribe_nudge",
+          "condition": {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          "preheader": "Fresh rounds every morning, scored against who you sell to.",
+          "from_name": "Sam from Acme Leads",
+          "expires_after": "7d"
+        }
+      ],
+      "exit_conditions": [
+        {
+          "event": "subscription_started"
+        },
+        {
+          "event": "paid_checkout_submitted"
+        }
+      ]
+    },
+    {
+      "slug": "upgrade_limit",
+      "name": "Hit the free monthly limit",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "nurture",
+      "priority": 80,
+      "approval_mode": "require",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "search_limit_hit",
+        "where": [
+          {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          {
+            "trait": {
+              "key": "first_paid_at",
+              "op": "not_exists"
+            }
+          },
+          {
+            "history": {
+              "flow": "subscribe_nudge",
+              "within": "7d",
+              "op": "none"
+            }
+          }
+        ]
+      },
+      "reentry": {
+        "policy": "once"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "upgrade_1",
+          "delay": "0m",
+          "window_policy": "respect_window",
+          "template_ref": "upgrade_1",
+          "preheader": "What opens up on Pro.",
+          "eyebrow": "YOU'RE USING THIS",
+          "from_name": "Sam from Acme Leads"
+        },
+        {
+          "order": 2,
+          "action_type": "upgrade_2",
+          "delay": "2d",
+          "window_policy": "respect_window",
+          "template_ref": "upgrade_2",
+          "condition": {
+            "trait": {
+              "key": "plan_tier",
+              "op": "eq",
+              "value": "free"
+            }
+          },
+          "preheader": "What's holding you back?",
+          "eyebrow": "STILL ON THE FENCE",
+          "from_name": "Sam from Acme Leads"
+        }
+      ],
+      "exit_conditions": [
+        {
+          "event": "subscription_started"
+        },
+        {
+          "event": "paid_checkout_submitted"
+        }
+      ]
+    },
+    {
+      "slug": "trial_ending",
+      "name": "Trial ends in 3 days",
+      "status": "active",
+      "topic": "account",
+      "flow_class": "critical",
+      "priority": 100,
+      "approval_mode": "auto",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "date_property",
+        "property": "trial_ends_at",
+        "offset": "-3d",
+        "send_at_local": "09:00"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "trial_ending",
+          "delay": "0m",
+          "window_policy": "immediate",
+          "template_ref": "trial_ending",
+          "condition": {
+            "trait": {
+              "key": "payment_status",
+              "op": "eq",
+              "value": "trial"
+            }
+          },
+          "preheader": "Keep your feed, ICP and lists by choosing a plan.",
+          "from_name": "The Acme Leads team"
+        }
+      ]
+    },
+    {
+      "slug": "dunning",
+      "name": "Payment failed",
+      "status": "active",
+      "topic": "account",
+      "flow_class": "critical",
+      "priority": 100,
+      "approval_mode": "auto",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "payment_failed"
+      },
+      "reentry": {
+        "policy": "cooldown",
+        "cooldown_days": 21
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "dunning",
+          "delay": "0m",
+          "window_policy": "immediate",
+          "template_ref": "dunning_1",
+          "condition": [
+            {
+              "trait": {
+                "key": "payment_status",
+                "op": "eq",
+                "value": "past_due"
+              }
+            }
+          ],
+          "from_name": "The Acme Leads team",
+          "eyebrow": "PAYMENT ISSUE",
+          "single_cta": true,
+          "preheader": "Usually an expired card. A one-minute fix, and your access stays on."
+        },
+        {
+          "order": 2,
+          "action_type": "dunning",
+          "delay": "3d",
+          "window_policy": "respect_window",
+          "template_ref": "dunning_2",
+          "condition": [
+            {
+              "trait": {
+                "key": "payment_status",
+                "op": "eq",
+                "value": "past_due"
+              }
+            }
+          ],
+          "from_name": "The Acme Leads team",
+          "eyebrow": "PAYMENT ISSUE",
+          "single_cta": true,
+          "preheader": "Update your card to keep your plan running."
+        },
+        {
+          "order": 3,
+          "action_type": "dunning",
+          "delay": "3d",
+          "window_policy": "respect_window",
+          "template_ref": "dunning_3",
+          "condition": [
+            {
+              "trait": {
+                "key": "payment_status",
+                "op": "eq",
+                "value": "past_due"
+              }
+            }
+          ],
+          "from_name": "The Acme Leads team",
+          "eyebrow": "PAYMENT ISSUE",
+          "single_cta": true,
+          "preheader": "Your subscription will end if the payment isn't updated."
+        }
+      ],
+      "exit_conditions": [
+        {
+          "event": "payment_succeeded"
+        },
+        {
+          "event": "subscription_cancelled"
+        }
+      ]
+    },
+    {
+      "slug": "cancellation_confirmed",
+      "name": "Subscription ended",
+      "status": "active",
+      "topic": "account",
+      "flow_class": "critical",
+      "priority": 100,
+      "approval_mode": "auto",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "subscription_cancelled"
+      },
+      "reentry": {
+        "policy": "every_time"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "cancellation_confirmed",
+          "delay": "0m",
+          "window_policy": "immediate",
+          "template_ref": "cancellation_confirmed",
+          "preheader": "You're on the free plan now. Your lists and settings are saved.",
+          "from_name": "The Acme Leads team"
+        }
+      ]
+    },
+    {
+      "slug": "cancel_save",
+      "name": "Cancellation scheduled, a personal note",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "critical",
+      "priority": 90,
+      "approval_mode": "require",
+      "content_mode": "ai_drafted",
+      "trigger": {
+        "type": "event",
+        "event": "subscription_cancel_scheduled"
+      },
+      "reentry": {
+        "policy": "cooldown",
+        "cooldown_days": 30
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "cancel_save",
+          "delay": "2h",
+          "window_policy": "respect_window",
+          "brain_instruction": "# cancel_save\n\nThe user scheduled a cancellation. A sincere, personal save attempt from Sam: acknowledge it without guilt, remind them of the concrete value only if the traits support it, and open a door (\"what wasn't working? If it's fixable I'd rather fix it than lose you\").\n\n- First person singular, a real person who noticed. No promo, discount, credit or incentive of any kind; none exist.\n- Tenure only if `first_paid_at` supports the phrasing; otherwise relational words, no duration.\n- Downgrade: only a Business user may be told Pro exists as a lighter paid plan. Pro is the lowest paid plan; never suggest a cheaper plan to a Pro user.\n- Founding price: if `traits.founding_price` is true, state it plainly once, as information, not pressure: their current price is theirs only while the subscription runs without a break; if they come back later it is at the regular price. No numbers unless the context gives their current price.\n- Usually no button (this is a reply-to-me note). Only `billing_url`, and only if keeping the plan is the natural step.\n\n---\n\n## Links this step allows\n\nUse only these URLs, and only where the instruction above calls for them:\n- billing_url: https://acme-leads.example/dashboard/settings?tab=billing\n\n---\n\n## Signature\n\nEnd the message with exactly this signature and nothing after it:\nSam\nFounder, Acme Leads\n",
+          "condition": {
+            "trait": {
+              "key": "cancel_at",
+              "op": "exists"
+            }
+          },
+          "from_name": "Sam from Acme Leads",
+          "eyebrow": "BEFORE YOU GO",
+          "allowed_links": [
+            "billing_url"
+          ]
+        }
+      ],
+      "exit_conditions": [
+        {
+          "event": "subscription_cancelled"
+        },
+        {
+          "event": "subscription_resumed"
+        },
+        {
+          "trait": {
+            "key": "cancel_at",
+            "op": "not_exists"
+          }
+        }
+      ]
+    },
+    {
+      "slug": "winback",
+      "name": "Win back a churned user",
+      "status": "active",
+      "topic": "lifecycle",
+      "flow_class": "nurture",
+      "priority": 20,
+      "approval_mode": "require",
+      "content_mode": "ai_drafted",
+      "trigger": {
+        "type": "lifecycle_transition",
+        "to": "churned",
+        "where": {
+          "not": {
+            "all": [
+              {
+                "trait": {
+                  "key": "payment_status",
+                  "op": "eq",
+                  "value": "free"
+                }
+              },
+              {
+                "first_contact": true
+              }
+            ]
+          }
+        }
+      },
+      "reentry": {
+        "policy": "cooldown",
+        "cooldown_days": 90
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "winback",
+          "delay": "0m",
+          "window_policy": "respect_window",
+          "brain_instruction": "# winback\n\nA churned, long-inactive user. One low-pressure reason to look again; expect a low return, so keep it light and never desperate.\n\n- Lead with something real: if the context has leads, name one or two in a line each (from `why`). Otherwise speak to what kind of companies keep coming through in their space, without numbers you do not have.\n- A warm \"it's been a while\" is fine; a ledger of their absence or a recital of what they used to do is not.\n- Free users: their feed is 30 days delayed; do not promise fresh leads.\n- CTA: `dashboard_url`, label \"Back to your feed\" or \"See this week's raises\" (paid). No guilt, no \"last chance\". Voice: Sam, \"I\".\n\n---\n\n## Links this step allows\n\nUse only these URLs, and only where the instruction above calls for them:\n- dashboard_url: https://acme-leads.example/dashboard\n\n---\n\n## Signature\n\nEnd the message with exactly this signature and nothing after it:\nSam\nFounder, Acme Leads\n",
+          "from_name": "Sam from Acme Leads",
+          "eyebrow": "WHAT YOU MISSED",
+          "allowed_links": [
+            "dashboard_url"
+          ],
+          "context": [
+            {
+              "source": "leads",
+              "mode": "normal",
+              "limit": 3
+            }
+          ],
+          "on_empty": "send",
+          "on_error": "defer"
+        }
+      ],
+      "exit_conditions": [
+        {
+          "event": "active_day"
+        }
+      ]
+    },
+    {
+      "slug": "subscription_confirmed",
+      "name": "Welcome to Pro / Business (receipt-style)",
+      "status": "paused",
+      "topic": "account",
+      "flow_class": "critical",
+      "priority": 100,
+      "approval_mode": "auto",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": "subscription_started"
+      },
+      "reentry": {
+        "policy": "every_time"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "subscription_confirmed",
+          "delay": "0m",
+          "window_policy": "immediate",
+          "template_ref": "subscription_confirmed",
+          "preheader": "Start with your ICP, it takes two minutes.",
+          "eyebrow": "WELCOME"
+        }
+      ]
+    },
+    {
+      "slug": "plan_changed",
+      "name": "Plan changed",
+      "status": "paused",
+      "topic": "account",
+      "flow_class": "critical",
+      "priority": 100,
+      "approval_mode": "auto",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "event",
+        "event": [
+          "subscription_upgraded",
+          "subscription_downgraded"
+        ]
+      },
+      "reentry": {
+        "policy": "every_time"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "plan_changed",
+          "delay": "0m",
+          "window_policy": "immediate",
+          "template_ref": "plan_changed",
+          "preheader": "Your new plan is active now."
+        }
+      ]
+    },
+    {
+      "slug": "plan_migration_notice",
+      "name": "Your plan got an upgrade, same price (one-off at cutover)",
+      "status": "paused",
+      "topic": "account",
+      "flow_class": "critical",
+      "priority": 100,
+      "approval_mode": "require",
+      "content_mode": "fixed_content",
+      "trigger": {
+        "type": "manual",
+        "where": [
+          {
+            "trait": {
+              "key": "founding_price",
+              "op": "eq",
+              "value": true
+            }
+          },
+          {
+            "trait": {
+              "key": "payment_status",
+              "op": "in",
+              "value": [
+                "paid",
+                "past_due"
+              ]
+            }
+          }
+        ]
+      },
+      "reentry": {
+        "policy": "once"
+      },
+      "steps": [
+        {
+          "order": 1,
+          "action_type": "plan_migration_notice",
+          "delay": "0m",
+          "window_policy": "respect_window",
+          "template_ref": "plan_migration_notice",
+          "preheader": "Nothing to do on your side."
+        }
+      ]
+    }
+  ],
+  "webhooks": [
+    {
+      "slug": "acme-app",
+      "url": "https://acme-leads.example/internal/claros/webhook",
+      "events": [
+        "contact.resubscribed",
+        "contact.subscribed",
+        "contact.suppressed",
+        "contact.unsubscribed",
+        "message.pending_approval"
+      ],
+      "enabled": true,
+      "secret": "whsec_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "batch_interval_minutes": 30
+    }
+  ]
+}

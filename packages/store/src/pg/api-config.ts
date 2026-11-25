@@ -34,7 +34,7 @@ export function pgApiConfig(db: PgDb): ApiConfigQueries {
         settings: (t.settings as Record<string, unknown> | null) ?? {},
         locale: t.locale,
         configVersion: t.configVersion,
-        topics: tp.map((x) => ({ id: x.id, slug: x.slug, name: x.name, kind: x.kind, description: x.description, defaultSubscribed: x.defaultSubscribed })),
+        topics: tp.map((x) => ({ id: x.id, slug: x.slug, name: x.name, kind: x.kind, description: x.description, defaultSubscribed: x.defaultSubscribed, mirrorOnly: x.mirrorOnly })),
         templates: tm.map((x) => ({ id: x.id, slug: x.slug, name: x.name, subject: x.subject, bodyHtml: x.bodyHtml, bodyText: x.bodyText, category: x.category, isActive: x.isActive })),
         flows: fl.map((x) => ({
           id: x.id, slug: x.slug, name: x.name, description: x.description, status: x.status, triggerType: x.triggerType,

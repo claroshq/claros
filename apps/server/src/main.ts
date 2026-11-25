@@ -349,7 +349,7 @@ async function start(): Promise<void> {
     // and serving is skipped - the server still starts cleanly.
     const serveDashboard = process.env.CLAROS_SERVE_DASHBOARD !== "false";
 
-    app = await buildApp({ role, edition, db, enqueue, serveDashboard, claimToken });
+    app = await buildApp({ role, edition, db, enqueue, serveDashboard, claimToken, runtime: "node" });
 
     try {
       await app.listen({ port, host });

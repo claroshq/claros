@@ -49,6 +49,7 @@ async function attemptEnrollment(
   candidate: EnrollmentCandidate,
   now: Date,
   anchorAt: Date | null = null,
+  triggerProperties: Record<string, unknown> | null = null,
 ): Promise<WorkerEnrollResult> {
   const { flow, tenantId, contactId } = candidate;
 
@@ -136,7 +137,7 @@ async function attemptEnrollment(
       evictedMembershipId = existing.membershipId;
     }
   }
-  // Critical class: no concurrency limit, skip guard 2.
+  // Critical and scheduled classes: no concurrency limit, skip guard 2.
 
   // Guard 3: Re-entry policy
   // Find the most recent non-active membership for this (contact, flow).
@@ -191,6 +192,7 @@ async function attemptEnrollment(
       status: "active",
       enteredAt: now,
       anchorAt,
+      triggerProperties,
     })
     .onConflictDoNothing()
     .returning({ id: flowMemberships.id });
@@ -209,7 +211,7 @@ async function attemptEnrollment(
 
 export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
   return {
-    async enrollContactInFlows({ contactId, tenantId, candidateFlows, now, anchorAt = null }) {
+    async enrollContactInFlows({ contactId, tenantId, candidateFlows, now, anchorAt = null, triggerProperties = null }) {
       return db.transaction(async (txHandle) => {
         const tx = txHandle as unknown as PgDb;
         if (candidateFlows.length === 0) return [];
@@ -218,7 +220,8 @@ export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
         const results: WorkerEnrollResult[] = [];
 
         // Separate critical and nurture flows
-        const criticalFlows = sorted.filter((f) => f.flowClass === "critical");
+        // Concurrent classes (critical, scheduled) never take the nurture slot.
+        const criticalFlows = sorted.filter((f) => f.flowClass !== "nurture");
         const nurtureFlows = sorted.filter((f) => f.flowClass === "nurture");
 
         // Execute inside a transaction with advisory lock
@@ -235,6 +238,7 @@ export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
             { flow, tenantId, contactId },
             now,
             anchorAt,
+            triggerProperties,
           );
           results.push(result);
         }
@@ -253,6 +257,7 @@ export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
             { flow, tenantId, contactId },
             now,
             anchorAt,
+            triggerProperties,
           );
           results.push(result);
           if (result.enrolled) {

@@ -37,6 +37,8 @@ export const flowMemberships = sqliteTable(
     conditionError: text("condition_error"),
     /** Date triggers (G3): the anchor date this membership was enrolled for. */
     anchorAt: integer("anchor_at", { mode: "timestamp_ms" }),
+    /** P5b: properties of the event that enrolled the contact ({{event.*}} in templates). */
+    triggerProperties: text("trigger_properties", { mode: "json" }),
   },
   (table) => [
     // [v2] Only ONE ACTIVE membership per flow per contact

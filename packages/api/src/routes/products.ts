@@ -8,13 +8,17 @@
  *   POST  /v1/products/:slug/archive    archive: reads stay allowed, writes answer 409 (instance admin)
  *   POST  /v1/products/:slug/unarchive  unarchive (instance admin)
  *
+ * An instance key (item 11) with products:write may list, create, update,
+ * archive and unarchive products; instance:read may list them.
+ *
  * The dashboard picks the product a request acts on with the
  * X-Claros-Product header (see http/session.ts). These routes are not
  * product-scoped, so an archived current product does not block them.
  */
 import { z } from "zod";
 import { storeFor, type ProductRow } from "@claros/store";
-import { createRouter, parseBody, requireInstanceAdmin, requireRole } from "../http/router.js";
+import { createRouter, parseBody } from "../http/router.js";
+import { requireInstanceAdminOrKey } from "../http/admin-auth.js";
 import type { AppContext } from "../http/env.js";
 import type { Db } from "../plugins/db.js";
 
@@ -101,9 +105,21 @@ export default function productsRoutes() {
    * { products: [{ id, slug, name, role, archived }], instance_admin }
    * Instance admins see every product (role owner).
    */
-  app.get("/", body, requireRole("member"), async (c) => {
+  app.get("/", body, async (c, next) => {
+    // Sessions of any member; without a session, an instance key with
+    // products:write or instance:read (it sees every product).
+    if (c.var.tenant) return next();
+    return requireInstanceAdminOrKey("products:write", "instance:read")(c, next);
+  }, async (c) => {
     const db: Db = c.var.db;
-    const tenant = c.var.tenant!;
+    const tenant = c.var.tenant;
+    if (!tenant) {
+      const rows = await storeFor(db).apiProducts.listAll();
+      return c.json({
+        products: rows.map((p) => ({ id: p.id, slug: p.slug, name: p.name, role: "owner", archived: p.archivedAt !== null })),
+        instance_admin: false,
+      });
+    }
     const isAdmin = tenant.instanceRole === "admin";
     const rows = isAdmin
       ? (await storeFor(db).apiProducts.listAll()).map((p) => ({ ...p, role: "owner" }))
@@ -124,7 +140,7 @@ export default function productsRoutes() {
    * POST /v1/products  { name, slug, locale? } -> 201 { product }
    * 409 when the slug is taken.
    */
-  app.post("/", body, requireInstanceAdmin, async (c) => {
+  app.post("/", body, requireInstanceAdminOrKey("products:write"), async (c) => {
     const parsed = createSchema.safeParse(c.var.body);
     if (!parsed.success) return validationError(c, parsed.error.issues);
     const { name, slug, locale } = parsed.data;
@@ -134,7 +150,7 @@ export default function productsRoutes() {
       name,
       slug,
       locale: locale ?? null,
-      ownerUserId: c.var.tenant!.userId,
+      ownerUserId: c.var.tenant ? c.var.tenant.userId : null,
     });
     if (!product) {
       return c.json({ error: "A product with this slug already exists." }, 409);
@@ -147,7 +163,7 @@ export default function productsRoutes() {
    * POST /v1/products/:slug/unarchive
    */
   for (const [action, archived] of [["archive", true], ["unarchive", false]] as const) {
-    app.post(`/:slug/${action}`, body, requireInstanceAdmin, async (c) => {
+    app.post(`/:slug/${action}`, body, requireInstanceAdminOrKey("products:write"), async (c) => {
       const db: Db = c.var.db;
       const product = await storeFor(db).apiProducts.setArchived({
         slug: c.req.param("slug")!,
@@ -162,7 +178,7 @@ export default function productsRoutes() {
    * PATCH /v1/products/:slug  { name?, locale?, public_host? }
    * 409 when the public host is used by another product.
    */
-  app.patch("/:slug", body, requireInstanceAdmin, async (c) => {
+  app.patch("/:slug", body, requireInstanceAdminOrKey("products:write"), async (c) => {
     const parsed = updateSchema.safeParse(c.var.body);
     if (!parsed.success) return validationError(c, parsed.error.issues);
     const { name, locale, public_host } = parsed.data;

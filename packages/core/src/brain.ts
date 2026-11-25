@@ -74,6 +74,8 @@ export type DraftOutput = z.infer<typeof draftOutputSchema>;
 export const assessOutputSchema = z.object({
   verdict: z.enum(["pass", "fail"]),
   reasoning: z.string().min(1),
+  /** P5b: 1-10 value score, asked for when the product sets brain.assess.threshold. */
+  score: z.number().min(1).max(10).optional(),
 });
 
 export type AssessOutput = z.infer<typeof assessOutputSchema>;

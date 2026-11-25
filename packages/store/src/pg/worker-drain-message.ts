@@ -20,6 +20,7 @@ export function pgWorkerDrainMessage(db: PgDb): WorkerDrainMessageQueries {
           AND tenant_id = ${tenantId}
           AND status = 'approved'
           AND (scheduled_send_at IS NULL OR scheduled_send_at <= ${now})
+          AND NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ${tenantId} AND t.archived_at IS NOT NULL)
         RETURNING id, tenant_id, contact_id, flow_id, flow_step_order,
                   subject, body_html, body_text, retry_count, topic_id
       `);

@@ -58,6 +58,14 @@ export function d1ApiProducts(db: D1Db): ApiProductsQueries {
     async create({ name, slug, locale, ownerUserId }) {
       const id = crypto.randomUUID();
       const now = new Date();
+      if (ownerUserId === null) {
+        const rows = await db
+          .insert(tenants)
+          .values({ id, name, slug, locale, plan: "free", createdAt: now })
+          .onConflictDoNothing({ target: tenants.slug })
+          .returning(productColumns);
+        return rows[0] ?? null;
+      }
       const [inserted] = await db.batch([
         db
           .insert(tenants)

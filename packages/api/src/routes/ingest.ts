@@ -58,7 +58,7 @@ import { createIngestAuth, ingestPreflight, parsePlainTextAsJson } from "../http
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor } from "@claros/store";
-import { QUEUE, INGEST_TIMESTAMP_CLAMP_HOURS } from "@claros/core";
+import { QUEUE, INGEST_TIMESTAMP_CLAMP_HOURS, boundedEventProperties } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 
 // --- Constants ---
@@ -284,7 +284,7 @@ async function processTrackEvent(
   if (enqueue) {
     await enqueue(
       QUEUE.TRIGGER_CHECK,
-      { tenant_id: tenantId, contact_id: result.contactId, event_name: body.event },
+      { tenant_id: tenantId, contact_id: result.contactId, event_name: body.event, event_properties: boundedEventProperties(body.properties) },
       { retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
     ).catch(() => {
       // Swallow enqueue failures: the event is persisted, enrollment will

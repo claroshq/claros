@@ -22,6 +22,9 @@ import type { PgDb } from "./db.js";
 import type { ApiIngestQueries, IngestTraitPlan } from "../areas/api-ingest.js";
 import { topics as topicsTable } from "@claros/db/schema";
 import { upsertContactTopicSql } from "./contact-topics.js";
+import { pgWriteOutbox } from "./outbox.js";
+import { identifyTopicEvents } from "../shared/topic-events.js";
+import { contactTopics as contactTopicsTable } from "@claros/db/schema";
 import { pgSyncContactDates } from "./contact-dates.js";
 
 /**
@@ -725,6 +728,26 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
       const unknown = slugs.filter((s) => !knownSet.has(s));
       if (applied.length > 0) {
         await db.transaction(async (tx) => {
+          // P5b: statuses before the change, for contact.subscribed / unsubscribed.
+          const contact = (
+            await tx
+              .select({ id: contacts.id, email: contacts.email })
+              .from(contacts)
+              .where(and(eq(contacts.tenantId, tenantId), eq(contacts.externalId, externalId)))
+              .limit(1)
+          )[0];
+          const before = contact
+            ? await tx
+                .select({
+                  topicId: topicsTable.id,
+                  slug: topicsTable.slug,
+                  defaultSubscribed: topicsTable.defaultSubscribed,
+                  status: contactTopicsTable.status,
+                })
+                .from(topicsTable)
+                .leftJoin(contactTopicsTable, and(eq(contactTopicsTable.topicId, topicsTable.id), eq(contactTopicsTable.contactId, contact.id)))
+                .where(and(eq(topicsTable.tenantId, tenantId), inArray(topicsTable.slug, applied)))
+            : [];
           for (const slug of applied) {
             await tx.execute(
               upsertContactTopicSql({
@@ -736,6 +759,10 @@ export function pgApiIngest(db: PgDb): ApiIngestQueries {
                 now,
               }),
             );
+          }
+          if (contact) {
+            const entries = identifyTopicEvents(contact, before.map((b) => ({ ...b, status: b.status ?? null })), wanted, applied);
+            await pgWriteOutbox(tx as unknown as PgDb, tenantId, entries, now);
           }
         });
       }

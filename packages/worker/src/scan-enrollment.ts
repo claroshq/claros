@@ -16,9 +16,11 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
 import {
   matchesLifecycleTransition,
+  toFlowClass,
   type EnrollableFlow,
 } from "@claros/core";
 import { enrollContactInFlows } from "./enroll.js";
+import { passesTriggerWhere } from "./audience.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,22 +90,27 @@ export async function phaseEnrollment(
     for (const transition of tenantTransitions) {
       stats.transitionsEvaluated++;
 
-      // Find flows whose trigger_config matches this transition
-      const matchingFlows: EnrollableFlow[] = tenantFlows
-        .filter((f) =>
-          matchesLifecycleTransition(
-            f as EnrollableFlow,
-            transition.fromState,
-            transition.toState,
-          ),
-        )
+      // Find flows whose trigger_config matches this transition and whose
+      // `where` (P5b) holds for the contact.
+      const named = tenantFlows.filter((f) =>
+        matchesLifecycleTransition(
+          f as EnrollableFlow,
+          transition.fromState,
+          transition.toState,
+        ),
+      );
+      const passing: typeof named = [];
+      for (const f of named) {
+        if (await passesTriggerWhere(storeFor(db).workerScanEnrollment, f.triggerConfig, tenantId, transition.contactId, now)) passing.push(f);
+      }
+      const matchingFlows: EnrollableFlow[] = passing
         .map((f) => ({
           id: f.id,
           tenantId: f.tenantId,
           priority: f.priority ?? 0,
           triggerType: f.triggerType as "lifecycle_transition",
           triggerConfig: f.triggerConfig,
-          flowClass: (f.flowClass ?? "nurture") as "critical" | "nurture",
+          flowClass: toFlowClass(f.flowClass),
           reentryPolicy: (f.reentryPolicy ?? "cooldown") as "once" | "cooldown" | "every_time",
           reentryCooldownDays: f.reentryCooldownDays ?? 30,
         }));

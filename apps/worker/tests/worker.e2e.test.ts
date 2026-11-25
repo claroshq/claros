@@ -595,7 +595,7 @@ describe("Workers runtime: management API (admin key, config, webhooks)", () => 
     expect(body.config_version).toBe(1);
     const secret = body.webhook_secrets.app!;
     const again = await mf.dispatchFetch("http://localhost/v1/config", { method: "PUT", headers: auth, body: JSON.stringify(doc) });
-    expect(await again.json()).toEqual({ dry_run: false, changes: [], config_version: 1 });
+    expect(await again.json()).toEqual({ dry_run: false, changes: [], warnings: [], config_version: 1 });
     const flowsRows = await db.select().from(schema.flows).where(eq(schema.flows.tenantId, productId));
     expect(flowsRows.map((f: { slug: string }) => f.slug)).toEqual(["welcome"]);
 

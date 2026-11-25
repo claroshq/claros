@@ -8,7 +8,7 @@
  * current row produces no change, so applying a document twice yields an
  * empty diff the second time.
  */
-import type { ClarosConfig, ConfigFlow } from "./schema.js";
+import { TRIGGER_KEYS, type ClarosConfig, type ConfigFlow } from "./schema.js";
 import { ANALYTICS_ENDPOINT_SLUG, ANALYTICS_SOURCE_EVENTS } from "../webhooks.js";
 
 export interface StateTopic {
@@ -18,6 +18,8 @@ export interface StateTopic {
   kind: string;
   description: string | null;
   defaultSubscribed: boolean;
+  /** P5b; absent on older state readers (false). */
+  mirrorOnly?: boolean;
 }
 export interface StateTemplate {
   id: string;
@@ -107,7 +109,7 @@ export interface FlowValues {
 }
 
 export type ConfigOp =
-  | { op: "upsertTopic"; id: string; create: boolean; values: { slug: string; name: string; kind: string; description: string | null; defaultSubscribed: boolean } }
+  | { op: "upsertTopic"; id: string; create: boolean; values: { slug: string; name: string; kind: string; description: string | null; defaultSubscribed: boolean; mirrorOnly: boolean } }
   | { op: "deleteTopic"; id: string }
   | { op: "upsertTemplate"; id: string; create: boolean; values: { slug: string; name: string; subject: string; bodyHtml: string; bodyText: string | null; category: string | null } }
   | { op: "deleteTemplate"; id: string }
@@ -129,6 +131,8 @@ export interface ConfigPlan {
   changes: ConfigChange[];
   ops: ConfigOp[];
   errors: string[];
+  /** P5b: things that apply but probably do not do what the document means (unknown trigger keys, ...). */
+  warnings: string[];
   /** Secrets generated for new webhooks (slug -> secret), returned once by apply. */
   generatedSecrets: Record<string, string>;
 }
@@ -166,12 +170,26 @@ function diffFields(current: Record<string, unknown>, next: Record<string, unkno
   return keys.filter((k) => !sameJson(current[k], next[k]));
 }
 
-const SETTINGS_KEYS = ["brand", "throttle", "postal_address", "links", "link_tracking", "brain", "data_sources", "date_traits", "activation_events"] as const;
+export const SETTINGS_KEYS = [
+  "brand",
+  "throttle",
+  "postal_address",
+  "links",
+  "link_tracking",
+  "brain",
+  "data_sources",
+  "date_traits",
+  "activation_events",
+  "lifecycle",
+  "llm_daily_token_budget",
+  "approvals",
+] as const;
 
 export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanDeps): ConfigPlan {
   const changes: ConfigChange[] = [];
   const ops: ConfigOp[] = [];
   const errors: string[] = [];
+  const warnings: string[] = [];
   const generatedSecrets: Record<string, string> = {};
   const prune = config.prune === true;
 
@@ -189,7 +207,7 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       }
       continue;
     }
-    let normalized = key === "brain" ? clean(want as Record<string, unknown>) : want;
+    let normalized = key === "brain" || key === "lifecycle" || key === "approvals" ? clean(want as Record<string, unknown>) : want;
     if (key === "data_sources") {
       // Secrets are write-only: the stored form keeps `secret_enc`. A source
       // without `secret` keeps its stored one; a changed secret is passed on
@@ -275,6 +293,7 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       kind: t.kind,
       description: t.description ?? null,
       defaultSubscribed: t.default_subscribed ?? true,
+      mirrorOnly: t.mirror_only ?? false,
     };
     if (!cur) {
       const id = deps.newId();
@@ -283,7 +302,7 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       changes.push({ kind: "topic", key: t.slug, action: "create" });
       continue;
     }
-    const fields = diffFields(cur as unknown as Record<string, unknown>, values, ["name", "kind", "description", "defaultSubscribed"]);
+    const fields = diffFields({ ...cur, mirrorOnly: cur.mirrorOnly ?? false } as unknown as Record<string, unknown>, values, ["name", "kind", "description", "defaultSubscribed", "mirrorOnly"]);
     if (fields.length > 0) {
       ops.push({ op: "upsertTopic", id: cur.id, create: false, values });
       changes.push({ kind: "topic", key: t.slug, action: "update", fields });
@@ -329,9 +348,16 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
         continue;
       }
       topicId = id;
+      const listed = (config.topics ?? []).find((t) => t.slug === f.topic);
+      const mirror = listed ? listed.mirror_only === true : state.topics.find((t) => t.slug === f.topic)?.mirrorOnly === true;
+      if (mirror) {
+        errors.push(`flows.${f.slug}: topic '${f.topic}' is mirror_only; no flow may send on it`);
+        continue;
+      }
     } else if (f.topic === undefined && cur) {
       topicId = cur.topicId;
     }
+    flowWarnings(f, s, state, warnings);
     const sources = (s.data_sources ?? (state.settings.data_sources as Record<string, { modes?: string[] }> | undefined) ?? {}) as Record<string, { modes?: string[] }>;
     for (const step of f.steps ?? []) {
       if (step.type === "choose" && state.hasLlm === false) {
@@ -355,6 +381,22 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
         remainingTemplateRefs.add(step.template_ref);
         if (!templateSlugs.has(step.template_ref)) {
           errors.push(`flows.${f.slug}: step ${step.order} references unknown template '${step.template_ref}'`);
+        }
+      }
+      // P5b: allowed_links name links of settings.links.
+      const links = (s.links ?? (state.settings.links as Record<string, string> | undefined) ?? {}) as Record<string, string>;
+      const names = [...(step.allowed_links ?? []), ...(step.candidates ?? []).flatMap((c) => c.allowed_links ?? [])];
+      for (const n of names) {
+        if (!(n in links)) errors.push(`flows.${f.slug}: step ${step.order} allows link '${n}', which settings.links does not name`);
+      }
+      // P5b: single_cta on a fixed template: at most one link in the template.
+      if (step.single_cta) {
+        for (const ref of [step.template_ref, ...(step.candidates ?? []).map((c) => c.template_ref)]) {
+          if (!ref) continue;
+          const body = (config.templates ?? []).find((t) => t.slug === ref)?.body_html ?? state.templates.find((t) => t.slug === ref)?.bodyHtml;
+          if (body === undefined) continue;
+          const hrefs = new Set([...body.matchAll(/href\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]!).filter((h) => !h.startsWith("mailto:")));
+          if (hrefs.size > 1) errors.push(`flows.${f.slug}: step ${step.order} is single_cta but template '${ref}' has ${hrefs.size} links`);
         }
       }
     }
@@ -406,7 +448,14 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       continue;
     }
     const cur = state.endpoints.find((e) => e.slug === w.slug && e.kind === "webhook");
-    const values = { slug: w.slug, kind: "webhook", url: w.url, events: [...w.events].sort(), enabled: w.enabled ?? true, config: null };
+    const values = {
+      slug: w.slug,
+      kind: "webhook",
+      url: w.url,
+      events: [...w.events].sort(),
+      enabled: w.enabled ?? true,
+      config: w.batch_interval_minutes !== undefined ? { batch_interval_minutes: w.batch_interval_minutes } : null,
+    };
     if (!cur) {
       const secret = w.secret ?? deps.newSecret();
       if (!w.secret) generatedSecrets[w.slug] = secret;
@@ -414,7 +463,7 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
       changes.push({ kind: "webhook", key: w.slug, action: "create" });
       continue;
     }
-    const fields = diffFields({ ...cur, events: [...cur.events].sort() } as unknown as Record<string, unknown>, values, ["url", "events", "enabled"]);
+    const fields = diffFields({ ...cur, events: [...cur.events].sort() } as unknown as Record<string, unknown>, values, ["url", "events", "enabled", "config"]);
     const secretChanged = w.secret !== undefined && (cur.secret === null || deps.readSecret(cur.secret) !== w.secret);
     if (secretChanged) fields.push("secret");
     if (fields.length > 0) {
@@ -501,7 +550,31 @@ export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanD
   }
 
   if (Object.keys(patch).length > 0) ops.push({ op: "setSettings", patch });
-  return { changes, ops, errors, generatedSecrets };
+  return { changes, ops, errors, warnings, generatedSecrets };
+}
+
+/**
+ * P5b: warnings for a flow that applies but probably does not do what the
+ * document means: trigger keys the trigger type does not read, date
+ * triggers on traits missing from settings.date_traits, and long date
+ * schedules in the nurture class (they hold the contact's one nurture slot).
+ */
+function flowWarnings(f: ConfigFlow, s: NonNullable<ClarosConfig["settings"]>, state: ConfigState, warnings: string[]): void {
+  const known = TRIGGER_KEYS[f.trigger.type] ?? [];
+  for (const k of Object.keys(f.trigger)) {
+    if (k === "type" || known.includes(k)) continue;
+    warnings.push(`flows.${f.slug}: trigger key '${k}' is not read by ${f.trigger.type} triggers and is ignored`);
+  }
+  if (f.trigger.type === "date_property" || f.trigger.type === "date_schedule") {
+    const trait = f.trigger.type === "date_property" ? f.trigger.property : f.trigger.anchor;
+    const dateTraits = (s.date_traits ?? (state.settings.date_traits as string[] | undefined) ?? []) as string[];
+    if (trait && !dateTraits.includes(trait)) {
+      warnings.push(`flows.${f.slug}: '${trait}' is not in settings.date_traits, so the trigger never fires`);
+    }
+    if (f.trigger.type === "date_schedule" && (f.flow_class ?? "nurture") === "nurture") {
+      warnings.push(`flows.${f.slug}: a nurture-class date schedule holds the contact's nurture slot while it runs; use flow_class "scheduled" for long schedules`);
+    }
+  }
 }
 
 function flowValues(f: ConfigFlow, cur: StateFlow | undefined, topicId: string | null): FlowValues {

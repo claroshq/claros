@@ -11,7 +11,14 @@
  * exit shapes. The execution engine (task 12d) evaluates these deterministically.
  */
 import { z } from "zod";
-import { traitConditionSchema, historyConditionSchema, firstContactConditionSchema } from "../conditions.js";
+import {
+  traitConditionSchema,
+  historyConditionSchema,
+  firstContactConditionSchema,
+  conditionTreeSchema,
+  conditionOrListSchema,
+  audienceConditionOrListSchema,
+} from "../conditions.js";
 
 // ---------------------------------------------------------------------------
 // Condition schemas (step-level)
@@ -30,7 +37,7 @@ import { traitConditionSchema, historyConditionSchema, firstContactConditionSche
  * Plus the contact conditions (../conditions.ts): trait (G4), history and
  * first_contact (G28).
  */
-export const stepConditionSchema = z.union([
+export const stepConditionLeafSchema = z.union([
   z.object({ lifecycle_state: z.string().min(1) }).strict(),
   z.object({ lifecycle_state_not: z.string().min(1) }).strict(),
   z.object({ event_since_step: z.string().min(1) }).strict(),
@@ -40,6 +47,12 @@ export const stepConditionSchema = z.union([
   // G3: the membership's anchor date still equals the contact's date trait.
   z.object({ date_unchanged: z.literal(true) }).strict(),
 ]);
+
+/**
+ * A step `condition` or `exit_condition` (P5b): one leaf, a combinator
+ * (`{all: [...]}`, `{any: [...]}`, `{not: c}`), or a list (= all).
+ */
+export const stepConditionSchema = conditionOrListSchema(stepConditionLeafSchema, "stepCondition");
 
 // ---------------------------------------------------------------------------
 // Step schema
@@ -86,20 +99,27 @@ export const kbSelectSchema = z
   })
   .strict();
 
+/** A named link of the product (settings.links key). */
+const linkNameSchema = z.string().regex(/^[a-z0-9_]{1,64}$/, { message: "a link name ([a-z0-9_], see settings.links)" });
+
 const durationString = z.string().regex(/^\d{1,6}(m|h|d)$/, { message: "must look like 14d, 12h or 30m" });
 
 /** G27: one candidate of a choose step. */
 export const chooseCandidateSchema = z
   .object({
     action_type: z.string().min(1).max(120),
-    /** Contact conditions (trait, history, first_contact) that must all hold. */
-    when: z.array(z.union([traitConditionSchema, historyConditionSchema, firstContactConditionSchema])).optional(),
+    /** Audience conditions (trait, history, first_contact, lifecycle_state, combinators); a list must all hold. */
+    when: audienceConditionOrListSchema.optional(),
     kb_select: kbSelectSchema.optional(),
     context: z.array(stepContextSchema).max(5).optional(),
     /** Not eligible when this action type was sent to the contact within this window. */
     cooldown: durationString.optional(),
     template_ref: z.string().optional(),
     brain_instruction: z.string().optional(),
+    /** P5b: eyebrow label for this candidate's message (default: the step's). */
+    eyebrow: z.string().min(1).max(60).optional(),
+    /** P5b: named links this candidate may use (default: the step's). */
+    allowed_links: z.array(linkNameSchema).min(1).max(20).optional(),
   })
   .strict();
 
@@ -131,6 +151,18 @@ export const compiledStepSchema = z.object({
   candidates: z.array(chooseCandidateSchema).min(1).max(20).optional(),
   /** G27: whether the LLM may answer "none" (default true). */
   allow_none: z.boolean().optional(),
+  /** P5b: sender display name for this step (the address stays the transport's verified sender). */
+  from_name: z.string().min(1).max(120).optional(),
+  /** P5b: Reply-To address for this step. */
+  reply_to: z.string().email().max(320).optional(),
+  /** P5b: small label shown above the message body. */
+  eyebrow: z.string().min(1).max(60).optional(),
+  /** P5b: hidden preheader (inbox preview text) of the HTML message. */
+  preheader: z.string().min(1).max(200).optional(),
+  /** P5b: the named links (settings.links) this step may use; restricts the link allowlist. */
+  allowed_links: z.array(linkNameSchema).min(1).max(20).optional(),
+  /** P5b: at most one link besides the footer and unsubscribe links. */
+  single_cta: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -148,7 +180,7 @@ export const compiledStepSchema = z.object({
  *   4. A contact condition: trait (exit when the trait matches, e.g. "exit
  *      when icp_configured becomes true"), history or first_contact.
  */
-export const planExitConditionSchema = z.union([
+export const planExitLeafSchema = z.union([
   traitConditionSchema,
   historyConditionSchema,
   firstContactConditionSchema,
@@ -159,6 +191,9 @@ export const planExitConditionSchema = z.union([
     lifecycle_state_change: z.object({ to: z.string().min(1) }).strict(),
   }).strict(),
 ]);
+
+/** A plan-level exit (P5b): a leaf or a combinator over leaves. */
+export const planExitConditionSchema = conditionTreeSchema(planExitLeafSchema, "planExitCondition");
 
 // ---------------------------------------------------------------------------
 // Trigger schema (confirmation of the flow trigger in compiled form)
@@ -199,3 +234,32 @@ export type StepCondition = z.infer<typeof stepConditionSchema>;
 export type StepContext = z.infer<typeof stepContextSchema>;
 export type KbSelect = z.infer<typeof kbSelectSchema>;
 export type ChooseCandidate = z.infer<typeof chooseCandidateSchema>;
+
+/** P5b: how a step presents its message (sender name, Reply-To, eyebrow, preheader). */
+export interface StepPresentation {
+  fromName: string | null;
+  replyTo: string | null;
+  eyebrow: string | null;
+  preheader: string | null;
+}
+
+/**
+ * The presentation fields of the plan step with `order`; for a choose step,
+ * the picked candidate's eyebrow (matched by action type) wins over the
+ * step's. Unknown plan shapes give nulls.
+ */
+export function stepPresentation(plan: unknown, order: number | null, actionType: string | null): StepPresentation {
+  const none: StepPresentation = { fromName: null, replyTo: null, eyebrow: null, preheader: null };
+  if (order === null || !plan || typeof plan !== "object") return none;
+  const steps = (plan as { steps?: unknown }).steps;
+  if (!Array.isArray(steps)) return none;
+  const step = steps.find((s) => s && typeof s === "object" && (s as { order?: unknown }).order === order) as Record<string, unknown> | undefined;
+  if (!step) return none;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+  let eyebrow = str(step.eyebrow);
+  if (actionType && Array.isArray(step.candidates)) {
+    const cand = (step.candidates as Array<Record<string, unknown>>).find((c) => c && c.action_type === actionType);
+    if (cand && str(cand.eyebrow)) eyebrow = str(cand.eyebrow);
+  }
+  return { fromName: str(step.from_name), replyTo: str(step.reply_to), eyebrow, preheader: str(step.preheader) };
+}

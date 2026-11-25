@@ -4,10 +4,12 @@
 import { eq, and, inArray, gt, sql } from "drizzle-orm";
 import { contacts, flows, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
+import { pgContactConditions } from "./contact-conditions.js";
 import type { WorkerScanSegmentEnrollmentQueries } from "../areas/worker-scan-segment-enrollment.js";
 
 export function pgWorkerScanSegmentEnrollment(db: PgDb): WorkerScanSegmentEnrollmentQueries {
   return {
+    ...pgContactConditions(db),
     async listTenants(tenantIds) {
       if (tenantIds && tenantIds.length > 0) {
         return db
@@ -64,6 +66,28 @@ export function pgWorkerScanSegmentEnrollment(db: PgDb): WorkerScanSegmentEnroll
             recency.maxDays === null
               ? undefined
               : sql`${contacts.lastSeenAt} > ${now}::timestamptz - make_interval(days => ${recency.maxDays})`,
+            sql`NOT EXISTS (
+              SELECT 1 FROM flow_memberships fm
+              WHERE fm.contact_id = ${contacts.id}
+                AND fm.flow_id = ${flowId}
+                AND fm.status = 'active'
+            )`,
+            afterId === null ? undefined : gt(contacts.id, afterId),
+          ),
+        )
+        .orderBy(contacts.id)
+        .limit(limit);
+    },
+
+    async listStateContactsPage({ tenantId, flowId, states, depths, afterId, limit }) {
+      return db
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.tenantId, tenantId),
+            states && states.length > 0 ? inArray(contacts.lifecycleState, states) : undefined,
+            depths && depths.length > 0 ? inArray(contacts.engagementDepth, depths) : undefined,
             sql`NOT EXISTS (
               SELECT 1 FROM flow_memberships fm
               WHERE fm.contact_id = ${contacts.id}

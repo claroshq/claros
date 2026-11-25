@@ -94,8 +94,8 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
       return tenantRows.rows.map((r) => r.tenant_id);
     },
 
-    async markFailed(messageId, fromStatus, reasoning, now) {
-      const result = await db.execute<{ id: string }>(sql`
+    async markFailed(messageId, fromStatus, reasoning, now, events) {
+      return withOutbox(events, now, async (tx) => (await tx.execute<{ id: string }>(sql`
         UPDATE lifecycle_messages
         SET
           status = 'failed',
@@ -104,8 +104,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         WHERE id = ${messageId}
           AND status = ${fromStatus}
         RETURNING id
-      `);
-      return result.rows.length > 0;
+      `)).rows.length > 0);
     },
 
     async markSkipped(messageId, reasoning, now) {
@@ -128,6 +127,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         SET
           status = 'awaiting_content',
           brain_reasoning = ${reasoning},
+          status_reason = NULLIF(status_reason, 'llm_budget'),
           updated_at = ${now}
         WHERE id = ${messageId}
           AND status = 'generating'
@@ -179,11 +179,30 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
           body_text = ${bodyText},
           approved_at = ${approvedAt},
           brain_reasoning = ${reasoning},
+          status_reason = NULLIF(status_reason, 'llm_budget'),
           updated_at = ${now}
         WHERE id = ${messageId}
           AND status = 'generating'
         RETURNING id
       `)).rows.length > 0);
+    },
+
+    async releaseForBudget(messageId, now) {
+      const res = await db.execute<{ id: string }>(sql`
+        UPDATE lifecycle_messages
+        SET status = 'pending_generation', status_reason = 'llm_budget', updated_at = ${now}
+        WHERE id = ${messageId} AND status = 'generating'
+        RETURNING id
+      `);
+      return res.rows.length > 0;
+    },
+
+    async getMembershipTriggerProperties({ tenantId, membershipId }) {
+      const res = await db.execute<{ p: Record<string, unknown> | null }>(sql`
+        SELECT trigger_properties AS p FROM flow_memberships WHERE id = ${membershipId}::uuid AND tenant_id = ${tenantId}::uuid
+      `);
+      const p = res.rows[0]?.p;
+      return p && typeof p === "object" && !Array.isArray(p) ? p : null;
     },
 
     async getFlowApprovalMode(flowId) {

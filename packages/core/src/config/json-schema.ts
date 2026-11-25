@@ -25,8 +25,21 @@ function isOptional(s: ZodTypeAny): boolean {
   return false;
 }
 
+/** Named recursive schemas (z.lazy with a jsonSchemaName) collected as $defs. */
+let defs: Record<string, Json> | null = null;
+
 export function zodToJsonSchema(s: ZodTypeAny): Json {
   const d = def(s);
+  if (d.typeName === "ZodLazy") {
+    const name = (s as unknown as { jsonSchemaName?: string }).jsonSchemaName;
+    if (!name) throw new Error("zodToJsonSchema: z.lazy needs a jsonSchemaName");
+    if (!defs) throw new Error("zodToJsonSchema: recursive schemas need configJsonSchema()");
+    if (!defs[name]) {
+      defs[name] = {};
+      defs[name] = zodToJsonSchema((d.getter as () => ZodTypeAny)());
+    }
+    return { $ref: `#/$defs/${name}` };
+  }
   const out: Json = {};
   if (typeof (s as { description?: string }).description === "string") out.description = (s as { description: string }).description;
   switch (d.typeName) {
@@ -107,10 +120,20 @@ export function zodToJsonSchema(s: ZodTypeAny): Json {
 
 /** The JSON Schema document of the config file. */
 export function configJsonSchema(schema: ZodTypeAny): Json {
-  return {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://github.com/claroshq/claros/blob/main/docs/reference/claros.config.schema.json",
-    title: "Claros product configuration (claros apply, PUT /v1/config)",
-    ...zodToJsonSchema(schema),
-  };
+  defs = {};
+  try {
+    const body = zodToJsonSchema(schema);
+    const collected = defs;
+    return {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://github.com/claroshq/claros/blob/main/docs/reference/claros.config.schema.json",
+      title: "Claros product configuration (claros apply, PUT /v1/config)",
+      ...body,
+      ...(Object.keys(collected).length > 0
+        ? { $defs: Object.fromEntries(Object.keys(collected).sort().map((k) => [k, collected[k]])) }
+        : {}),
+    };
+  } finally {
+    defs = null;
+  }
 }

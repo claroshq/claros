@@ -75,7 +75,7 @@ export interface WorkerDrainQueries {
    * concurrent caller; rows locked by another caller are skipped, never waited on.
    */
   claimDrainBatch(input: { now: Date; limit: number; tenantIds: string[] }): Promise<WorkerDrainClaimedMessage[]>;
-  /** Distinct tenants with approved messages due at `now` (read only, no locks). */
+  /** Distinct non-archived tenants with approved messages due at `now` (read only, no locks). */
   listTenantsWithDueMessages(now: Date): Promise<string[]>;
   /** daily_limit of the tenant's active transport config, or null when unset or no active config. */
   getTransportDailyLimit(tenantId: string): Promise<number | null>;
@@ -121,6 +121,8 @@ export interface WorkerDrainQueries {
   isSuppressed(tenantId: string, email: string): Promise<boolean>;
   /** The flow's class and compiled plan, or null when the flow does not exist. */
   getFlowThrottleInfo(flowId: string): Promise<WorkerDrainFlowThrottleInfo | null>;
+  /** P5b: the message's action type (the pick of a choose step), or null. */
+  getMessageActionType(input: { tenantId: string; messageId: string }): Promise<string | null>;
   /** Slug and name of a flow (G6 link tagging), or null. */
   getFlowLabel(flowId: string): Promise<{ slug: string | null; name: string } | null>;
   /** The tenant's raw settings JSON, or null when the tenant does not exist or has none. */

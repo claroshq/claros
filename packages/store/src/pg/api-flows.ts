@@ -1,13 +1,41 @@
 /**
  * Postgres implementation of the queries used by packages/api/src/routes/flows.ts.
  */
-import { eq, and, ne } from "drizzle-orm";
-import { flows, llmConfigs, tenants, templates } from "@claros/db/schema";
+import { eq, and, ne, gt, inArray } from "drizzle-orm";
+import { contacts, flows, llmConfigs, tenants, templates } from "@claros/db/schema";
+import { pgContactConditions } from "./contact-conditions.js";
 import type { PgDb } from "./db.js";
 import type { ApiFlowsQueries } from "../areas/api-flows.js";
 
 export function pgApiFlows(db: PgDb): ApiFlowsQueries {
   return {
+    ...pgContactConditions(db),
+
+    async listContactIdsPage({ tenantId, afterId, limit }) {
+      const rows = await db
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(and(eq(contacts.tenantId, tenantId), afterId === null ? undefined : gt(contacts.id, afterId)))
+        .orderBy(contacts.id)
+        .limit(limit);
+      return rows.map((r) => r.id);
+    },
+
+    async findContactsByExternalIds({ tenantId, externalIds }) {
+      const out: Array<{ id: string; externalId: string }> = [];
+      // Chunks keep D1 under its 100 bound parameters per statement.
+      for (let i = 0; i < externalIds.length; i += 90) {
+        out.push(
+          ...(await db
+            .select({ id: contacts.id, externalId: contacts.externalId })
+            .from(contacts)
+            .where(and(eq(contacts.tenantId, tenantId), inArray(contacts.externalId, externalIds.slice(i, i + 90))))),
+        );
+      }
+      return out;
+    },
+
+
     async createFlow(values) {
       const [inserted] = await db
         .insert(flows)

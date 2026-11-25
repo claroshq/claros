@@ -29,7 +29,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor, type WorkerContentKbEntry } from "@claros/store";
 import {
   cachedConditionContext,
-  evaluateAllContactConditions,
+  evaluateAudienceCondition,
   durationMs,
   resolveThrottleConfig,
   topicBlocks,
@@ -93,6 +93,7 @@ async function filterCandidates(db: Db, input: ChooseInput): Promise<{ eligible:
     now: input.now,
     traits: async () => input.contact.traits,
     countSends: (f) => store.countSends({ tenantId: input.tenantId, contactId: input.contactId, ...f }),
+    lifecycleState: () => store.lookupLifecycleState({ tenantId: input.tenantId, contactId: input.contactId }),
   });
 
   // Flow-wide gates: consent and throttle apply to every candidate alike.
@@ -134,8 +135,8 @@ async function candidateReason(
     const n = await cond.countSends({ actionType: c.action_type, since: new Date(input.now.getTime() - ms) });
     if (n > 0) return "cooldown";
   }
-  if (c.when && c.when.length > 0) {
-    const ok = await evaluateAllContactConditions(c.when, cond);
+  if (c.when !== undefined && !(Array.isArray(c.when) && c.when.length === 0)) {
+    const ok = await evaluateAudienceCondition(c.when, cond);
     if (ok !== true) return "when";
   }
   if (c.kb_select) {

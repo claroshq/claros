@@ -80,6 +80,10 @@ export interface EmailShellInput {
   tenantName: string;
   /** Pre-built compliance footer HTML (unsubscribe link + postal address). */
   complianceFooterHtml: string;
+  /** P5b: small label above the body (the step's eyebrow). */
+  eyebrow?: string | null;
+  /** P5b: hidden preheader (inbox preview text). */
+  preheader?: string | null;
 }
 
 /**
@@ -124,6 +128,16 @@ function esc(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Hidden preheader: the inbox preview text. Padded with zero-width
+ * non-joiners so the preview does not run on into the body text.
+ */
+function preheaderHtml(text: string | null | undefined): string {
+  if (!text) return "";
+  const pad = "&#8204;&nbsp;".repeat(60);
+  return `<div class="email-preheader" style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:#f9fafb;">${esc(text)}${pad}</div>\n`;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +205,7 @@ body { margin: 0; padding: 0; width: 100% !important; height: 100% !important; }
 </style>
 </head>
 <body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
-<!-- Outlook max-width wrapper -->
+${preheaderHtml(input.preheader)}<!-- Outlook max-width wrapper -->
 <!--[if mso]>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td>
 <![endif]-->
@@ -209,7 +223,7 @@ ${headerContent}
 <!-- Body content -->
 <tr>
 <td class="email-container email-content" style="background-color:#ffffff;padding:24px 40px 40px 40px;font-size:15px;line-height:1.65;color:#1a1a1a;">
-${input.bodyHtml}
+${input.eyebrow ? `<p class="email-eyebrow" style="margin:0 0 12px 0;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${esc(input.eyebrow)}</p>\n` : ""}${input.bodyHtml}
 </td>
 </tr>
 <!-- Footer -->

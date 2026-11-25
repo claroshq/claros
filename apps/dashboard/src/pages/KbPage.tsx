@@ -233,6 +233,7 @@ export default function KbPage() {
                     {entry.title}
                   </span>
                   {!entry.is_active && <Badge variant="muted">inactive</Badge>}
+                  {entry.pinned && <Badge variant="neutral">pinned</Badge>}
                   <Badge
                     variant={embeddingVariant(entry.embedding_status)}
                     pulse={entry.embedding_status === "pending"}
@@ -250,6 +251,9 @@ export default function KbPage() {
                   <span className="font-mono text-[12px] text-subtle-foreground">
                     {entry.content_type}
                   </span>
+                  {entry.category && (
+                    <span className="font-mono text-[12px] text-muted-foreground">{entry.category}</span>
+                  )}
                   {entry.tags.map((tag) => (
                     <span
                       key={tag}

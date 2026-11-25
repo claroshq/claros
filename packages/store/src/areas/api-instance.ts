@@ -29,6 +29,25 @@ export interface InstanceUserRow {
   memberships: Array<{ tenantId: string; slug: string; role: string }>;
 }
 
+/** An instance key (kind 'instance', no product) as the instance routes list it. */
+export interface InstanceKeyRow {
+  id: string;
+  prefix: string;
+  label: string | null;
+  scopes: string[];
+  lastUsedAt: Date | null;
+  createdAt: Date | null;
+  revokedAt: Date | null;
+}
+
+/** A contact of some product with a given email. */
+export interface InstancePersonRow {
+  tenantId: string;
+  tenantSlug: string;
+  contactId: string;
+  externalId: string;
+}
+
 export interface ApiInstanceQueries {
   /** Every instance setting, key order. */
   listSettings(): Promise<InstanceSettingRow[]>;
@@ -36,4 +55,20 @@ export interface ApiInstanceQueries {
   putSetting(args: { key: string; value: unknown; now: Date }): Promise<InstanceSettingRow>;
   /** Every user of the instance with their memberships, oldest first. */
   listUsers(): Promise<InstanceUserRow[]>;
+  /** Every instance key, active and revoked, oldest first. */
+  listInstanceKeys(): Promise<InstanceKeyRow[]>;
+  /** Insert an instance key (tenant_id null, kind 'instance') and return it. */
+  createInstanceKey(args: { keyHash: string; prefix: string; label: string | null; scopes: string[]; now: Date }): Promise<InstanceKeyRow>;
+  /**
+   * Set revoked_at of the instance key with this id when it is not revoked
+   * yet; returns the key (revoked or not), or null when no instance key has
+   * this id.
+   */
+  revokeInstanceKey(args: { id: string; now: Date }): Promise<InstanceKeyRow | null>;
+  /**
+   * Contacts of every product whose email equals `email` ignoring case
+   * (ASCII folding on SQLite), product slug order. Not tenant scoped by
+   * design: the caller erases the person per product.
+   */
+  findPeopleByEmail(email: string): Promise<InstancePersonRow[]>;
 }

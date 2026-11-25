@@ -35,9 +35,10 @@ export interface ApiProductsQueries {
   listAll(): Promise<ProductRow[]>;
   /**
    * In one transaction: insert the product and the creator's owner
-   * membership. Null when the slug is taken.
+   * membership (none when ownerUserId is null: an instance key created
+   * it). Null when the slug is taken.
    */
-  create(args: { name: string; slug: string; locale: string | null; ownerUserId: string }): Promise<ProductRow | null>;
+  create(args: { name: string; slug: string; locale: string | null; ownerUserId: string | null }): Promise<ProductRow | null>;
   /**
    * Update name / locale / public host of the product with this slug (fields
    * left undefined are kept) and bump config_version.

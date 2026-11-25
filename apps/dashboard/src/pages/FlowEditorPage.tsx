@@ -21,14 +21,17 @@
  *     trigger (cards + inline config), step 2 is who writes the emails,
  *     step 3 is the writing surface (prompt or step writer). The name is
  *     the page title itself, edited inline. There is no sidebar.
- *   - Edit flow: the trigger is immutable after creation and renders as a
- *     read-only summary; the PATCH payload omits trigger_type and
- *     trigger_config. The right rail only carries meta (id, timestamps).
+ *   - Edit flow: the trigger renders as a summary with an "Edit trigger"
+ *     action (PATCH trigger_type + trigger_config). The right rail carries
+ *     the flow settings (class, priority, re-entry) and meta.
+ *   - Plan editor (edit mode): every step field written out (choose steps,
+ *     context, kb_select, sender fields, links, conditions with all / any /
+ *     not, expiry) and the plan exits, saved with PUT /v1/flows/:id/steps.
  *
  * Behaviour preserved from the previous implementation:
  *   - lifecycle_transition takes from + to over the seven lifecycle states
  *   - event takes an event name string, sent as { event: "..." }
- *   - manual is listed but disabled (no enrollment handler in the engine)
+ *   - manual flows are enrolled through POST /v1/flows/:id/enroll
  *   - steps is always sent as [] on create
  *   - 400 issues map to their fields; a 422 shows the server's string
  *     verbatim; a failed save never renders as success
@@ -57,6 +60,7 @@ import {
   useSaveFlowPlan,
   useDraftFlowStep,
   useEventNames,
+  useSaveFlowSteps,
 } from "../flows.js";
 import type { Flow, FlowApiError, FlowFieldError } from "../api.js";
 import { Button } from "../components/ui/button.js";
@@ -69,6 +73,17 @@ import { TemplateEditorBySlug } from "../components/template-editor.js";
 import { StepWriter, buildPlanBody, type StepData } from "../components/step-writer.js";
 import { useLlm } from "../settings.js";
 import { FlowTopicPicker } from "../components/flow-topic-picker.js";
+import { TriggerEditor } from "../components/trigger-editor.js";
+import { PlanEditor, planFromFlow } from "../components/plan-editor.js";
+import {
+  FLOW_CLASS_OPTIONS,
+  cleanTriggerConfig,
+  summarizeCondition,
+  summarizeTrigger,
+  triggerProblems,
+  type TriggerDraft,
+  type TriggerType,
+} from "../lib/flow-model.js";
 
 // ---------------------------------------------------------------------------
 // Constants derived from the engine (packages/core/src/lifecycle/states.ts)
@@ -82,45 +97,6 @@ const LIFECYCLE_STATES: ReadonlyArray<string> = [
   "dormant",
   "churned",
   "resurrected",
-];
-
-// trigger_type options: lifecycle_transition, event, and segment are
-// implemented in the execution engine. manual exists in the type system but
-// has no enrollment handler (packages/worker/src/scan-enrollment.ts).
-const TRIGGER_TYPE_OPTIONS: ReadonlyArray<{
-  value: Flow["trigger_type"];
-  label: string;
-  enabled: boolean;
-  description?: string;
-  disabledReason?: string;
-}> = [
-  {
-    value: "lifecycle_transition",
-    label: "Lifecycle transition",
-    enabled: true,
-    description:
-      "Starts when a contact moves between lifecycle states, e.g. engaged to at_risk.",
-  },
-  {
-    value: "event",
-    label: "Event",
-    enabled: true,
-    description:
-      "Starts when your app sends a specific event, e.g. plan_upgraded.",
-  },
-  {
-    value: "segment",
-    label: "Segment (retention grid cell)",
-    enabled: true,
-    description:
-      "Targets a retention-grid cell: everyone in it now, and anyone who enters it later.",
-  },
-  {
-    value: "manual",
-    label: "Manual",
-    enabled: false,
-    disabledReason: "Not yet implemented in the engine",
-  },
 ];
 
 // Retention-grid bucket labels (mirror of packages/core retention-grid.ts).
@@ -276,230 +252,152 @@ function FlowNameInput({
 }
 
 /** Read-only trigger summary for edit mode. The trigger is immutable. */
-function TriggerSummary({ flow }: { flow: Flow }) {
-  const cfg = (flow.trigger_config ?? {}) as Record<string, string>;
-  let body: React.ReactNode;
-  if (flow.trigger_type === "lifecycle_transition") {
-    body = (
-      <>
-        A contact moves from{" "}
-        <code className="font-mono text-[13px]">{cfg.from}</code> to{" "}
-        <code className="font-mono text-[13px]">{cfg.to}</code>
-      </>
-    );
-  } else if (flow.trigger_type === "event") {
-    body = (
-      <>
-        The event <code className="font-mono text-[13px]">{cfg.event}</code>{" "}
-        is received
-      </>
-    );
-  } else if (flow.trigger_type === "segment") {
-    body = (
-      <>
-        A contact is in the{" "}
-        <code className="font-mono text-[13px]">{cfg.tenure_bucket}</code> /{" "}
-        <code className="font-mono text-[13px]">{cfg.recency_bucket}</code>{" "}
-        retention cell
-      </>
-    );
-  } else if (flow.trigger_type === "date_property") {
-    body = (
-      <>
-        The date trait <code className="font-mono text-[13px]">{cfg.property}</code>{" "}
-        is <code className="font-mono text-[13px]">{cfg.offset}</code> away
-        {cfg.send_at_local ? <>, at {cfg.send_at_local} local time</> : null}
-      </>
-    );
-  } else if (flow.trigger_type === "date_schedule") {
-    const raw = (flow.trigger_config ?? {}) as Record<string, unknown>;
-    const offsets = Array.isArray(raw.offsets) ? (raw.offsets as string[]).join(", ") : "";
-    body = (
-      <>
-        Scheduled from the date trait <code className="font-mono text-[13px]">{String(raw.anchor ?? "")}</code>{" "}
-        at <code className="font-mono text-[13px]">{offsets}</code>
-        {raw.repeat ? <>, then every <code className="font-mono text-[13px]">{String(raw.repeat)}</code></> : null}
-        , up to {String(raw.max_sends ?? "")} sends
-      </>
-    );
-  } else {
-    body = <code className="font-mono text-[13px]">{flow.trigger_type}</code>;
-  }
+function TriggerSummary({ flow, onEdit }: { flow: Flow; onEdit?: () => void }) {
   return (
     <div className="rounded-lg border border-border bg-card px-5 py-4">
-      <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        Starts when
-      </p>
-      <p className="mt-1.5 text-[15px] text-foreground">{body}</p>
-      <p className="mt-2 text-[13px] text-muted-foreground">
-        The trigger is set at creation and cannot be changed.
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          Starts when
+        </p>
+        {onEdit && (
+          <Button type="button" size="sm" variant="ghost" className="h-7" onClick={onEdit}>
+            Edit trigger
+          </Button>
+        )}
+      </div>
+      <p className="mt-1.5 text-[15px] text-foreground">
+        {summarizeTrigger(flow.trigger_type, (flow.trigger_config ?? {}) as Record<string, unknown>)}
       </p>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// trigger_config sub-form components
-// ---------------------------------------------------------------------------
-
-interface LifecycleConfigProps {
-  from: string;
-  to: string;
-  onFromChange: (v: string) => void;
-  onToChange: (v: string) => void;
-  fromError?: string;
-  toError?: string;
-  disabled?: boolean;
-}
-
-function LifecycleTransitionConfig({
-  from,
-  to,
-  onFromChange,
-  onToChange,
-  fromError,
-  toError,
-  disabled,
-}: LifecycleConfigProps) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label htmlFor="tc-from" required>From state</Label>
-        <Select
-          id="tc-from"
-          value={from}
-          onChange={(e) => onFromChange(e.target.value)}
-          disabled={disabled}
-        >
-          <option value="">Select state</option>
-          {LIFECYCLE_STATES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </Select>
-        <FieldError message={fromError} />
-      </div>
-      <div>
-        <Label htmlFor="tc-to" required>To state</Label>
-        <Select
-          id="tc-to"
-          value={to}
-          onChange={(e) => onToChange(e.target.value)}
-          disabled={disabled}
-        >
-          <option value="">Select state</option>
-          {LIFECYCLE_STATES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </Select>
-        <FieldError message={toError} />
-      </div>
-    </div>
-  );
-}
-
-interface EventConfigProps {
-  event: string;
-  onEventChange: (v: string) => void;
-  eventError?: string;
-  disabled?: boolean;
-  suggestions: string[];
-}
-
-function EventTriggerConfig({
-  event,
-  onEventChange,
-  eventError,
-  disabled,
+/** Edit an existing flow's trigger (PATCH trigger_type + trigger_config). */
+function TriggerEditCard({
+  flow,
   suggestions,
-}: EventConfigProps) {
+  onDone,
+}: {
+  flow: Flow;
+  suggestions: string[];
+  onDone: () => void;
+}) {
+  const update = useUpdateFlow(flow.id);
+  const [draft, setDraft] = useState<TriggerDraft>({
+    type: flow.trigger_type as TriggerType,
+    config: { ...((flow.trigger_config ?? {}) as Record<string, unknown>) },
+  });
+  const [error, setError] = useState<string | null>(null);
+  const problems = triggerProblems(draft);
+
+  async function save() {
+    setError(null);
+    try {
+      await update.mutateAsync({ trigger_type: draft.type, trigger_config: cleanTriggerConfig(draft) });
+      onDone();
+    } catch (err) {
+      setError(toMessage(err));
+    }
+  }
+
   return (
-    <div>
-      <Label htmlFor="tc-event" required>Event name</Label>
-      <Input
-        id="tc-event"
-        type="text"
-        value={event}
-        onChange={(e) => onEventChange(e.target.value)}
-        placeholder="e.g. plan_upgraded"
-        disabled={disabled}
-        list="tc-event-names"
-        autoComplete="off"
-      />
-      <datalist id="tc-event-names">
-        {suggestions.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-      {suggestions.length > 0 ? (
-        <p className="mt-1.5 text-[13px] text-muted-foreground">
-          Suggestions come from events your app already sends. Any name is
-          valid, including one you have not sent yet.
-        </p>
-      ) : (
-        <p className="mt-1.5 text-[13px] text-muted-foreground">
-          The event your app sends, e.g. plan_upgraded. Names of events
-          already received will be suggested as you type.
-        </p>
+    <div className="rounded-lg border border-border bg-card p-5">
+      <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        Edit trigger
+      </p>
+      <p className="mb-4 text-[13px] text-muted-foreground">
+        Contacts already in the flow stay; the new trigger decides who enters from now on.
+      </p>
+      <TriggerEditor draft={draft} onChange={setDraft} disabled={update.isPending} eventSuggestions={suggestions} />
+      {problems.length > 0 && (
+        <ul className="mt-3 list-disc pl-5 text-[13px] text-muted-foreground">
+          {problems.map((p) => <li key={p}>{p}</li>)}
+        </ul>
       )}
-      <FieldError message={eventError} />
+      {error && <p className="mt-3 text-[14px] text-danger" role="alert">{error}</p>}
+      <div className="mt-4 flex items-center gap-2">
+        <Button type="button" size="sm" disabled={update.isPending || problems.length > 0} onClick={() => void save()}>
+          {update.isPending ? "Saving..." : "Save trigger"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }
 
-interface SegmentConfigProps {
-  tenure: string;
-  recency: string;
-  onTenureChange: (v: string) => void;
-  onRecencyChange: (v: string) => void;
-  tenureError?: string;
-  recencyError?: string;
-  disabled?: boolean;
-}
+/** Flow class, priority and re-entry (right rail, edit mode). */
+function FlowSettingsCard({ flow, disabled }: { flow: Flow; disabled?: boolean }) {
+  const update = useUpdateFlow(flow.id);
+  const [priority, setPriority] = useState(String(flow.priority ?? 0));
+  const [cooldown, setCooldown] = useState(String(flow.reentry_cooldown_days ?? 30));
+  const [error, setError] = useState<string | null>(null);
+  const busy = update.isPending || disabled;
 
-function SegmentTriggerConfig({
-  tenure,
-  recency,
-  onTenureChange,
-  onRecencyChange,
-  tenureError,
-  recencyError,
-  disabled,
-}: SegmentConfigProps) {
+  async function patch(input: Parameters<typeof update.mutateAsync>[0]) {
+    setError(null);
+    try {
+      await update.mutateAsync(input);
+    } catch (err) {
+      setError(toMessage(err));
+    }
+  }
+
+  const classHint = FLOW_CLASS_OPTIONS.find((o) => o.value === flow.flow_class)?.hint;
   return (
-    <div className="space-y-4">
-      <div>
-        <Label htmlFor="tc-tenure" required>Tenure</Label>
-        <Select
-          id="tc-tenure"
-          value={tenure}
-          onChange={(e) => onTenureChange(e.target.value)}
-          disabled={disabled}
-        >
-          <option value="">Select tenure</option>
-          {TENURE_BUCKET_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
-        <FieldError message={tenureError} />
-      </div>
-      <div>
-        <Label htmlFor="tc-recency" required>Recency</Label>
-        <Select
-          id="tc-recency"
-          value={recency}
-          onChange={(e) => onRecencyChange(e.target.value)}
-          disabled={disabled}
-        >
-          <option value="">Select recency</option>
-          {RECENCY_BUCKET_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
-        <FieldError message={recencyError} />
-        <p className="mt-1.5 text-[13px] text-muted-foreground">
-          Contacts currently inside this retention-grid cell enroll on the
-          next scan, and whenever they re-enter it later.
-        </p>
+    <div className="rounded-lg border border-border bg-card p-5">
+      <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        Flow settings
+      </p>
+      <div className="space-y-4 text-[14px]">
+        <div>
+          <label htmlFor="flow-class" className="mb-1 block text-muted-foreground">Class</label>
+          <Select id="flow-class" value={flow.flow_class} disabled={busy} onChange={(e) => void patch({ flow_class: e.target.value as Flow["flow_class"] })}>
+            {FLOW_CLASS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+          {classHint && <p className="mt-1 text-[12px] text-muted-foreground">{classHint}</p>}
+        </div>
+        <div>
+          <label htmlFor="flow-priority" className="mb-1 block text-muted-foreground">Priority</label>
+          <Input
+            id="flow-priority"
+            type="number"
+            value={priority}
+            disabled={busy}
+            onChange={(e) => setPriority(e.target.value)}
+            onBlur={() => {
+              const n = Number(priority);
+              if (Number.isInteger(n) && n !== flow.priority) void patch({ priority: n });
+            }}
+          />
+        </div>
+        <div>
+          <label htmlFor="flow-reentry" className="mb-1 block text-muted-foreground">Re-entry</label>
+          <Select id="flow-reentry" value={flow.reentry_policy} disabled={busy} onChange={(e) => void patch({ reentry_policy: e.target.value as Flow["reentry_policy"] })}>
+            <option value="once">once</option>
+            <option value="cooldown">after a cooldown</option>
+            <option value="every_time">every time</option>
+          </Select>
+        </div>
+        {flow.reentry_policy === "cooldown" && (
+          <div>
+            <label htmlFor="flow-cooldown" className="mb-1 block text-muted-foreground">Cooldown (days)</label>
+            <Input
+              id="flow-cooldown"
+              type="number"
+              min={1}
+              value={cooldown}
+              disabled={busy}
+              onChange={(e) => setCooldown(e.target.value)}
+              onBlur={() => {
+                const n = Number(cooldown);
+                if (Number.isInteger(n) && n >= 1 && n !== flow.reentry_cooldown_days) void patch({ reentry_cooldown_days: n });
+              }}
+            />
+          </div>
+        )}
+        {error && <p className="text-[13px] text-danger" role="alert">{error}</p>}
       </div>
     </div>
   );
@@ -511,12 +409,7 @@ function SegmentTriggerConfig({
 
 interface FormState {
   name: string;
-  trigger_type: Flow["trigger_type"];
-  lc_from: string;
-  lc_to: string;
-  ev_event: string;
-  sg_tenure: string;
-  sg_recency: string;
+  trigger: TriggerDraft;
   prompt_source: string;
   approval_mode: Flow["approval_mode"];
   content_mode: Flow["content_mode"];
@@ -526,12 +419,7 @@ interface FormState {
 function defaultFormState(): FormState {
   return {
     name: "",
-    trigger_type: "lifecycle_transition",
-    lc_from: "",
-    lc_to: "",
-    ev_event: "",
-    sg_tenure: "",
-    sg_recency: "",
+    trigger: { type: "lifecycle_transition", config: {} },
     prompt_source: "",
     approval_mode: "require",
     content_mode: "ai_drafted",
@@ -540,15 +428,9 @@ function defaultFormState(): FormState {
 }
 
 function formStateFromFlow(flow: Flow): FormState {
-  const cfg = (flow.trigger_config ?? {}) as Record<string, string>;
   return {
     name: flow.name,
-    trigger_type: flow.trigger_type,
-    lc_from: flow.trigger_type === "lifecycle_transition" ? String(cfg.from ?? "") : "",
-    lc_to: flow.trigger_type === "lifecycle_transition" ? String(cfg.to ?? "") : "",
-    ev_event: flow.trigger_type === "event" ? String(cfg.event ?? "") : "",
-    sg_tenure: flow.trigger_type === "segment" ? String(cfg.tenure_bucket ?? "") : "",
-    sg_recency: flow.trigger_type === "segment" ? String(cfg.recency_bucket ?? "") : "",
+    trigger: { type: flow.trigger_type as TriggerType, config: { ...((flow.trigger_config ?? {}) as Record<string, unknown>) } },
     prompt_source: flow.prompt_source ?? "",
     approval_mode: flow.approval_mode,
     content_mode: (flow.content_mode as Flow["content_mode"]) ?? "ai_drafted",
@@ -556,21 +438,8 @@ function formStateFromFlow(flow: Flow): FormState {
   };
 }
 
-function buildTriggerConfig(
-  type: Flow["trigger_type"],
-  state: FormState,
-): Record<string, unknown> {
-  if (type === "lifecycle_transition") {
-    return { from: state.lc_from, to: state.lc_to };
-  }
-  if (type === "event") {
-    return { event: state.ev_event };
-  }
-  if (type === "segment") {
-    return { tenure_bucket: state.sg_tenure, recency_bucket: state.sg_recency };
-  }
-  // manual is disabled; should not reach here
-  return {};
+function buildTriggerConfig(state: FormState): Record<string, unknown> {
+  return cleanTriggerConfig(state.trigger);
 }
 
 // ---------------------------------------------------------------------------
@@ -641,66 +510,46 @@ function renderDelay(delay: string): React.ReactNode {
   return `after ${n} ${unit}${n === 1 ? "" : "s"}`;
 }
 
-/**
- * Render the shared condition vocabulary as a bare clause:
- *   { lifecycle_state }      -> "the contact is <state>"
- *   { lifecycle_state_not }  -> "the contact is not <state>"
- *   { event_since_step }     -> "<event> happened since the previous step"
- * Callers supply their own leading phrasing ("only if", "exit the flow if").
- */
+/** A condition (or a list: all of them) as a readable clause. */
 function renderConditionClause(cond: unknown): React.ReactNode {
-  if (cond === null || typeof cond !== "object") return null;
-  const c = cond as UnknownRecord;
-  if (typeof c.lifecycle_state === "string") {
-    return (
-      <>the contact is <code className="font-mono text-[13px]">{c.lifecycle_state}</code></>
-    );
-  }
-  if (typeof c.lifecycle_state_not === "string") {
-    return (
-      <>the contact is not <code className="font-mono text-[13px]">{c.lifecycle_state_not}</code></>
-    );
-  }
-  if (typeof c.event_since_step === "string") {
-    return (
-      <><code className="font-mono text-[13px]">{c.event_since_step}</code> happened since the previous step</>
-    );
-  }
-  return <code className="font-mono text-[13px]">{JSON.stringify(cond)}</code>;
+  return <span>{summarizeCondition(cond)}</span>;
 }
 
-/**
- * Render a plan-level exit condition object.
- * Shapes: { event }, { lifecycle_state_change: { to } }, or both.
- */
+/** A plan-level exit condition as a readable clause. */
 function renderPlanExitCondition(cond: unknown): React.ReactNode {
-  if (cond === null || typeof cond !== "object") return null;
-  const c = cond as UnknownRecord;
-  const parts: React.ReactNode[] = [];
-  if (typeof c.event === "string") {
-    parts.push(
-      <span key="ev"><code className="font-mono text-[13px]">{c.event}</code> occurs</span>,
-    );
-  }
-  if (c.lifecycle_state_change && typeof c.lifecycle_state_change === "object") {
-    const lsc = c.lifecycle_state_change as UnknownRecord;
-    if (typeof lsc.to === "string") {
-      parts.push(
-        <span key="lsc">the contact becomes <code className="font-mono text-[13px]">{lsc.to}</code></span>,
-      );
-    }
-  }
-  if (parts.length === 0) {
-    return <code className="font-mono text-[13px]">{JSON.stringify(cond)}</code>;
-  }
+  return <span>{summarizeCondition(cond)}</span>;
+}
+
+/** Sender, links, expiry, context, KB and choose details of a step. */
+function StepDetails({ step }: { step: UnknownRecord }) {
+  const parts: string[] = [];
+  if (typeof step.from_name === "string") parts.push(`from ${step.from_name}`);
+  if (typeof step.reply_to === "string") parts.push(`reply-to ${step.reply_to}`);
+  if (typeof step.eyebrow === "string") parts.push(`eyebrow "${step.eyebrow}"`);
+  if (typeof step.preheader === "string") parts.push(`preheader "${step.preheader}"`);
+  if (Array.isArray(step.allowed_links)) parts.push(`links ${(step.allowed_links as string[]).join(", ")}`);
+  if (step.single_cta === true) parts.push("one call to action");
+  if (typeof step.expires_after === "string") parts.push(`expires after ${step.expires_after}`);
+  if (Array.isArray(step.context)) parts.push(`context ${(step.context as UnknownRecord[]).map((c) => String(c.source ?? "")).join(", ")}`);
+  const kb = step.kb_select as UnknownRecord | undefined;
+  if (kb && typeof kb === "object") parts.push(`knowledge base ${String(kb.category ?? "")}`);
+  const candidates = Array.isArray(step.candidates) ? (step.candidates as UnknownRecord[]) : [];
+  if (parts.length === 0 && candidates.length === 0) return null;
   return (
     <>
-      {parts.map((p, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && " and "}
-          {p}
-        </React.Fragment>
-      ))}
+      {parts.length > 0 && <p className="text-[13px] text-muted-foreground">{parts.join(" · ")}</p>}
+      {candidates.length > 0 && (
+        <p className="text-[13px] text-muted-foreground">
+          the AI chooses {step.allow_none === false ? "one of" : "one of (or none)"}:{" "}
+          {candidates.map((c, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && ", "}
+              <code className="font-mono text-[13px]">{String(c.action_type ?? "")}</code>
+              {c.when !== undefined ? ` if ${summarizeCondition(c.when)}` : ""}
+            </React.Fragment>
+          ))}
+        </p>
+      )}
     </>
   );
 }
@@ -805,6 +654,7 @@ function CompiledPlanPreview({
                       {step.brain_instruction}
                     </p>
                   )}
+                  <StepDetails step={step} />
                   {step.condition !== undefined && step.condition !== null && (
                     <p className="text-[13px] text-muted-foreground">
                       only if {renderConditionClause(step.condition)}
@@ -942,6 +792,7 @@ export default function FlowEditorPage() {
   const statusMutation = useFlowStatus(id ?? "");
   const archiveMutation = useArchiveFlow(id ?? "");
   const savePlanMutation = useSaveFlowPlan(id ?? "");
+  const saveStepsMutation = useSaveFlowSteps(id ?? "");
   const llmQuery = useLlm();
   const eventNamesQuery = useEventNames();
 
@@ -954,6 +805,8 @@ export default function FlowEditorPage() {
   const [savedNotice, setSavedNotice] = useState(false);
   const [initialised, setInitialised] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const [editingTrigger, setEditingTrigger] = useState(false);
+  const [planEditorOpen, setPlanEditorOpen] = useState(false);
 
   // New-flow progressive disclosure: section refs for scroll-into-view.
   const step2Ref = useRef<HTMLElement>(null);
@@ -984,9 +837,7 @@ export default function FlowEditorPage() {
           setForm({
             ...defaultFormState(),
             name: `${tenureOpt.label.split(" (")[0]} · ${recencyOpt.label.split(" (")[0]}`,
-            trigger_type: "segment",
-            sg_tenure: tenureOpt.value,
-            sg_recency: recencyOpt.value,
+            trigger: { type: "segment", config: { tenure_bucket: tenureOpt.value, recency_bucket: recencyOpt.value } },
           });
         }
       } else if (transition) {
@@ -998,9 +849,7 @@ export default function FlowEditorPage() {
           setForm({
             ...defaultFormState(),
             name: searchParams.get("name") ?? "",
-            trigger_type: "lifecycle_transition",
-            lc_from: from!,
-            lc_to: to!,
+            trigger: { type: "lifecycle_transition", config: { from: from!, to: to! } },
           });
         }
       }
@@ -1014,12 +863,7 @@ export default function FlowEditorPage() {
   // New flow progressive disclosure gating: step 2 unlocks once the trigger
   // is fully configured, step 3 once the writer is chosen (auto-selected,
   // see below).
-  const triggerComplete =
-    form.trigger_type === "lifecycle_transition"
-      ? form.lc_from !== "" && form.lc_to !== ""
-      : form.trigger_type === "event"
-        ? form.ev_event.trim() !== ""
-        : form.sg_tenure !== "" && form.sg_recency !== "";
+  const triggerComplete = triggerProblems(form.trigger).length === 0;
 
   // As soon as the trigger is complete, step 2 opens with the default writer
   // (ai_drafted) pre-selected so the writing surface is already visible.
@@ -1090,28 +934,6 @@ export default function FlowEditorPage() {
     }
   }
 
-  function handleTriggerTypeChange(val: Flow["trigger_type"]) {
-    setForm((prev) => ({
-      ...prev,
-      trigger_type: val,
-      lc_from: "",
-      lc_to: "",
-      ev_event: "",
-      sg_tenure: "",
-      sg_recency: "",
-    }));
-    setFieldErrors((prev) => {
-      const next = { ...prev };
-      delete next["trigger_config.from"];
-      delete next["trigger_config.to"];
-      delete next["trigger_config.event"];
-      delete next["trigger_config.tenure_bucket"];
-      delete next["trigger_config.recency_bucket"];
-      delete next["trigger_config"];
-      return next;
-    });
-  }
-
   function handlePromptChange(val: string) {
     setField("prompt_source", val);
     if (!promptDirty && existingFlow && existingFlow.prompt_source !== val) {
@@ -1142,13 +964,13 @@ export default function FlowEditorPage() {
     e.preventDefault();
     clearErrors();
 
-    const triggerConfig = buildTriggerConfig(form.trigger_type, form);
+    const triggerConfig = buildTriggerConfig(form);
 
     if (isNew) {
       try {
         const created = await createMutation.mutateAsync({
           name: form.name,
-          trigger_type: form.trigger_type,
+          trigger_type: form.trigger.type,
           trigger_config: triggerConfig,
           prompt_source: form.content_mode === "ai_drafted" ? form.prompt_source : undefined,
           content_mode: form.content_mode,
@@ -1465,8 +1287,8 @@ export default function FlowEditorPage() {
         onStepsChange={(steps) => setField("steps_data", steps)}
         disabled={isPending || flowReadOnly}
         hasLlm={hasLlm}
-        triggerType={form.trigger_type}
-        triggerConfig={buildTriggerConfig(form.trigger_type, form)}
+        triggerType={form.trigger.type}
+        triggerConfig={buildTriggerConfig(form)}
         flowName={form.name}
       />
 
@@ -1700,69 +1522,17 @@ export default function FlowEditorPage() {
             <SectionHeading
               step={1}
               title="When does this flow start?"
-              description="The trigger decides which contacts enter the flow. It is locked in at creation and cannot be changed later."
+              description="The trigger decides which contacts enter the flow. You can change it later from the flow's page."
             />
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {TRIGGER_TYPE_OPTIONS.map((opt) => {
-                const selected = form.trigger_type === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    disabled={!opt.enabled || isPending}
-                    aria-pressed={selected}
-                    onClick={() => handleTriggerTypeChange(opt.value)}
-                    className={`rounded-lg border p-4 text-left transition-colors ${
-                      selected
-                        ? "border-accent bg-accent/5"
-                        : "border-border bg-card hover:border-border-strong"
-                    } ${!opt.enabled ? "cursor-not-allowed opacity-60" : ""}`}
-                  >
-                    <p className="text-[15px] font-semibold text-foreground">
-                      {opt.label}
-                    </p>
-                    <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">
-                      {opt.enabled ? opt.description : opt.disabledReason}
-                    </p>
-                  </button>
-                );
-              })}
+            <div className="mt-4">
+              <TriggerEditor
+                draft={form.trigger}
+                onChange={(d) => setField("trigger", d)}
+                disabled={isPending}
+                eventSuggestions={eventNamesQuery.data ?? []}
+              />
             </div>
-            <FieldError message={fieldErrors["trigger_type"]} />
-
-            <div className="mt-4 rounded-lg border border-border bg-card p-5">
-              {form.trigger_type === "lifecycle_transition" && (
-                <LifecycleTransitionConfig
-                  from={form.lc_from}
-                  to={form.lc_to}
-                  onFromChange={(v) => setField("lc_from", v)}
-                  onToChange={(v) => setField("lc_to", v)}
-                  fromError={fieldErrors["trigger_config.from"] ?? fieldErrors["trigger_config"]}
-                  toError={fieldErrors["trigger_config.to"]}
-                  disabled={isPending}
-                />
-              )}
-              {form.trigger_type === "event" && (
-                <EventTriggerConfig
-                  event={form.ev_event}
-                  onEventChange={(v) => setField("ev_event", v)}
-                  eventError={fieldErrors["trigger_config.event"] ?? fieldErrors["trigger_config"]}
-                  disabled={isPending}
-                  suggestions={eventNamesQuery.data ?? []}
-                />
-              )}
-              {form.trigger_type === "segment" && (
-                <SegmentTriggerConfig
-                  tenure={form.sg_tenure}
-                  recency={form.sg_recency}
-                  onTenureChange={(v) => setField("sg_tenure", v)}
-                  onRecencyChange={(v) => setField("sg_recency", v)}
-                  tenureError={fieldErrors["trigger_config.tenure_bucket"] ?? fieldErrors["trigger_config"]}
-                  recencyError={fieldErrors["trigger_config.recency_bucket"]}
-                  disabled={isPending}
-                />
-              )}
-            </div>
+            <FieldError message={fieldErrors["trigger_type"] ?? fieldErrors["trigger_config"]} />
           </section>
 
           {/* Step 2: writer */}
@@ -1913,12 +1683,46 @@ export default function FlowEditorPage() {
         <div className="flex flex-col gap-10 lg:flex-row lg:gap-8">
           {/* Main column */}
           <div className="min-w-0 flex-1">
-            {existingFlow && <TriggerSummary flow={existingFlow} />}
+            {existingFlow && !editingTrigger && (
+              <TriggerSummary flow={existingFlow} onEdit={flowReadOnly ? undefined : () => setEditingTrigger(true)} />
+            )}
+            {existingFlow && editingTrigger && (
+              <TriggerEditCard flow={existingFlow} suggestions={eventNamesQuery.data ?? []} onDone={() => setEditingTrigger(false)} />
+            )}
             {existingFlow && <FlowTopicPicker flow={existingFlow} disabled={flowReadOnly} />}
 
             <div className="mt-8">
               {isFixedContentEditor ? fixedContentSurface : aiSurface}
             </div>
+
+            {existingFlow && !flowReadOnly && (
+              <div className="mt-8 rounded-lg border border-border bg-card p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[15px] font-semibold text-foreground">Plan editor</p>
+                    <p className="mt-0.5 text-[13px] text-muted-foreground">
+                      Write the steps out: choose steps, context sources, knowledge base, sender name, eyebrow and preheader, links, expiry and conditions.
+                      {existingFlow.prompt_source ? " Saving replaces the compiled plan until the prompt is compiled again." : ""}
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setPlanEditorOpen((v) => !v)}>
+                    {planEditorOpen ? "Close" : "Open"}
+                  </Button>
+                </div>
+                {planEditorOpen && (
+                  <div className="mt-5">
+                    <PlanEditor
+                      key={existingFlow.compiled_at ?? "none"}
+                      initial={planFromFlow(existingFlow.compiled_plan, existingFlow.steps)}
+                      saving={saveStepsMutation.isPending}
+                      onSave={async (body) => {
+                        await saveStepsMutation.mutateAsync(body);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Save row */}
             {!flowReadOnly && (
@@ -1943,9 +1747,10 @@ export default function FlowEditorPage() {
             )}
           </div>
 
-          {/* Right rail: meta only */}
+          {/* Right rail: flow settings and meta */}
           {existingFlow && (
             <div className="w-full shrink-0 space-y-6 lg:w-72">
+              <FlowSettingsCard flow={existingFlow} disabled={flowReadOnly} />
               <div className="rounded-lg border border-border bg-card p-5">
                 <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   Meta

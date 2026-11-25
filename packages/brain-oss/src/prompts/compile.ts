@@ -22,6 +22,14 @@ export interface CompilePromptContext {
   availableTemplates?: string[];
   /** Names of available KB entries the operator has created (@kb refs). */
   availableKbEntries?: string[];
+  /** P5b: categories of active KB entries (valid kb_select.category values). */
+  kbCategories?: string[];
+  /** P5b: the product's named links (settings.links keys; valid allowed_links entries). */
+  linkNames?: string[];
+  /** P5b: the product's data sources (settings.data_sources) and the modes each accepts. */
+  dataSources?: Array<{ name: string; modes?: string[] }>;
+  /** P5b: whether choose steps are allowed (the product has an LLM; always true at compile time). */
+  allowChoose?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,7 +45,7 @@ The execution plan will be stored and executed by a deterministic engine. The LL
 OUTPUT FORMAT (strict JSON, no markdown fences, no commentary outside the JSON):
 {
   "trigger": {
-    "type": "<lifecycle_transition|event|segment|manual>",
+    "type": "<lifecycle_transition|event|segment|manual|date_property|date_schedule>",
     "condition": { ... }
   },
   "steps": [
@@ -50,7 +58,16 @@ OUTPUT FORMAT (strict JSON, no markdown fences, no commentary outside the JSON):
       "kb_ref": "<optional: @kb entry name>",
       "brain_instruction": "<optional: instruction for the content drafter>",
       "condition": <optional: proceed-if condition, see CONDITION VOCABULARY below>,
-      "exit_condition": <optional: per-step exit trigger, see CONDITION VOCABULARY below>
+      "exit_condition": <optional: per-step exit trigger, see CONDITION VOCABULARY below>,
+      "expires_after": "<optional: <int><m|h|d>, cancel the message if it is not sent this long after it was created>",
+      "context": [<optional: {"source": "<data source>", "mode": "<mode>", "limit": <1-100>}>],
+      "on_empty": "<optional: send|skip>",
+      "on_error": "<optional: defer|skip|fail>",
+      "kb_select": <optional: {"category": "<KB category>", "pick": "oldest_unused" | "best_match"}>,
+      "eyebrow": "<optional: short label above the email body, at most 60 characters>",
+      "preheader": "<optional: inbox preview text, at most 200 characters>",
+      "allowed_links": [<optional: names of product links this step may use>],
+      "single_cta": <optional: true when the email must carry at most one link>
     }
   ],
   "exit_conditions": [
@@ -60,19 +77,21 @@ OUTPUT FORMAT (strict JSON, no markdown fences, no commentary outside the JSON):
 
 CONDITION VOCABULARY (step-level "condition" and "exit_condition"):
 
-The execution engine supports EXACTLY these three shapes. Do not invent other keys or structures.
+A condition is ONE of the leaf shapes below, a combinator over conditions, or a JSON list of conditions (a list means all must hold). Do not invent other keys or structures.
 
-1. { "lifecycle_state": "<state>" }
-   The step proceeds (or exit fires) only if the contact is currently in this lifecycle state.
-   Example: { "lifecycle_state": "at_risk" }
+Leaf shapes:
+1. { "lifecycle_state": "<state>" }      the contact is currently in this lifecycle state. Example: { "lifecycle_state": "at_risk" }
+2. { "lifecycle_state_not": "<state>" }  the contact is NOT in this lifecycle state. Example: { "lifecycle_state_not": "engaged" }
+3. { "event_since_step": "<event_name>" } the event happened since the contact reached this step. Example: { "event_since_step": "feature_activated" }
+4. { "trait": { "key": "<trait>", "op": "eq|neq|in|exists|not_exists|gt|lt", "value": <value> } }  an identify trait matches ("in" takes a list; "exists" and "not_exists" take no value). Example: { "trait": { "key": "plan_tier", "op": "eq", "value": "free" } }
+5. { "history": { "flow": "<flow slug>" | "action_type": "<action>" | "topic": "<topic slug>", "within": "<int><m|h|d>", "op": "none|any|count_lt", "value": <int for count_lt> } }  what the contact already received. Example: { "history": { "action_type": "upgrade_prompt", "within": "14d", "op": "none" } }
+6. { "first_contact": true|false }  nothing (true) or something (false) was ever sent to the contact.
 
-2. { "lifecycle_state_not": "<state>" }
-   The step proceeds (or exit fires) only if the contact is NOT in this lifecycle state.
-   Example: { "lifecycle_state_not": "engaged" }
-
-3. { "event_since_step": "<event_name>" }
-   The step proceeds (or exit fires) only if the named event has occurred since the contact reached this step.
-   Example: { "event_since_step": "feature_activated" }
+Combinators (nest at most 4 deep):
+- { "all": [<condition>, ...] }  every condition holds.
+- { "any": [<condition>, ...] }  at least one holds.
+- { "not": <condition> }         the condition does not hold.
+Example, "free users we never wrote to, or anyone dormant": { "any": [ { "all": [ { "trait": { "key": "plan_tier", "op": "eq", "value": "free" } }, { "first_contact": true } ] }, { "lifecycle_state": "dormant" } ] }
 
 Semantics of "condition" on a step: this is a PROCEED-IF gate. The step executes only when the condition is true. If false, the step is skipped (no email sent) and the flow advances to the next step. Use this when the prompt says "only send if ...", "skip if not ...", or "if the user is still ...".
 
@@ -80,18 +99,23 @@ Semantics of "exit_condition" on a step: if this condition is true when the step
 
 EXIT CONDITION VOCABULARY (plan-level "exit_conditions" array):
 
-Each entry in exit_conditions is one of these shapes:
+The contact leaves the flow when ANY entry fires. Each entry is one of these shapes, or a combinator ({ "all": [...] }, { "any": [...] }, { "not": ... }) over them:
 
-1. { "event": "<event_name>" }
-   Exit the flow if this event occurs at any point during the membership.
+1. { "event": "<event_name>" }  exit if this event occurs at any point during the membership.
+2. { "lifecycle_state_change": { "to": "<state>" } }  exit if the contact transitions to this lifecycle state.
+3. { "event": "<event_name>", "lifecycle_state_change": { "to": "<state>" } }  exit when BOTH happened.
+4. A trait, history or first_contact leaf (shapes 4 to 6 above). Example, "stop once they configured their ICP": { "trait": { "key": "icp_configured", "op": "eq", "value": true } }
 
-2. { "lifecycle_state_change": { "to": "<state>" } }
-   Exit the flow if the contact transitions to this lifecycle state during the membership.
+CHOOSE STEPS (let the content model pick one action at send time):
 
-3. { "event": "<event_name>", "lifecycle_state_change": { "to": "<state>" } }
-   Exit when BOTH the event has occurred AND the contact has transitioned to the state.
+When the prompt lists several alternative actions for one send ("pick the one that fits best: a tip, a feature, ..."), produce ONE step with "type": "choose", "allow_none": true|false and "candidates": [ { "action_type": "<action>", "when": <optional condition list>, "kb_select": <optional>, "context": <optional>, "cooldown": "<optional <int><m|h|d>>", "brain_instruction": "<optional>", "template_ref": "<optional>", "eyebrow": "<optional>", "allowed_links": <optional> } ]. Candidate action types must be unique. Deterministic filters run before the model picks; "when" uses the condition shapes above (lifecycle_state, trait, history, first_contact and combinators; no event_since_step). Use "allow_none": true unless the prompt says something must always be sent.
 
-Do not use any other keys or structures in exit_conditions entries.
+STEP FIELDS FOR PRODUCT DATA (use only the names listed in the user message):
+- "context": data the product returns at send time. "source" must be one of the listed data sources and "mode" one of its modes.
+- "kb_select": pick one knowledge base entry of a listed category for the email.
+- "allowed_links": names of product links the email may use; set it when the prompt names the links a step may use.
+- "single_cta": true when the prompt asks for a single call to action.
+- "expires_after": set when the prompt says a message is pointless after some time ("only if it goes out within 7 days").
 
 RULES:
 1. "order" is 1-based, sequential, unique within steps.
@@ -114,9 +138,10 @@ RULES:
 6. "kb_ref": only use KB entry names from the available list provided. If a @kb:name reference appears in the prompt and the name is in the available list, use it. Otherwise omit.
 7. "brain_instruction": provide a clear, specific instruction for the content drafter that will generate the actual email copy at send time. Include what to emphasize, what tone, what data to personalize on.
 8. "exit_conditions": plan-level exits. When any fires, the contact leaves the flow regardless of which step they are on. Common: lifecycle state changes back to a healthy state.
-9. Step-level "condition" and "exit_condition" MUST use ONLY the three shapes listed in CONDITION VOCABULARY. No other keys or structures are permitted.
+9. Step-level "condition" and "exit_condition" MUST use ONLY the shapes listed in CONDITION VOCABULARY (leaves, combinators, lists). No other keys or structures are permitted.
 10. The trigger type and condition are confirmed from the flow's existing configuration. Do not invent a different trigger than the one provided.
-11. Produce ONLY the JSON object. No explanation, no markdown, no preamble.`;
+11. Leave out optional fields the prompt does not ask for. Never invent data sources, link names, KB categories or template names.
+12. Produce ONLY the JSON object. No explanation, no markdown, no preamble.`;
 
 // ---------------------------------------------------------------------------
 // Prompt builder
@@ -142,6 +167,20 @@ export function buildCompileMessages(ctx: CompilePromptContext): ChatMessage[] {
     userParts.push(`\nAVAILABLE KB ENTRIES (valid @kb refs):\n${ctx.availableKbEntries.join(", ")}`);
   } else {
     userParts.push(`\nAVAILABLE KB ENTRIES: none`);
+  }
+
+  if (ctx.kbCategories && ctx.kbCategories.length > 0) {
+    userParts.push(`\nKB CATEGORIES (valid kb_select.category values):\n${ctx.kbCategories.join(", ")}`);
+  }
+  if (ctx.linkNames && ctx.linkNames.length > 0) {
+    userParts.push(`\nPRODUCT LINKS (valid allowed_links names):\n${ctx.linkNames.join(", ")}`);
+  }
+  if (ctx.dataSources && ctx.dataSources.length > 0) {
+    userParts.push(
+      `\nDATA SOURCES (valid context sources and modes):\n${ctx.dataSources
+        .map((d) => `${d.name}${d.modes && d.modes.length > 0 ? ` (modes: ${d.modes.join(", ")})` : ""}`)
+        .join("\n")}`,
+    );
   }
 
   return [

@@ -19,7 +19,10 @@ export interface WorkerScanEnrollmentFlowRow {
   reentryCooldownDays: number | null;
 }
 
-export interface WorkerScanEnrollmentQueries {
+import type { ContactConditionQueries } from "./shared-conditions.js";
+
+/** Lookups for trigger `where` (P5b) come from ContactConditionQueries. */
+export interface WorkerScanEnrollmentQueries extends ContactConditionQueries {
   /** Active, compiled (compile_status = ready, plan present) lifecycle-transition flows of a tenant. */
   listActiveLifecycleTransitionFlows(tenantId: string): Promise<WorkerScanEnrollmentFlowRow[]>;
 }

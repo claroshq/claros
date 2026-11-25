@@ -52,6 +52,7 @@ import type { WorkerTriggerCheckQueries } from "./areas/worker-trigger-check.js"
 import type { WorkerDrainMessageQueries } from "./areas/worker-drain-message.js";
 import type { WorkerTransportResolverQueries } from "./areas/worker-transport-resolver.js";
 import type { WorkerProviderResolverQueries } from "./areas/worker-provider-resolver.js";
+import type { WorkerApprovalsDigestQueries } from "./areas/worker-approvals-digest.js";
 import type { WorkerProcessMessageQueries } from "./areas/worker-process-message.js";
 import type { ApiSessionQueries } from "./areas/api-session.js";
 import type { WorkerCounterRolloverQueries } from "./areas/worker-counter-rollover.js";
@@ -63,6 +64,7 @@ import type { OpsQueries } from "./areas/ops.js";
 import type { ApiAdminAuthQueries } from "./areas/api-admin-auth.js";
 import type { WorkerWebhooksQueries } from "./areas/worker-webhooks.js";
 import type { ApiConfigQueries } from "./areas/api-config.js";
+import type { ApiWebhooksQueries } from "./areas/api-webhooks.js";
 
 export interface Store {
   readonly dialect: "pg" | "sqlite";
@@ -115,6 +117,7 @@ export interface Store {
   readonly workerDrainMessage: WorkerDrainMessageQueries;
   readonly workerTransportResolver: WorkerTransportResolverQueries;
   readonly workerProviderResolver: WorkerProviderResolverQueries;
+  readonly workerApprovalsDigest: WorkerApprovalsDigestQueries;
   readonly workerProcessMessage: WorkerProcessMessageQueries;
   readonly apiSession: ApiSessionQueries;
   readonly workerCounterRollover: WorkerCounterRolloverQueries;
@@ -126,6 +129,7 @@ export interface Store {
   readonly apiAdminAuth: ApiAdminAuthQueries;
   readonly workerWebhooks: WorkerWebhooksQueries;
   readonly apiConfig: ApiConfigQueries;
+  readonly apiWebhooks: ApiWebhooksQueries;
 }
 
 export type * from "./areas/api-settings.js";
@@ -191,3 +195,5 @@ export type * from "./areas/shared-outbox.js";
 export type * from "./areas/shared-conditions.js";
 export type * from "./areas/worker-dates.js";
 export type * from "./areas/api-import.js";
+export type * from "./areas/api-webhooks.js";
+export type * from "./areas/worker-approvals-digest.js";

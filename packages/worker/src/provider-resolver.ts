@@ -87,8 +87,40 @@ export async function resolveTenantProvider(
     };
   }
 
-  // 4. Construct provider
-  const provider = new OpenAICompatibleProvider(providerConfig);
+  // 4. Construct provider; P5b: every call's tokens count towards the
+  // product's daily usage (settings.llm_daily_token_budget).
+  const provider = meteredProvider(new OpenAICompatibleProvider(providerConfig), (tokens) =>
+    storeFor(db).workerProviderResolver.addLlmTokens({ tenantId, day: utcDay(new Date()), tokens }),
+  );
 
   return { ok: true, provider };
+}
+
+/** The UTC date "YYYY-MM-DD" of a time (the LLM budget's day). */
+export function utcDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** A provider that reports the total tokens of every successful call. Recording failures are ignored. */
+export function meteredProvider(inner: LlmProvider, record: (tokens: number) => Promise<void>): LlmProvider {
+  return {
+    async complete(opts) {
+      const r = await inner.complete(opts);
+      const u = r.usage;
+      const tokens = u ? (u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0)) : 0;
+      if (tokens > 0) await record(tokens).catch(() => {});
+      return r;
+    },
+  };
+}
+
+/**
+ * P5b: whether the product is at or over its daily LLM token budget
+ * (settings.llm_daily_token_budget, a UTC day). No budget: never.
+ */
+export async function overLlmBudget(db: Db, tenantId: string, settings: Record<string, unknown> | null | undefined, now: Date): Promise<boolean> {
+  const budget = settings?.llm_daily_token_budget;
+  if (typeof budget !== "number" || !(budget > 0)) return false;
+  const used = await storeFor(db).workerProviderResolver.getLlmTokens({ tenantId, day: utcDay(now) });
+  return used >= budget;
 }

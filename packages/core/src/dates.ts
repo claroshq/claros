@@ -16,7 +16,7 @@
  * trait backfilled far in the past does not send a burst of stale mail).
  */
 import { z } from "zod";
-import { contactConditionSchema } from "./conditions.js";
+import { audienceConditionOrListSchema } from "./conditions.js";
 import { resolveTimezone } from "./throttle/gate.js";
 
 /** Signed duration: "-3d", "12h", "30m", "0m". */
@@ -48,7 +48,7 @@ export const datePropertyTriggerSchema = z
     property,
     offset: z.string().regex(SIGNED_DURATION_RE, { message: "offset must look like -3d, 12h or 0m" }),
     send_at_local: sendAtLocal.optional(),
-    where: z.array(contactConditionSchema).optional(),
+    where: audienceConditionOrListSchema.optional(),
   })
   .strict();
 
@@ -60,7 +60,7 @@ export const dateScheduleTriggerSchema = z
     repeat: z.string().regex(DURATION_RE, { message: "repeat must look like 30d" }).optional(),
     max_sends: z.number().int().min(1).max(MAX_SCHEDULE_SENDS),
     send_at_local: sendAtLocal.optional(),
-    where: z.array(contactConditionSchema).optional(),
+    where: audienceConditionOrListSchema.optional(),
   })
   .strict()
   .superRefine((t, ctx) => {

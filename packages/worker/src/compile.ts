@@ -69,10 +69,20 @@ export async function handleCompileJob(
   const { provider } = providerResult;
 
   // 5. Resolve available templates and KB entries for the prompt context
-  const [templateSlugs, kbTitles] = await Promise.all([
+  const [templateSlugs, kbTitles, kbCategories, settings] = await Promise.all([
     storeFor(db).workerCompile.listActiveTemplateSlugs(tenant_id),
     storeFor(db).workerCompile.listActiveKbTitles(tenant_id),
+    storeFor(db).workerCompile.listActiveKbCategories(tenant_id),
+    storeFor(db).workerCompile.getTenantSettings(tenant_id),
   ]);
+  // P5b: the product's link names and data sources, so plans use real ones.
+  const links = settings?.links && typeof settings.links === "object" ? Object.keys(settings.links as object) : [];
+  const sources = settings?.data_sources && typeof settings.data_sources === "object"
+    ? Object.entries(settings.data_sources as Record<string, { modes?: unknown }>).map(([name, src]) => ({
+        name,
+        ...(Array.isArray(src?.modes) ? { modes: (src.modes as unknown[]).filter((m): m is string => typeof m === "string") } : {}),
+      }))
+    : [];
 
   const ctx: CompilePromptContext = {
     promptSource: flow.promptSource,
@@ -80,6 +90,9 @@ export async function handleCompileJob(
     triggerConfig: flow.triggerConfig as Record<string, unknown>,
     availableTemplates: templateSlugs,
     availableKbEntries: kbTitles,
+    kbCategories,
+    linkNames: links,
+    dataSources: sources,
   };
 
   // 6. Call compile

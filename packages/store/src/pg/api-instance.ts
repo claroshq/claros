@@ -1,10 +1,10 @@
 /**
  * Postgres implementation of the queries used by packages/api/src/routes/instance.ts.
  */
-import { asc, eq } from "drizzle-orm";
-import { instanceSettings, memberships, tenants, users } from "@claros/db/schema";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { apiKeys, contacts, instanceSettings, memberships, tenants, users } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
-import type { ApiInstanceQueries, InstanceUserRow } from "../areas/api-instance.js";
+import type { ApiInstanceQueries, InstanceKeyRow, InstanceUserRow } from "../areas/api-instance.js";
 
 export function pgApiInstance(db: PgDb): ApiInstanceQueries {
   return {
@@ -68,5 +68,52 @@ export function pgApiInstance(db: PgDb): ApiInstanceQueries {
       }
       return out;
     },
+
+    async listInstanceKeys() {
+      const rows = await db
+        .select(instanceKeyColumns)
+        .from(apiKeys)
+        .where(and(eq(apiKeys.kind, "instance"), isNull(apiKeys.tenantId)))
+        .orderBy(asc(apiKeys.createdAt), asc(apiKeys.id));
+      return rows.map(instanceKeyRow);
+    },
+
+    async createInstanceKey({ keyHash, prefix, label, scopes, now }) {
+      const [row] = await db
+        .insert(apiKeys)
+        .values({ tenantId: null, keyHash, prefix, label, kind: "instance", scopes, createdAt: now })
+        .returning(instanceKeyColumns);
+      return instanceKeyRow(row!);
+    },
+
+    async revokeInstanceKey({ id, now }) {
+      const where = and(eq(apiKeys.id, id), eq(apiKeys.kind, "instance"), isNull(apiKeys.tenantId));
+      await db.update(apiKeys).set({ revokedAt: now }).where(and(where, isNull(apiKeys.revokedAt)));
+      const rows = await db.select(instanceKeyColumns).from(apiKeys).where(where).limit(1);
+      return rows[0] ? instanceKeyRow(rows[0]) : null;
+    },
+
+    async findPeopleByEmail(email) {
+      return db
+        .select({ tenantId: contacts.tenantId, tenantSlug: tenants.slug, contactId: contacts.id, externalId: contacts.externalId })
+        .from(contacts)
+        .innerJoin(tenants, eq(tenants.id, contacts.tenantId))
+        .where(and(sql`${contacts.email} IS NOT NULL`, sql`lower(${contacts.email}) = lower(${email})`))
+        .orderBy(asc(tenants.slug), asc(contacts.id));
+    },
   };
+}
+
+const instanceKeyColumns = {
+  id: apiKeys.id,
+  prefix: apiKeys.prefix,
+  label: apiKeys.label,
+  scopes: apiKeys.scopes,
+  lastUsedAt: apiKeys.lastUsedAt,
+  createdAt: apiKeys.createdAt,
+  revokedAt: apiKeys.revokedAt,
+};
+
+function instanceKeyRow(r: { id: string; prefix: string; label: string | null; scopes: unknown; lastUsedAt: Date | null; createdAt: Date | null; revokedAt: Date | null }): InstanceKeyRow {
+  return { ...r, scopes: Array.isArray(r.scopes) ? (r.scopes as string[]) : [] };
 }

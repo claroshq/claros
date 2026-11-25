@@ -19,6 +19,7 @@ export const WEBHOOK_EVENTS = [
   "message.complained",
   "message.failed",
   "message.pending_approval",
+  "contact.subscribed",
   "contact.unsubscribed",
   "contact.resubscribed",
   "contact.suppressed",
@@ -70,9 +71,17 @@ export const PENDING_APPROVAL_WINDOW_MS = 15 * 60 * 1000;
  * so a product gets at most one ping per 15 minutes covering every message
  * that entered the queue in that window.
  */
-export function pendingApprovalBatch(now: Date): { dedupKey: string; deliverAt: Date } {
-  const end = Math.ceil((now.getTime() + 1) / PENDING_APPROVAL_WINDOW_MS) * PENDING_APPROVAL_WINDOW_MS;
+export function pendingApprovalBatch(now: Date, intervalMinutes = 15): { dedupKey: string; deliverAt: Date } {
+  const minutes = Number.isInteger(intervalMinutes) && intervalMinutes >= 1 && intervalMinutes <= 1440 ? intervalMinutes : 15;
+  const windowMs = minutes * 60_000;
+  const end = Math.ceil((now.getTime() + 1) / windowMs) * windowMs;
   return { dedupKey: `message.pending_approval:${end}`, deliverAt: new Date(end) };
+}
+
+/** P5b: an endpoint's pending-approval batch window (webhook_endpoints.config.batch_interval_minutes, default 15). */
+export function endpointBatchMinutes(config: unknown): number {
+  const v = config && typeof config === "object" ? (config as { batch_interval_minutes?: unknown }).batch_interval_minutes : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 1440 ? v : 15;
 }
 
 /** Delivery attempts before an outbox row is dead. */

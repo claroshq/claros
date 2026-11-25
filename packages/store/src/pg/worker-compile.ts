@@ -1,8 +1,8 @@
 /**
  * Postgres implementation of the queries used by packages/worker/src/compile.ts.
  */
-import { eq, and } from "drizzle-orm";
-import { flows, templates, kbEntries } from "@claros/db/schema";
+import { eq, and, isNotNull } from "drizzle-orm";
+import { flows, templates, kbEntries, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { WorkerCompileQueries } from "../areas/worker-compile.js";
 
@@ -31,6 +31,20 @@ export function pgWorkerCompile(db: PgDb): WorkerCompileQueries {
         .from(kbEntries)
         .where(and(eq(kbEntries.tenantId, tenantId), eq(kbEntries.isActive, true)));
       return rows.map((r) => r.title);
+    },
+
+    async listActiveKbCategories(tenantId) {
+      const rows = await db
+        .selectDistinct({ category: kbEntries.category })
+        .from(kbEntries)
+        .where(and(eq(kbEntries.tenantId, tenantId), eq(kbEntries.isActive, true), isNotNull(kbEntries.category)));
+      return rows.map((r) => r.category as string).sort();
+    },
+
+    async getTenantSettings(tenantId) {
+      const rows = await db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+      const v = rows[0]?.settings;
+      return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
     },
 
     async markCompileReady(flowId, plan) {

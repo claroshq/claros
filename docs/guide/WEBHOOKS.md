@@ -2,7 +2,7 @@
 
 > Status: unreleased (planned for v0.8).
 
-Claros tells your product what happened to its contacts and messages with signed HTTP webhooks, and can send lifecycle events to an analytics tool. Both are configured per product with [config as code](CONFIG.md) (`webhooks` and `settings.analytics`).
+Claros tells your product what happened to its contacts and messages with signed HTTP webhooks, and can send lifecycle events to an analytics tool. Both are configured per product with [config as code](CONFIG.md) (`webhooks` and `settings.analytics`); webhooks can also be managed one by one in the dashboard (Settings, Webhooks) or with the [webhooks API](#managing-webhooks).
 
 ## How delivery works
 
@@ -23,11 +23,12 @@ Each event is written to an outbox in the same database transaction as the chang
 | `message.clicked` | First click reported by the provider |
 | `message.bounced` | Hard bounce reported by the provider |
 | `message.complained` | Spam complaint reported by the provider |
-| `message.failed` | The send failed permanently, or the transport policy refused it (`reason`) |
-| `message.pending_approval` | Messages entered the approval queue. Batched: at most one per product and endpoint per 15 minutes, delivered at the end of the window with `pending_count` |
-| `contact.unsubscribed` | Unsubscribe from the product (`scope: "product"`) or from a topic (`scope: "topic"`, `topic`) |
+| `message.failed` | The send failed permanently, the transport policy refused it, the recovery job gave up on a stuck message (`reason: "reap_sending"`, `"reap_generating"`, `"reap_awaiting_content"`), or content generation failed permanently (`reason: "generation_failed"`) |
+| `message.pending_approval` | Messages entered the approval queue. Batched: at most one per product and endpoint per window (the endpoint's `batch_interval_minutes`, default 15), delivered at the end of the window with `pending_count` |
+| `contact.subscribed` | An identify call's `topics` subscribed the contact to a topic they were not subscribed to (`scope: "topic"`, `topic`, `source: "identify"`) |
+| `contact.unsubscribed` | Unsubscribe from the product (`scope: "product"`) or from a topic (`scope: "topic"`, `topic`), including through an identify call's `topics` (`source: "identify"`) |
 | `contact.resubscribed` | A suppression was removed, or the contact subscribed to a topic again on the unsubscribe page |
-| `contact.suppressed` | An address was suppressed (bounce, complaint, API, dashboard, exclusion) |
+| `contact.suppressed` | An address was suppressed (bounce, complaint, API, dashboard, exclusion, CSV import with `source: "csv_import"`) |
 | `flow.enrolled` | A contact entered a flow |
 | `flow.exited` | A contact left a flow early (`reason`: `condition_met`, `flow_archived`, `priority_override`) |
 
@@ -78,6 +79,24 @@ function verify(secret: string, headers: Record<string, string>, body: string): 
 Verify against the raw body, before parsing it. Fail closed: answer `401` and do nothing when the signature does not match.
 
 A webhook in the config without `secret` gets a generated one, returned once by the apply (`webhook_secrets`). With `secret`, that value is used; applying a new value rotates it.
+
+## Managing webhooks
+
+Settings, Webhooks in the dashboard lists the product's endpoints and their latest deliveries, and creates, edits, enables, disables and deletes them. The same operations are an API for owners and for admin keys with the `config` scope:
+
+| Request | Does |
+|---|---|
+| `GET /v1/webhooks` | The endpoints (`slug`, `url`, `events`, `enabled`, `batch_interval_minutes`, `has_secret`, `read_only`) and the list of subscribable `events` |
+| `POST /v1/webhooks` | Create: `{"slug": "app", "url": "https://...", "events": [...], "enabled"?: true, "batch_interval_minutes"?: 15}`. The answer carries the signing `secret`, shown this once |
+| `PATCH /v1/webhooks/:slug` | Change `url`, `events`, `enabled` or `batch_interval_minutes` (`null` restores the default) |
+| `POST /v1/webhooks/:slug/rotate` | A new signing secret, returned this once; the old one stops working immediately |
+| `GET /v1/webhooks/:slug/deliveries` | The latest 50 deliveries, newest first: `event`, `status` (`pending`, `delivered`, `dead`), `attempts`, `next_attempt_at`, `last_error`, `created_at`, `delivered_at`, `payload` |
+| `DELETE /v1/webhooks/:slug` | Delete the endpoint; its undelivered events are dropped |
+
+- Secrets are stored encrypted (`ENCRYPTION_KEY` must be set; without it creating or rotating answers `503`) and are never returned after creation or rotation.
+- `batch_interval_minutes` (1 to 1440, default 15) is the window of the batched `message.pending_approval` event for that endpoint.
+- The analytics sink (slug `analytics`) is listed with `read_only: true` and its deliveries can be read; it is changed through `settings.analytics` in a config document. The slug `analytics` cannot be used for a webhook.
+- Webhooks are part of the [config document](CONFIG.md): every change here bumps the product's `config_version`, and a document that lists `webhooks` replaces these changes on its next apply.
 
 ## Analytics sink
 

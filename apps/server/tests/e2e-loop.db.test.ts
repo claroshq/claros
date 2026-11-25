@@ -145,7 +145,7 @@ beforeAll(async () => {
 
   // Cleanup
   for (const tbl of [
-    "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
+    "tenant_daily_usage", "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
     "events", "contacts", "api_keys", "flows", "sessions", "users",
   ]) {
     await db.execute(sql.raw(
@@ -250,7 +250,7 @@ afterAll(async () => {
   }
   // Cleanup
   for (const tbl of [
-    "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
+    "tenant_daily_usage", "lifecycle_messages", "flow_memberships", "lifecycle_transitions",
     "events", "contacts", "api_keys", "flows", "llm_configs", "transport_configs",
     "sessions", "users",
   ]) {

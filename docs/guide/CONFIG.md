@@ -21,7 +21,9 @@ npx claros apply -f claros.config.json             # apply them
 - Applying the same document twice changes nothing the second time (empty diff, same `config_version`).
 - Errors (an unknown topic or template, a transport name that does not exist, a Cloudflare transport as the default route) are reported together and nothing is written.
 - Secrets in the file (`webhooks[].secret`, `settings.analytics.secret`) are encrypted at rest. Prefer leaving webhook secrets out: Claros generates one and the apply prints it once.
-- `GET /v1/config` returns the product's current configuration as a document (without secrets), a starting point for the file.
+- `GET /v1/config` returns the product's current configuration as a document (without secrets), a starting point for the file. The dashboard downloads it from Settings, Config as code.
+- Warnings (`warnings` in the response, printed by `claros apply`) name things that apply but probably do not do what the document means: a trigger key the trigger type does not read, a date trigger on a trait missing from `settings.date_traits`, a nurture-class date schedule. A document meant for production should apply with none.
+- Topics with `"mirror_only": true` only mirror a consent kept elsewhere (contacts' `topics` on identify): no flow may use them, and the apply refuses a flow that does.
 
 The response lists each change:
 
@@ -134,23 +136,36 @@ The response lists each change:
 | `status` | `active` for a new flow; unchanged otherwise | `active`, `paused`, `draft` |
 | `content_mode` | `fixed_content` when every step has a `template_ref`, else `ai_drafted` | |
 | `approval_mode` | `require` | `auto` skips the [approval queue](APPROVALS.md) |
-| `flow_class` | `nurture` | `critical` flows run alongside others and bypass frequency caps |
+| `flow_class` | `nurture` | `critical` flows run alongside others and bypass frequency caps; `scheduled` flows run alongside others and respect caps and send windows (see [Flows](FLOWS.md#flow-classes)) |
 | `priority` | `0` | |
 | `reentry` | `{"policy": "cooldown", "cooldown_days": 30}` | `once`, `cooldown`, `every_time` |
 | `topic` | none | A topic slug |
 
 ### Conditions
 
-Step `condition` (proceed only if true), step `exit_condition`, plan `exit_conditions` and event-trigger `where` take these shapes, besides the lifecycle and event shapes a compiled prompt produces (`{"lifecycle_state": "..."}`, `{"lifecycle_state_not": "..."}`, `{"event_since_step": "..."}`, `{"event": "..."}`):
+Step `condition` (proceed only if true), step `exit_condition`, plan `exit_conditions`, trigger `where` (every trigger type) and choose-candidate `when` take these shapes:
 
 | Shape | True when |
 |---|---|
 | `{"trait": {"key": "plan_tier", "op": "eq", "value": "pro"}}` | The contact's identify trait matches. `op`: `eq`, `neq`, `in` (value is a list), `exists`, `not_exists`, `gt`, `lt` (numbers or ISO dates). `key` may be a dotted path (`company.size`). |
 | `{"history": {"flow": "welcome", "within": "7d", "op": "none"}}` | Messages sent to the contact in this product, filtered by `flow` (slug), `action_type` or `topic` (slug), in the last `within` (`30m`, `12h`, `7d`; absent = ever): `none`, `any`, or `count_lt` with `value` |
 | `{"first_contact": true}` | Nothing was ever sent to the contact in this product (`false`: something was) |
+| `{"lifecycle_state": "engaged"}`, `{"lifecycle_state_not": "churned"}` | The contact's lifecycle state is (is not) this one |
 | `{"date_unchanged": true}` | Step conditions only: the date a date-triggered membership was enrolled for still equals the contact's date trait (always true on other flows) |
+| `{"event_since_step": "feature_used"}` | Step conditions only: the event happened since the contact reached the step |
+| `{"event": "paid"}`, `{"lifecycle_state_change": {"to": "churned"}}` | Plan exits only: the event happened, or the contact moved to the state, during the enrollment |
 
-An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true}}` exits the flow once the trait becomes true. Entries in `where` must all hold; an event trigger whose `where` is malformed never enrolls.
+Combine them with `{"all": [...]}` (every one holds), `{"any": [...]}` (at least one) and `{"not": ...}`, nested up to 4 deep. A list where a single condition is expected means `all`: `"condition": [a, b]` is `{"all": [a, b]}`. Plan `exit_conditions` stay a list of which any entry exits the flow; an entry may be a combinator.
+
+```json
+"where": { "not": { "all": [
+  { "trait": { "key": "payment_status", "op": "eq", "value": "free" } },
+  { "lifecycle_state": "dormant" },
+  { "first_contact": true }
+] } }
+```
+
+An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true}}` exits the flow once the trait becomes true. A trigger whose `where` is malformed never enrolls.
 
 ## Settings
 
@@ -160,11 +175,14 @@ An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true
 | `links` | Named links (`{"billing_url": "https://..."}`): `{{links.billing_url}}` in templates and brain instructions; the drafting model may use only these URLs (see [Flows](FLOWS.md#links-and-text-rules)) |
 | `link_tracking` | See below; `null` removes it |
 | `locale` | The product's locale (`en`, `de-AT`); `null` clears it. The drafting language, and the language of the mail footer and the unsubscribe pages (English and Spanish; other languages fall back to English) |
-| `brain` | `guidelines` (markdown, given to the drafting and value-gate models, up to 12,000 characters are used) and `text_rules`: a string is a writing rule for the model, `{"find": "...", "replace": "..."}` rewrites every draft (`find` is literal text or `/pattern/flags`), `{"forbid": "..."}` blocks a draft containing it |
+| `brain` | `assess` (`{"enabled": false}` turns the value gate off; `{"threshold": 6}` holds back drafts the gate scores below 6 of 10), `guidelines` (markdown, given to the drafting and value-gate models, up to 12,000 characters are used) and `text_rules`: a string is a writing rule for the model, `{"find": "...", "replace": "..."}` rewrites every draft (`find` is literal text or `/pattern/flags`), `{"forbid": "..."}` blocks a draft containing it |
 | `data_sources` | Context sources for steps: `{"leads": {"url": "https://...", "secret": "...", "timeout_ms": 5000, "modes": ["normal", "inferred"]}}`. `secret` is write-only and stored encrypted (needs `ENCRYPTION_KEY`); `secret_ref` (alias `secret_env`) names an environment variable or Worker secret instead. See [Flows](FLOWS.md#context-sources) |
 | `date_traits` | Identify traits that hold dates (`["trial_ends_at", "first_paid_at"]`), indexed for date triggers. Changing the list re-indexes the product's contacts |
 | `activation_events` | Stored for the features that read them |
 | `analytics` | The [analytics sink](WEBHOOKS.md#analytics-sink): `sink` (`statsraven`, `webhook`), `endpoint`, `site_key`, `secret`; `null` removes it |
+| `lifecycle` | Lifecycle thresholds: `activation_events`, `activation_window_days`, `natural_frequency_days`, `at_risk_missed_intervals`, `dormant_days`, `churned_days` (greater than `dormant_days`), `engagement_depth_window_days`, `power_user_percentile` (0 to 1). Unset keys keep their defaults |
+| `llm_daily_token_budget` | LLM tokens the product may use per UTC day; over it, drafts wait (`status_reason = llm_budget`, see [Approvals](APPROVALS.md#value-gate-and-llm-budget-v08)). `null` removes the budget |
+| `approvals` | `{"daily_digest": true}`: one mail a day to the product's owners with the drafts waiting for approval (see [Approvals](APPROVALS.md#reaching-reviewers-v08)) |
 
 A settings key in the document replaces that key; keys the document does not mention are kept.
 
@@ -174,7 +192,7 @@ With `link_tracking`, links in the body of each message that point to one of `do
 
 ## Webhooks
 
-`webhooks` lists signed webhook endpoints: `slug`, `url`, `events`, optional `enabled` (default `true`) and `secret`. See [Webhooks](WEBHOOKS.md) for the events, payloads and signature verification.
+`webhooks` lists signed webhook endpoints: `slug`, `url`, `events`, optional `enabled` (default `true`), `secret` and `batch_interval_minutes` (1 to 1440, default 15: the window of the batched `message.pending_approval` event). See [Webhooks](WEBHOOKS.md) for the events, payloads and signature verification.
 
 ## A product example (P5 features)
 

@@ -21,7 +21,7 @@ import { bodyParser, type BodyOptions } from "./body.js";
 import { validateBody } from "./validate.js";
 import type { z } from "zod";
 import { roleSatisfies, type UserRole } from "../types.js";
-import { requireRoleOrAdminKey, type AdminScope } from "./admin-auth.js";
+import { requireRoleOrKey, type AdminScope, type InstanceScope } from "./admin-auth.js";
 
 /** Hono app typed with the Claros environment. */
 export function createRouter(): Hono<AppEnv> {
@@ -60,6 +60,19 @@ type AdminKeyMarker = MiddlewareHandler<AppEnv> & { [KEY_SCOPE]: AdminScope };
 export function allowAdminKey(scope: AdminScope): AdminKeyMarker {
   const mw: MiddlewareHandler<AppEnv> = async (_c, next) => next();
   return Object.assign(mw, { [KEY_SCOPE]: scope });
+}
+
+const INSTANCE_KEY_SCOPE = Symbol("claros.instanceKeyScope");
+type InstanceKeyMarker = MiddlewareHandler<AppEnv> & { [INSTANCE_KEY_SCOPE]: InstanceScope };
+
+/**
+ * Let a RoleRouter route also accept an instance key that carries `scope`,
+ * acting on the product named by X-Claros-Product or ?product= (item 11).
+ * Pass it right after the role.
+ */
+export function allowInstanceKey(scope: InstanceScope): InstanceKeyMarker {
+  const mw: MiddlewareHandler<AppEnv> = async (_c, next) => next();
+  return Object.assign(mw, { [INSTANCE_KEY_SCOPE]: scope });
 }
 
 export function requireRole(minRole: UserRole): MiddlewareHandler<AppEnv> {
@@ -123,8 +136,14 @@ export class RoleRouter {
     const marker = handlers.find((h) => (h as Partial<AdminKeyMarker>)[KEY_SCOPE] !== undefined) as
       | AdminKeyMarker
       | undefined;
-    const guard = marker ? requireRoleOrAdminKey(minRole, marker[KEY_SCOPE]) : requireRole(minRole);
-    handlers = handlers.filter((h) => h !== marker);
+    const instanceMarker = handlers.find((h) => (h as Partial<InstanceKeyMarker>)[INSTANCE_KEY_SCOPE] !== undefined) as
+      | InstanceKeyMarker
+      | undefined;
+    const guard =
+      marker || instanceMarker
+        ? requireRoleOrKey(minRole, marker?.[KEY_SCOPE] ?? null, instanceMarker?.[INSTANCE_KEY_SCOPE] ?? null)
+        : requireRole(minRole);
+    handlers = handlers.filter((h) => h !== marker && h !== instanceMarker);
     const preAuth = handlers.filter((h) => (h as Partial<PreAuthMiddleware>)[PRE_AUTH] === true);
     const rest = handlers.filter((h) => (h as Partial<PreAuthMiddleware>)[PRE_AUTH] !== true);
     (this.app[method] as (p: string, ...h: (Handler<AppEnv> | MiddlewareHandler<AppEnv>)[]) => unknown)(

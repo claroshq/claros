@@ -18,6 +18,11 @@
  *   GET    /v1/flows/:id          get a single flow
  *   PATCH  /v1/flows/:id          update a flow (partial; status transitions validated)
  *   DELETE /v1/flows/:id          archive a flow (sets status = 'archived')
+ *   POST   /v1/flows/:ref/pause   pause an active flow (id or slug)
+ *   POST   /v1/flows/:ref/resume  re-activate a paused flow (id or slug)
+ *
+ * GET /v1/flows, pause and resume also accept a product admin key with the
+ * "config" scope (item 11).
  *
  * Ownership rules:
  *   - prompt_source: writable by API (create and update when status is draft or paused)
@@ -30,7 +35,7 @@
  * Cross-tenant isolation: any flow that exists but belongs to a different tenant
  * returns 404 (not 403) to avoid leaking information about other tenants.
  */
-import { RoleRouter } from "../http/router.js";
+import { RoleRouter, allowAdminKey } from "../http/router.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor, type ApiFlowsQueries } from "@claros/store";
@@ -50,11 +55,17 @@ import {
   CONTENT_MODES,
   QUEUE,
   compiledPlanSchema,
+  toFlowClass,
+  cachedConditionContext,
+  evaluateAudienceCondition,
+  type EnrollableFlow,
   type FlowStatus,
 } from "@claros/core";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import { OpenAICompatibleProvider, draft } from "@claros/brain-oss";
 import type { Db } from "../plugins/db.js";
+
+const UUID_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A flows row as the store returns it. */
 type FlowRow = NonNullable<Awaited<ReturnType<ApiFlowsQueries["findFlow"]>>>;
@@ -115,6 +126,15 @@ const createFlowSchema = z.object({
     .nullable()
     .optional(),
 });
+
+/** POST /v1/flows/:ref/enroll body (P5b). */
+const enrollSchema = z
+  .object({
+    external_ids: z.array(z.string().min(1).max(200)).min(1).max(500).optional(),
+    cursor: z.string().uuid().optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
 
 // Update: all create fields optional, plus status
 const updateFlowSchema = createFlowSchema
@@ -204,6 +224,7 @@ export default function flowsRoutes() {
     if (body.topic_id) {
       const topic = await storeFor(db).apiTopics.findTopic({ tenantId, id: body.topic_id.toLowerCase() });
       if (!topic) return c.json({ error: "topic_id does not name a topic of this product." }, 400);
+      if (topic.mirrorOnly) return c.json({ error: `Topic '${topic.slug}' is mirror-only; no flow may send on it.` }, 400);
     }
 
     const inserted = await storeFor(db).apiFlows.createFlow({
@@ -238,6 +259,7 @@ export default function flowsRoutes() {
   r.get(
     "/",
     "member",
+    allowAdminKey("config"),
     async (c) => {
       const db: Db = c.var.db;
       const tenantId = c.var.tenant!.id;
@@ -248,6 +270,130 @@ export default function flowsRoutes() {
       return c.json({ flows: rows.map(serializeFlow) });
     },
   );
+
+  /**
+   * POST /v1/flows/:ref/pause, POST /v1/flows/:ref/resume
+   * Pause an active flow or re-activate a paused one, by id or slug.
+   * Transitions follow validateStatusTransition (422 otherwise); resuming
+   * needs a compiled plan. Already in the target status: 200, unchanged.
+   */
+  for (const [action, target] of [["pause", "paused"], ["resume", "active"]] as const) {
+    r.post(`/:ref/${action}`, "member", allowAdminKey("config"), async (c) => {
+      const db: Db = c.var.db;
+      const tenantId = c.var.tenant!.id;
+      const ref = decodeURIComponent(c.req.param("ref")!);
+      const current = UUID_REF.test(ref)
+        ? await storeFor(db).apiFlows.findFlow({ tenantId, id: ref.toLowerCase() })
+        : ((await storeFor(db).apiFlows.listFlows({ tenantId, includeArchived: false })).find((f) => f.slug === ref) ?? null);
+      if (!current) return c.json({ error: "Flow not found." }, 404);
+      const from = current.status as FlowStatus;
+      if (from === target) return c.json(serializeFlow(current));
+      const transitionError = validateStatusTransition(from, target);
+      if (transitionError) return c.json({ error: transitionError }, 422);
+      if (target === "active" && (current.compileStatus !== "ready" || current.compiledPlan === null)) {
+        return c.json({ error: "Cannot activate a flow without a compiled plan." }, 422);
+      }
+      const updated = await storeFor(db).apiFlows.updateFlow({
+        tenantId,
+        id: current.id,
+        patch: { status: target, updatedAt: new Date() },
+        expectedStatus: from,
+      });
+      if (!updated) return c.json({ error: "Flow status was modified concurrently. Retry the request." }, 409);
+      return c.json(serializeFlow(updated));
+    });
+  }
+
+  /**
+   * POST /v1/flows/:ref/enroll (P5b)
+   * Enroll contacts in an active manual-trigger flow, by id or slug. Body:
+   *   { external_ids: [...] }  these contacts (at most 500), or
+   *   { cursor?, limit? }      every contact matching the trigger's `where`,
+   *                            one page (limit default 500, max 1000) per
+   *                            call; call again with next_cursor until null.
+   * Each contact goes through the trigger's `where` and the normal
+   * enrollment guards (suppression, class concurrency, re-entry). Enrolled
+   * memberships are advanced right away when a job queue is present (else by
+   * the next scan).
+   */
+  r.post("/:ref/enroll", "member", allowAdminKey("config"), async (c) => {
+    const parsed = enrollSchema.safeParse(c.var.body ?? {});
+    if (!parsed.success) return validationError(c, parsed.error.issues);
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const ref = decodeURIComponent(c.req.param("ref")!);
+    const flow = UUID_REF.test(ref)
+      ? await storeFor(db).apiFlows.findFlow({ tenantId, id: ref.toLowerCase() })
+      : ((await storeFor(db).apiFlows.listFlows({ tenantId, includeArchived: false })).find((f) => f.slug === ref) ?? null);
+    if (!flow) return c.json({ error: "Flow not found." }, 404);
+    if (flow.triggerType !== "manual") return c.json({ error: "Only manual-trigger flows are enrolled through this route." }, 422);
+    if (flow.status !== "active" || flow.compiledPlan === null) return c.json({ error: "The flow must be active and compiled." }, 422);
+    const body = parsed.data;
+    const where = (flow.triggerConfig as { where?: unknown } | null)?.where;
+
+    let contactIds: string[];
+    let nextCursor: string | null = null;
+    const notFound: string[] = [];
+    if (body.external_ids) {
+      const found = await storeFor(db).apiFlows.findContactsByExternalIds({ tenantId, externalIds: [...new Set(body.external_ids)] });
+      const known = new Set(found.map((f) => f.externalId));
+      for (const e of body.external_ids) if (!known.has(e)) notFound.push(e);
+      contactIds = found.map((f) => f.id);
+    } else {
+      if (where === undefined || where === null) {
+        return c.json({ error: "Enrolling every contact needs a trigger `where`; pass external_ids instead." }, 422);
+      }
+      const limit = body.limit ?? 500;
+      contactIds = await storeFor(db).apiFlows.listContactIdsPage({ tenantId, afterId: body.cursor ?? null, limit });
+      nextCursor = contactIds.length === limit ? contactIds[contactIds.length - 1]! : null;
+    }
+
+    const now = new Date();
+    const store = storeFor(db).apiFlows;
+    const enrollable: EnrollableFlow = {
+      id: flow.id,
+      tenantId,
+      priority: flow.priority ?? 0,
+      triggerType: "manual",
+      triggerConfig: flow.triggerConfig,
+      flowClass: toFlowClass(flow.flowClass),
+      reentryPolicy: (flow.reentryPolicy ?? "cooldown") as EnrollableFlow["reentryPolicy"],
+      reentryCooldownDays: flow.reentryCooldownDays ?? 30,
+    };
+    const skipped: Record<string, number> = {};
+    const enrolledIds: string[] = [];
+    for (const contactId of contactIds) {
+      const ctx = cachedConditionContext({
+        now,
+        traits: async () => (await store.getContactTraits({ tenantId, contactId })) ?? {},
+        countSends: (f) => store.countSends({ tenantId, contactId, ...f }),
+        lifecycleState: () => store.lookupLifecycleState({ tenantId, contactId }),
+      });
+      if ((await evaluateAudienceCondition(where, ctx)) !== true) {
+        skipped.where = (skipped.where ?? 0) + 1;
+        continue;
+      }
+      const [res] = await storeFor(db).workerEnroll.enrollContactInFlows({ contactId, tenantId, candidateFlows: [enrollable], now });
+      if (res?.enrolled) enrolledIds.push(res.membershipId);
+      else {
+        // concurrent_enrollment: the active-membership index refused it (already enrolled).
+        const raw = (res?.reason ?? "unknown").split(":")[0]!;
+        const reason = raw === "concurrent_enrollment" ? "already_enrolled" : raw;
+        skipped[reason] = (skipped[reason] ?? 0) + 1;
+      }
+    }
+    const enqueue = c.var.enqueue;
+    if (enqueue) {
+      for (const membershipId of enrolledIds) {
+        await enqueue(QUEUE.ADVANCE_MEMBERSHIP, { tenant_id: tenantId, membership_id: membershipId }).catch(() => {});
+      }
+    }
+    return c.json({
+      enrolled: enrolledIds.length,
+      skipped,
+      ...(body.external_ids ? { not_found: notFound } : { next_cursor: nextCursor }),
+    });
+  });
 
   /**
    * GET /v1/flows/:id
@@ -354,6 +500,7 @@ export default function flowsRoutes() {
       if (body.topic_id) {
         const topic = await storeFor(db).apiTopics.findTopic({ tenantId, id: body.topic_id.toLowerCase() });
         if (!topic) return c.json({ error: "topic_id does not name a topic of this product." }, 400);
+        if (topic.mirrorOnly) return c.json({ error: `Topic '${topic.slug}' is mirror-only; no flow may send on it.` }, 400);
       }
 
       // Build the SET clause; never include compiled_plan or compiled_at
@@ -795,7 +942,7 @@ export default function flowsRoutes() {
  * compiled_plan and compiled_at are included so the dashboard can show
  * compilation state.
  */
-function serializeFlow(row: FlowRow) {
+export function serializeFlow(row: FlowRow) {
   return {
     id: row.id,
     tenant_id: row.tenantId,

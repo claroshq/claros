@@ -5,13 +5,41 @@
  * updateFlow's CAS on status is one UPDATE ... WHERE status = ? RETURNING,
  * atomic on SQLite.
  */
-import { eq, and, ne } from "drizzle-orm";
-import { flows, llmConfigs, tenants, templates } from "@claros/db/schema-sqlite";
+import { eq, and, ne, gt, inArray } from "drizzle-orm";
+import { contacts, flows, llmConfigs, tenants, templates } from "@claros/db/schema-sqlite";
+import { d1ContactConditions } from "./contact-conditions.js";
 import type { D1Db } from "./db.js";
 import type { ApiFlowsQueries } from "../areas/api-flows.js";
 
 export function d1ApiFlows(db: D1Db): ApiFlowsQueries {
   return {
+    ...d1ContactConditions(db),
+
+    async listContactIdsPage({ tenantId, afterId, limit }) {
+      const rows = await db
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(and(eq(contacts.tenantId, tenantId), afterId === null ? undefined : gt(contacts.id, afterId)))
+        .orderBy(contacts.id)
+        .limit(limit);
+      return rows.map((r) => r.id);
+    },
+
+    async findContactsByExternalIds({ tenantId, externalIds }) {
+      const out: Array<{ id: string; externalId: string }> = [];
+      // Chunks keep D1 under its 100 bound parameters per statement.
+      for (let i = 0; i < externalIds.length; i += 90) {
+        out.push(
+          ...(await db
+            .select({ id: contacts.id, externalId: contacts.externalId })
+            .from(contacts)
+            .where(and(eq(contacts.tenantId, tenantId), inArray(contacts.externalId, externalIds.slice(i, i + 90))))),
+        );
+      }
+      return out;
+    },
+
+
     async createFlow(values) {
       const [inserted] = await db.insert(flows).values(values).returning();
       return inserted;

@@ -2,7 +2,7 @@
  * SQLite / Cloudflare D1 implementation of the queries in ../areas/api-ingest-auth.ts.
  */
 import { eq, isNull, isNotNull, and, inArray } from "drizzle-orm";
-import { apiKeys } from "@claros/db/schema-sqlite";
+import { apiKeys, tenants } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiIngestAuthQueries } from "../areas/api-ingest-auth.js";
 
@@ -15,8 +15,10 @@ export function d1ApiIngestAuth(db: D1Db): ApiIngestAuthQueries {
           tenantId: apiKeys.tenantId,
           kind: apiKeys.kind,
           allowedOrigins: apiKeys.allowedOrigins,
+          archivedAt: tenants.archivedAt,
         })
         .from(apiKeys)
+        .innerJoin(tenants, eq(tenants.id, apiKeys.tenantId))
         .where(
           and(
             eq(apiKeys.keyHash, keyHash),
@@ -29,7 +31,8 @@ export function d1ApiIngestAuth(db: D1Db): ApiIngestAuthQueries {
         .limit(1);
       const row = rows[0];
       if (!row || row.tenantId === null) return null;
-      return { ...row, tenantId: row.tenantId };
+      const { archivedAt, ...rest } = row;
+      return { ...rest, tenantId: row.tenantId, tenantArchived: archivedAt != null };
     },
 
     async touchKeyLastUsed(apiKeyId, at) {

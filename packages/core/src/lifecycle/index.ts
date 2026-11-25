@@ -31,6 +31,7 @@ export {
   computeMinCohortSize,
   computeRegularThreshold,
   assignEngagementDepth,
+  ENGAGEMENT_DEPTHS,
   type EngagementDepth,
   type DepthAssignmentInput,
 } from "./engagement-depth.js";
@@ -46,6 +47,8 @@ export {
   tenureBucketRange,
   recencyBucketRange,
   isSegmentTriggerConfig,
+  isLifecycleSegmentTriggerConfig,
+  type LifecycleSegmentTriggerConfig,
   matchesSegmentTrigger,
   type RetentionTenureBucket,
   type RetentionRecencyBucket,
