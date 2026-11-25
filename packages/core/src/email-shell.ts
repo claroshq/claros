@@ -14,8 +14,10 @@
  *   3. No external stylesheet, no JavaScript, no form elements.
  *   4. Images referenced by URL only (no CID, no base64 data URIs - they
  *      are blocked or clipped by most providers at scale).
- *   5. Max-width enforced via Outlook-specific <!--[if mso]> wrapper
- *      (VML or table) because Outlook ignores max-width CSS.
+ *   5. Narrow layout (default): max-width enforced via Outlook-specific
+ *      <!--[if mso]> wrapper (VML or table) because Outlook ignores
+ *      max-width CSS. Wide layout (brand.layout "wide"): every table is
+ *      width="100%", so Outlook needs no wrapper; see wrapInWideShell.
  *   6. Font stack falls back to system fonts. No @font-face (not
  *      supported in Gmail, Outlook, or Yahoo).
  *   7. The plain-text alternative is generated separately from the
@@ -65,7 +67,20 @@ export interface BrandSettings {
   footer_text?: string;
   /** Reply-to address. If absent, reply goes to from_email. */
   reply_to?: string;
+  /**
+   * Card layout. "narrow" (default, also any other value): a centered card
+   * at most 600px wide. "wide": the card fills the reading pane and only
+   * running text keeps a readable measure (TEXT_MEASURE).
+   */
+  layout?: BrandLayout;
 }
+
+/** Values of brand.layout. */
+export const BRAND_LAYOUTS = ["narrow", "wide"] as const;
+export type BrandLayout = (typeof BRAND_LAYOUTS)[number];
+
+/** Widest a paragraph renders in the wide layout, in CSS pixels. */
+export const TEXT_MEASURE = 680;
 
 /**
  * Input to the shell renderer. Assembled at drain time from the message row
@@ -156,6 +171,15 @@ function preheaderHtml(text: string | null | undefined): string {
  * buildComplianceOutput itself.
  */
 export function wrapInShell(input: EmailShellInput): string {
+  return input.brand.layout === "wide" ? wrapInWideShell(input) : wrapInNarrowShell(input);
+}
+
+/**
+ * The narrow layout (the default): a centered card, max-width 600px, with
+ * an Outlook ghost table. Its output must not change; existing products
+ * render with it (tests/fixtures/email-shell pins it byte for byte).
+ */
+function wrapInNarrowShell(input: EmailShellInput): string {
   const accent = safeAccentColor(input.brand.accent_color);
   const brandName = esc(input.brand.brand_name || input.tenantName);
   const logoUrl = input.brand.logo_url || "";
@@ -237,6 +261,124 @@ ${input.complianceFooterHtml}
 <!--[if mso]>
 </td></tr></table>
 <![endif]-->
+</body>
+</html>`;
+}
+
+/**
+ * Wide-layout body: every paragraph gets an inline max-width (the measure
+ * survives clients that strip <style>), and every inline-block link (the
+ * button convention of the transactional emails) gets the email-button
+ * class so it can become a full-width block on small screens.
+ */
+export function applyWideBodyLayout(bodyHtml: string): string {
+  const measure = `max-width:${TEXT_MEASURE}px;`;
+  return bodyHtml
+    .replace(/<p(\s[^>]*)?>/g, (_tag, attrs: string | undefined) => {
+      const a = attrs ?? "";
+      if (/\sstyle="/.test(a)) {
+        return `<p${a.replace(/\sstyle="([^"]*)"/, (_m, css: string) => ` style="${css}${css === "" || css.endsWith(";") ? "" : ";"}${measure}"`)}>`;
+      }
+      return `<p${a} style="${measure}">`;
+    })
+    .replace(/<a(\s[^>]*)>/g, (tag, attrs: string) => {
+      if (/\sclass=/.test(attrs) || !/\sstyle="[^"]*display:\s*inline-block/.test(attrs)) return tag;
+      return `<a class="email-button"${attrs}>`;
+    });
+}
+
+/**
+ * The wide layout (brand.layout "wide"): the card is width 100% with no
+ * max-width, on a page background with a small gutter. Paragraphs keep a
+ * readable measure; lists, tables, buttons and the footer use the full
+ * width. Content padding is 40px on the sides, 20px under 760px (.pad).
+ * Outlook needs no ghost table: every table is width="100%".
+ */
+function wrapInWideShell(input: EmailShellInput): string {
+  const accent = safeAccentColor(input.brand.accent_color);
+  const brandName = esc(input.brand.brand_name || input.tenantName);
+  const logoUrl = input.brand.logo_url || "";
+  const logoHeight = clampLogoHeight(input.brand.logo_height);
+  const footerText = input.brand.footer_text
+    ? esc(input.brand.footer_text)
+    : `You are receiving this email because you have an account with ${brandName}.`;
+
+  const headerContent = logoUrl
+    ? `<img src="${esc(logoUrl)}" alt="${brandName}" height="${logoHeight}" style="display:block;height:${logoHeight}px;width:auto;border:0;" />`
+    : `<span style="font-size:14px;font-weight:600;color:#6b7280;letter-spacing:0.02em;text-transform:uppercase;">${brandName}</span>`;
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>${brandName}</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:AllowPNG/>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+/* Reset */
+body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+body { margin: 0; padding: 0; width: 100% !important; height: 100% !important; }
+/* Wide layout: narrower side padding and full-width buttons on small screens */
+@media only screen and (max-width: 760px) {
+  .pad { padding-left: 20px !important; padding-right: 20px !important; }
+  .email-button { display: block !important; text-align: center !important; }
+}
+/* Dark mode overrides for supporting clients */
+@media (prefers-color-scheme: dark) {
+  .email-body { background-color: #1a1a2e !important; }
+  .email-container { background-color: #16213e !important; }
+  .email-content { color: #e0e0e0 !important; }
+  .email-header-text { color: #e0e0e0 !important; }
+  .email-footer { color: #a0a0a0 !important; }
+  .email-footer a { color: #a0a0a0 !important; }
+}
+</style>
+</head>
+<body class="email-body" style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+${preheaderHtml(input.preheader)}<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="email-body" style="width:100%;background-color:#f9fafb;">
+<tr>
+<td align="center" style="padding:24px 12px 40px 12px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+<!-- Top accent bar -->
+<tr>
+<td style="height:4px;background-color:${accent};font-size:1px;line-height:1px;">&nbsp;</td>
+</tr>
+<!-- Header: no bottom padding - flows directly into body content -->
+<tr>
+<td class="email-container pad" align="left" style="background-color:#ffffff;padding:28px 40px 0 40px;">
+${headerContent}
+</td>
+</tr>
+<!-- Body content -->
+<tr>
+<td class="email-container email-content pad" align="left" style="background-color:#ffffff;padding:24px 40px 40px 40px;font-size:15px;line-height:1.65;color:#1a1a1a;text-align:left;">
+${input.eyebrow ? `<p class="email-eyebrow" style="margin:0 0 12px 0;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${esc(input.eyebrow)}</p>\n` : ""}${applyWideBodyLayout(input.bodyHtml)}
+</td>
+</tr>
+<!-- Footer -->
+<tr>
+<td class="email-container email-footer pad" align="left" style="background-color:#f9fafb;padding:20px 40px 24px 40px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;">
+<p style="margin:0 0 6px 0;">${footerText}</p>
+${input.complianceFooterHtml}
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
 </body>
 </html>`;
 }

@@ -733,6 +733,8 @@ export interface BrandSettingsData {
   accent_color: string | null;
   footer_text: string | null;
   reply_to: string | null;
+  /** Email layout; null means the default, "narrow". */
+  layout: "narrow" | "wide" | null;
 }
 
 export interface TenantSettings {

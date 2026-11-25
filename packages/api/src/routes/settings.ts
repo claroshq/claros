@@ -69,7 +69,7 @@
 import { z } from "zod";
 import { storeFor } from "@claros/store";
 import { encrypt, decrypt, parseEncryptionKey, resolveTransportAdapter, SmtpTransportAdapter } from "@claros/adapters";
-import { wrapInShell, wrapInTextShell, buildShellComplianceHtml, buildShellComplianceText, resolveThrottleConfig, type BrandSettings } from "@claros/core";
+import { wrapInShell, wrapInTextShell, buildShellComplianceHtml, buildShellComplianceText, resolveThrottleConfig, BRAND_LAYOUTS, type BrandSettings } from "@claros/core";
 import {
   KNOWN_LLM_PROVIDERS,
   isKnownLlmProvider,
@@ -204,6 +204,7 @@ const tenantPatchBodySchema = z.object({
         accent_color: nullableString().optional(),
         footer_text: nullableString().optional(),
         reply_to: nullableString().optional(),
+        layout: nullableString().optional(),
       },
       { invalid_type_error: "must be object" },
     )
@@ -697,6 +698,7 @@ export default function settingsRoutes() {
           accent_color: (brand.accent_color as string | undefined) ?? null,
           footer_text: (brand.footer_text as string | undefined) ?? null,
           reply_to: (brand.reply_to as string | undefined) ?? null,
+          layout: (brand.layout as string | undefined) ?? null,
         },
         created_at: row.createdAt,
       },
@@ -712,7 +714,7 @@ export default function settingsRoutes() {
    * Update operator-managed tenant settings.
    *
    * Supports: postal_address, brain_context, brand (object with brand_name,
-   * logo_url, logo_height, accent_color, footer_text, reply_to).
+   * logo_url, logo_height, accent_color, footer_text, reply_to, layout).
    * Merges over existing settings - does not overwrite lifecycle/throttle
    * that the templates route writes.
    *
@@ -795,6 +797,11 @@ export default function settingsRoutes() {
             return c.json({ error: "brand.logo_height must be between 16 and 64." }, 400);
           }
         }
+        if (brand.layout !== undefined && brand.layout !== null) {
+          if (!(BRAND_LAYOUTS as readonly string[]).includes(brand.layout.trim())) {
+            return c.json({ error: `brand.layout must be one of: ${BRAND_LAYOUTS.join(", ")}.` }, 400);
+          }
+        }
       }
 
       // Read current settings, merge, write back
@@ -852,6 +859,7 @@ export default function settingsRoutes() {
             accent_color: (finalBrand.accent_color as string | undefined) ?? null,
             footer_text: (finalBrand.footer_text as string | undefined) ?? null,
             reply_to: (finalBrand.reply_to as string | undefined) ?? null,
+            layout: (finalBrand.layout as string | undefined) ?? null,
           },
         },
       });

@@ -237,7 +237,7 @@ Costs: compilation is one call per prompt change. AI content is three calls (dec
 ### Postal address and tenant settings
 
 - `postal_address` (required to send): footer of every email. `claros postal-address set default` or Settings → Postal.
-- Branding (Settings → Branding): brand name, logo (uploaded, or an external logo URL), logo height (16-64 px), accent color, footer text, reply-to address.
+- Branding (Settings → Branding): brand name, logo (uploaded, or an external logo URL), logo height (16-64 px), accent color, footer text, reply-to address, layout. See [Email layout](#email-layout).
 - `brain_context` (Settings): up to 4,000 characters of free text about your product, injected into compile and draft prompts. This is how the AI learns what your product does.
 
 ### Brand logo
@@ -258,6 +258,17 @@ From v0.8.5 you can upload the logo instead of linking to an image on another si
 - The logo is served without authentication. With the current `?v=` it is cached for a year (`Cache-Control: public, max-age=31536000, immutable`); without it, or with an older `?v=`, for five minutes. Mail sent with an older URL shows the current logo. A product's public host serves only that product's logo; the instance host serves every product's logo by slug. After you change a product's public host, upload the logo again so new mail uses the new host.
 - `GET /v1/settings/brand/logo` returns the uploaded logo's URL, type, size and dimensions (`{"logo": null}` when there is none). `DELETE /v1/settings/brand/logo` removes it and clears `brand.logo_url` if it pointed at the upload.
 - An external logo URL (Settings → Branding, or `brand.logo_url` in `PATCH /v1/settings/tenant` or a config document) replaces the uploaded logo in mail; the upload stays stored until you remove it.
+
+### Email layout
+
+`brand.layout` sets the shape of the email card. Set it in Settings → Branding, with `PATCH /v1/settings/tenant` (`{"brand": {"layout": "wide"}}`, owner only; `null` resets it) or in a [config document](CONFIG.md#settings) (`settings.brand.layout`).
+
+| Value | Layout |
+|---|---|
+| `narrow` (default) | A centered card at most 600 px wide, 40 px side padding. Products that never set `layout` use it, and their mail is unchanged. |
+| `wide` | The card fills the reading pane, with a 12 px gutter on the sides. Paragraphs stay at most 680 px wide (an inline style, so it holds in clients that strip `<style>`); lists, buttons and the footer use the full width. Side padding is 40 px, 20 px on screens under 760 px, where buttons also become full width. Outlook gets the full-width card without a fixed-width wrapper. |
+
+Other values are refused with `400`. Header, logo, accent color, footer, preheader, unsubscribe link and dark-mode colors are the same in both layouts.
 
 ### Throttle and send window
 

@@ -11,6 +11,7 @@ import { audienceConditionOrListSchema } from "../conditions.js";
 import { linkTrackingSchema } from "../link-tracking.js";
 import { datePropertyTriggerSchema, dateScheduleTriggerSchema } from "../dates.js";
 import { TOPIC_KINDS } from "../topics-transports.js";
+import { BRAND_LAYOUTS } from "../email-shell.js";
 import { RETENTION_TENURE_BUCKETS, RETENTION_RECENCY_BUCKETS } from "../lifecycle/retention-grid.js";
 import { LIFECYCLE_STATES } from "../lifecycle/states.js";
 import { ENGAGEMENT_DEPTHS } from "../lifecycle/engagement-depth.js";
@@ -247,7 +248,20 @@ export const configLifecycleSchema = z
 
 export const configSettingsSchema = z
   .object({
-    brand: z.record(z.unknown()).optional(),
+    /**
+     * Brand fields as in the dashboard settings (brand_name, logo_url,
+     * logo_height, accent_color, footer_text, reply_to). Only layout is
+     * checked here; other keys are stored as given.
+     */
+    brand: z
+      .object({
+        layout: z
+          .enum(BRAND_LAYOUTS)
+          .describe('Email layout: "narrow" (default) is a centered card at most 600px wide; "wide" fills the reading pane and keeps paragraphs at most 680px wide.')
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
     throttle: z.record(z.unknown()).optional(),
     postal_address: z.string().max(500).optional(),
     links: z.record(z.string().regex(/^[a-z0-9_]{1,64}$/), httpUrl).optional(),
