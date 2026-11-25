@@ -34,11 +34,14 @@ export function EmailPreview({
   preheader,
   bodyHtml,
   sample,
+  height = 340,
 }: {
   subject: string;
   preheader?: string;
   bodyHtml: string;
   sample: PreviewSample;
+  /** Height of the body frame in px. */
+  height?: number;
 }) {
   const escaped = useMemo(() => {
     const out: Record<string, string> = {};
@@ -63,7 +66,7 @@ p{margin:0 0 14px}a{color:#2f5fb3}img{max-width:100%}
         </p>
         {preheader && <p className="truncate">{fillSample(preheader, sample.values)}</p>}
       </div>
-      <iframe title="Email preview" sandbox="" srcDoc={doc} className="block h-[340px] w-full bg-white" />
+      <iframe title="Email preview" sandbox="" srcDoc={doc} style={{ height }} className="block w-full bg-white" />
       <p className="border-t border-border bg-sunken px-3 py-2 text-[12px] text-muted-foreground">
         Body only. Your brand layout, footer and unsubscribe link are added when it sends.
       </p>

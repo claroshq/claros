@@ -4,7 +4,7 @@
  * condition that skips it, and the rarer fields under Advanced. Every
  * change goes into the page's draft; nothing saves from here.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import type { StepCopy } from "../../api.js";
 import { draftFlowStep } from "../../api.js";
@@ -25,6 +25,7 @@ import { Button } from "../ui/button.js";
 import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
 import { Textarea } from "../ui/textarea.js";
+import { HtmlCodeEditor, type CodeEditorHandle } from "../code-editor/index.js";
 import { EmailPreview, type PreviewSample } from "./email-preview.js";
 
 export interface EditorEnv {
@@ -52,9 +53,9 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-function Segmented({ value, options, onChange, disabled }: { value: string; options: Array<{ value: string; label: string; disabled?: boolean; title?: string }>; onChange: (v: string) => void; disabled?: boolean }) {
+function Segmented({ value, options, onChange, disabled, label }: { value: string; options: Array<{ value: string; label: string; disabled?: boolean; title?: string }>; onChange: (v: string) => void; disabled?: boolean; label?: string }) {
   return (
-    <div role="group" className="inline-flex flex-wrap gap-0.5 rounded-lg border border-border bg-sunken p-[3px]">
+    <div role="group" aria-label={label} className="inline-flex flex-wrap gap-0.5 rounded-lg border border-border bg-sunken p-[3px]">
       {options.map((o) => (
         <button
           key={o.value}
@@ -91,6 +92,29 @@ function Chip({ children, onClick, disabled, title, mono }: { children: React.Re
 // Fixed copy
 // ---------------------------------------------------------------------------
 
+type EmailView = "split" | "code" | "preview";
+const VIEW_KEY = "claros.flowEditor.emailView";
+
+/** Code, preview or both; the choice is kept per browser. */
+function useEmailView(): [EmailView, (v: EmailView) => void] {
+  const [view, setView] = useState<EmailView>(() => {
+    try {
+      const v = localStorage.getItem(VIEW_KEY);
+      return v === "code" || v === "preview" ? v : "split";
+    } catch {
+      return "split";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, view);
+    } catch {
+      // Storage blocked: the choice lasts for this page only.
+    }
+  }, [view]);
+  return [view, setView];
+}
+
 function FixedCopyEditor({
   step,
   copy,
@@ -109,20 +133,23 @@ function FixedCopyEditor({
   stepIndex: number;
 }) {
   const subjectRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<CodeEditorHandle>(null);
+  const [view, setView] = useEmailView();
   const lastField = useRef<"subject" | "body">("body");
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const d = env.disabled;
 
   function insert(token: string) {
-    const field = lastField.current;
-    const el = field === "subject" ? subjectRef.current : bodyRef.current;
-    const key = field === "subject" ? "subject" : "body_html";
-    const current = copy[key];
+    if (lastField.current === "body" && bodyRef.current) {
+      bodyRef.current.insert(token);
+      return;
+    }
+    const el = subjectRef.current;
+    const current = copy.subject;
     const start = el?.selectionStart ?? current.length;
     const end = el?.selectionEnd ?? current.length;
-    onCopy({ ...copy, [key]: current.slice(0, start) + token + current.slice(end) });
+    onCopy({ ...copy, subject: current.slice(0, start) + token + current.slice(end) });
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(start + token.length, start + token.length);
@@ -147,14 +174,30 @@ function FixedCopyEditor({
   const unknown = unknownVariables(text);
   const noFallback = variablesWithoutFallback(text);
 
+  const preheader = typeof step.preheader === "string" ? step.preheader : undefined;
+
   return (
-    <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
+    <div className="@container space-y-4">
+      {sharedWith > 0 && (
+        <p className="rounded-md border border-warning bg-warning-soft px-3 py-2 text-[13px] text-foreground" role="note">
+          This copy is also used by {sharedWith === 1 ? "another flow" : `${sharedWith} other flows`}. Changing it here changes it there too.
+        </p>
+      )}
+      <div className="flex justify-end">
+        <Segmented
+          label="Email view"
+          value={view}
+          onChange={(v) => setView(v as EmailView)}
+          options={[
+            { value: "code", label: "Code", title: "Edit the email without the preview" },
+            { value: "preview", label: "Preview", title: "The email as a sample contact sees it" },
+            { value: "split", label: "Both", title: "Code and a live preview together: side by side when there is room, else stacked" },
+          ]}
+        />
+      </div>
+      <div className={view === "split" ? "grid grid-cols-1 gap-6 @3xl:grid-cols-2" : ""}>
+      {view !== "preview" && (
       <div className="min-w-0 space-y-4">
-        {sharedWith > 0 && (
-          <p className="rounded-md border border-warning bg-warning-soft px-3 py-2 text-[13px] text-foreground" role="note">
-            This copy is also used by {sharedWith === 1 ? "another flow" : `${sharedWith} other flows`}. Changing it here changes it there too.
-          </p>
-        )}
         <div>
           <label htmlFor={`subject-${stepIndex}`} className={LABEL}>Subject</label>
           <Input
@@ -182,15 +225,14 @@ function FixedCopyEditor({
         </div>
         <div>
           <label htmlFor={`body-${stepIndex}`} className={LABEL}>Body</label>
-          <Textarea
+          <HtmlCodeEditor
             id={`body-${stepIndex}`}
+            ariaLabel="Body (HTML)"
             ref={bodyRef}
             value={copy.body_html}
             disabled={d}
-            rows={11}
             onFocus={() => (lastField.current = "body")}
-            onChange={(e) => onCopy({ ...copy, body_html: e.target.value })}
-            className="font-mono text-[13px] leading-relaxed"
+            onChange={(v) => onCopy({ ...copy, body_html: v })}
             placeholder={"<p>Hi {{contact.first_name|there}},</p>\n<p>One short paragraph on why this email exists.</p>\n<p>One clear next step.</p>"}
           />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -244,8 +286,12 @@ function FixedCopyEditor({
         )}
         {draftError && <p className="text-[13px] text-danger" role="alert">{draftError}</p>}
       </div>
-      <div className="min-w-0">
-        <EmailPreview subject={copy.subject} preheader={typeof step.preheader === "string" ? step.preheader : undefined} bodyHtml={copy.body_html} sample={env.sample} />
+      )}
+      {view !== "code" && (
+        <div className={`min-w-0 ${view === "split" ? "@3xl:sticky @3xl:top-4 @3xl:self-start" : ""}`}>
+          <EmailPreview subject={copy.subject} preheader={preheader} bodyHtml={copy.body_html} sample={env.sample} height={view === "preview" ? 640 : 460} />
+        </div>
+      )}
       </div>
     </div>
   );

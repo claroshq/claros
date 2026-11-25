@@ -10,7 +10,7 @@ Source: the v1 handoff (maintainer's private notes), decided items D1 to D20.
 
 **Capabilities (D5).** Behaviour is unified at the API level, not cut down to a common storage subset. Postgres keeps optional pgvector KB similarity and partitioned `events`; D1 uses FTS5 and a plain `events` table with a daily rollup and retention. `GET /v1/capabilities` reports the differences.
 
-**Dependencies (D6).** Approved: `hono`, `@hono/node-server`, `wrangler` (dev; runtime dep of the CLI), `@cloudflare/vitest-pool-workers` (dev), `@hono/zod-openapi` (D11), `worker-mailer` (SMTP on Workers). Anything else needs the maintainer.
+**Dependencies (D6).** Approved: `hono`, `@hono/node-server`, `wrangler` (dev; runtime dep of the CLI), `@cloudflare/vitest-pool-workers` (dev), `@hono/zod-openapi` (D11), `worker-mailer` (SMTP on Workers), and in the dashboard the CodeMirror 6 editor packages `@codemirror/state`, `@codemirror/view`, `@codemirror/commands`, `@codemirror/language`, `@lezer/html`, `@lezer/highlight` (MIT, approved by the maintainer 2026-11-25 for the email body editor; loaded lazily). Anything else needs the maintainer.
 
 **Upgrades (D7).** v0.6 to v1 on Postgres is a normal in-place migration, tested from a v0.6.4 dump. `claros import-postgres` is an optional Postgres to D1 move tool.
 

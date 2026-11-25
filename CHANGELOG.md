@@ -10,6 +10,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 - Email template per flow: a flow can send in its own template instead of the product's. Flow editor, Delivery settings, **Email template**; `email_template` on `POST/PATCH /v1/flows` and in config documents (a built-in key or the id of one of the product's templates; `null` is the product default). At send time the flow's template wins when it exists, else the product's `brand.template`, else `brand.layout`. The Approvals preview uses the same order. The Templates page shows how many flows use each template, and a template a flow uses cannot be deleted (`409`). New column `flows.email_template`; Workers installs need `npx @claroshq/claros upgrade`. See [A template per flow](docs/guide/TEMPLATES.md#a-template-per-flow).
 
+### Changed
+
+- Flow editor, fixed copy: the body is a code editor (CodeMirror 6, MIT) with HTML highlighting, line wrapping, undo and highlighted `{{variables}}`; the insert buttons write at the cursor. A **Code / Preview / Both** switch above the email shows the code, the preview with the sample contact, or both: side by side with the preview kept in view while you type when the panel is wide enough, stacked otherwise. The choice is remembered per browser. The editor loads in its own chunk, only when an email is opened.
+
 ## [0.8.9] - 2026-11-25
 
 ### Changed
