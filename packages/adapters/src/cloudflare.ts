@@ -9,7 +9,10 @@
  *
  * Two ways to send, checked against the Cloudflare docs (2026-11):
  *
- *   1. Workers `send_email` binding (preferred on Workers when present):
+ *   1. Workers `send_email` binding (on Workers, for a transport stored
+ *      without an account id and token; stored credentials win, so a
+ *      transport keeps sending from the account its token belongs to when
+ *      `claros deploy` adds the binding to an existing instance):
  *      https://developers.cloudflare.com/email-service/api/send-emails/workers-api/
  *      wrangler: "send_email": [{ "name": "EMAIL" }]
  *      env.EMAIL.send({ from, to, subject, html, text, replyTo, headers })
@@ -56,7 +59,7 @@ export interface CloudflareAdapterConfig {
   accountId?: string;
   /** API token with Email Sending permission (REST API). */
   apiToken?: string;
-  /** Workers `send_email` binding; used instead of the REST API when present. */
+  /** Workers `send_email` binding; used when no account id and token are stored. */
   binding?: CloudflareSendEmailBinding;
   /** fetch implementation (tests). */
   fetch?: typeof fetch;
@@ -86,7 +89,9 @@ export class CloudflareTransportAdapter implements TransportAdapter {
   }
 
   async send(params: TransportSendParams): Promise<TransportSendResult> {
-    if (this.config.binding) return this.sendWithBinding(this.config.binding, params);
+    if (this.config.binding && !(this.config.accountId && this.config.apiToken)) {
+      return this.sendWithBinding(this.config.binding, params);
+    }
     return this.sendWithRest(params);
   }
 

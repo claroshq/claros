@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-25
+
+### Fixed
+
+- `claros deploy` and `claros upgrade` now add the Cloudflare Email Service `send_email` binding `EMAIL` to the generated Worker configuration, so a `cloudflare` transport works on a CLI-installed instance without an API token. Onboard the sender domain to Email Service in the Worker's account, then add a `cloudflare` transport without `account_id` and `api_token`; it carries transactional topics only. A `cloudflare` transport stored with an `account_id` and `api_token` keeps using the REST API with those credentials, also when the Worker has the binding. Run `npx claros upgrade` on existing instances. See [Cloudflare Email Service on a Workers install](docs/guide/TRANSPORTS.md#cloudflare-email-service-on-a-workers-install).
+
 ## [0.8.1] - 2026-11-25
 
 ### Fixed
@@ -173,7 +179,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/claroshq/claros/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/claroshq/claros/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/claroshq/claros/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/claroshq/claros/compare/v0.6.4...v0.7.0

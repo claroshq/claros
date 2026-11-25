@@ -1,6 +1,6 @@
 {
   "name": "claros",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Deploy and operate Claros on Cloudflare Workers + D1",
   "license": "MIT",
   "type": "module",

@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { COMPATIBILITY_DATE, CRON, RUN_WORKER_FIRST, configHash, generateConfig, renderConfig } from "../src/template.js";
+import { COMPATIBILITY_DATE, CRON, RUN_WORKER_FIRST, SEND_EMAIL_BINDING, configHash, generateConfig, renderConfig } from "../src/template.js";
 import { loadState, newState, saveState, statePath } from "../src/state.js";
 import { compareVersions } from "../src/version.js";
 import { hashClaimToken, mintClaimToken } from "../src/claim.js";
@@ -80,6 +80,18 @@ describe("generated wrangler.jsonc", () => {
     expect(cfg.routes).toEqual([{ pattern: "news.example.com", custom_domain: true }]);
     expect(cfg.vars).toEqual({ CLAROS_VERSION: "0.8.0" });
     expect(generateConfig({ state: stateWith(), assets, productHosts: ["news.example.com"], withoutRoutes: true }).routes).toEqual([]);
+  });
+
+  it("always binds Cloudflare Email Service as EMAIL, without sender or recipient restrictions", () => {
+    for (const state of [stateWith(), stateWith({ host: "c.example.com", customDomain: true })]) {
+      const cfg = generateConfig({ state, assets, productHosts: [], withoutRoutes: true });
+      expect(cfg.send_email).toEqual([{ name: "EMAIL" }]);
+    }
+    expect(SEND_EMAIL_BINDING).toBe("EMAIL");
+    // The Worker reads the binding as env.EMAIL; the development template keeps it commented out.
+    const source = readFileSync(join(repo, "apps", "worker", "src", "transports.ts"), "utf8");
+    expect(source).toContain(`env.${SEND_EMAIL_BINDING} `);
+    expect(devTemplate().send_email).toBeUndefined();
   });
 
   it("renders as JSON with comments that wrangler reads; the hash ignores local paths", () => {

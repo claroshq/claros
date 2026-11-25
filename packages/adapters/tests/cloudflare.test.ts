@@ -99,7 +99,7 @@ describe("CloudflareTransportAdapter (send_email binding)", () => {
 describe("resolveTransportAdapter: cloudflare", () => {
   const KEY = Buffer.alloc(32, 7).toString("base64");
 
-  it("builds the REST adapter from the decrypted config, and prefers a registered binding", async () => {
+  it("builds the REST adapter from the decrypted config, and uses a registered binding when no credentials are stored", async () => {
     const config = encrypt(JSON.stringify({ accountId: "acc", apiToken: "tok" }), parseEncryptionKey(KEY));
     const rest = resolveTransportAdapter("cloudflare", config, KEY);
     expect(rest.ok && rest.transport.adapter).toBeInstanceOf(CloudflareTransportAdapter);
@@ -107,13 +107,23 @@ describe("resolveTransportAdapter: cloudflare", () => {
     const send = vi.fn(async () => ({ messageId: "b" }));
     setTransportRuntime({ cloudflareBinding: { send } });
     try {
-      const viaBinding = resolveTransportAdapter("cloudflare", config, KEY);
+      const bare = encrypt(JSON.stringify({}), parseEncryptionKey(KEY));
+      const viaBinding = resolveTransportAdapter("cloudflare", bare, KEY);
       expect(viaBinding.ok).toBe(true);
       if (viaBinding.ok) await viaBinding.transport.adapter.send(params);
       expect(send).toHaveBeenCalledTimes(1);
     } finally {
       setTransportRuntime({});
     }
+  });
+
+  it("keeps stored credentials on the REST API when the Worker also has the binding", async () => {
+    const send = vi.fn(async () => ({ messageId: "b" }));
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ success: true, result: { message_id: "r" } }), { status: 200 }));
+    const adapter = new CloudflareTransportAdapter({ accountId: "acc", apiToken: "tok", binding: { send }, fetch: fetch as unknown as typeof globalThis.fetch });
+    expect(await adapter.send(params)).toMatchObject({ success: true, providerMessageId: "r" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("uses a registered SMTP factory instead of nodemailer", () => {

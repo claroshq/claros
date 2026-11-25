@@ -46,8 +46,22 @@ Cloudflare's terms do not allow marketing mail through Cloudflare Email Service,
 - the default route cannot be a `cloudflare` transport (`PUT /v1/settings/transport-routing` answers 400);
 - right before sending, a message whose topic kind is not `transactional` and that would go through a `cloudflare` transport is marked `failed` with `status_reason = transport_policy` and is not retried.
 
-Use Cloudflare Email Service for the transactional route and another transport (Resend or SMTP) as the default. On Postgres + Node, Claros calls the REST API (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`) with an API token. On Cloudflare Workers, add the binding to `wrangler.jsonc` and the account id and token can stay empty:
+Use Cloudflare Email Service for the transactional route and another transport (Resend or SMTP) as the default. On Postgres + Node, Claros calls the REST API (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`) with an API token.
+
+### Cloudflare Email Service on a Workers install
+
+On Cloudflare Workers, Claros can send through the Worker's `send_email` binding `EMAIL` instead of the REST API. `claros deploy` and `claros upgrade` (from v0.8.2) add the binding to every instance:
 
 ```jsonc
 "send_email": [{ "name": "EMAIL" }]
 ```
+
+The binding has no sender or recipient restriction ([send bindings](https://developers.cloudflare.com/email-service/configuration/send-bindings/)); Cloudflare accepts a sender only on a domain onboarded to Email Service, in the same account as the Worker. To use it:
+
+1. Onboard the sender domain to Email Service in the account the Worker runs in (Cloudflare dashboard, Compute, Email Service, Email Sending, Onboard Domain; see [domain configuration](https://developers.cloudflare.com/email-service/configuration/domains/)).
+2. Add a `cloudflare` transport with a `from_email` on that domain and without `account_id` and `api_token` (`POST /v1/settings/transports` with `kind: "cloudflare"`, or Settings, Transports).
+3. Route transactional mail to it (`PUT /v1/settings/transport-routing`, transactional route) and keep another transport as the default. Only topics of kind `transactional` are sent through it.
+
+A `cloudflare` transport stored with an `account_id` and `api_token` keeps using the REST API with those credentials, also when the Worker has the binding. Instances deployed before v0.8.2 get the binding with `npx claros upgrade`.
+
+A sender domain that is not onboarded fails with `E_SENDER_DOMAIN_NOT_AVAILABLE` (permanent); one still being set up fails with `E_EMAIL_SENDING_NOT_READY` and is retried.

@@ -59,6 +59,9 @@
 
   // Optional: Cloudflare Email Service binding for cloudflare transports
   // (transactional mail only). Without it they use the REST API token.
+  // `claros deploy` always adds it to the generated config
+  // (packages/cli/src/template.ts); it stays off here so local dev does not
+  // route cloudflare transports to wrangler's simulated binding.
   // "send_email": [{ "name": "EMAIL" }],
 
   // Secrets (ENCRYPTION_KEY, UNSUBSCRIBE_SIGNING_KEY): `wrangler secret put`,
