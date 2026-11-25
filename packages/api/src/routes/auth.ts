@@ -21,14 +21,7 @@
 import { randomBytes, createHash } from "node:crypto";
 import { z } from "zod";
 import { getCookie, setCookie } from "hono/cookie";
-import { eq, and, isNull, sql } from "drizzle-orm";
-import {
-  users,
-  sessions,
-  magicLinkTokens,
-  transportConfigs,
-  tenants,
-} from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import {
   resolveTransportAdapter,
   type TransportAdapter,
@@ -142,21 +135,8 @@ async function resolveAuthTransport(
   tenantId: string,
 ): Promise<{ adapter: TransportAdapter; fromEmail: string; fromName: string | null } | null> {
   // Read active transport config
-  const rows = await db.execute<{
-    provider: string;
-    config: string;
-    from_email: string;
-    from_name: string | null;
-  }>(sql`
-    SELECT provider, config::text AS config, from_email, from_name
-    FROM transport_configs
-    WHERE tenant_id = ${tenantId}::uuid
-      AND is_active = true
-    LIMIT 1
-  `);
-
-  if (rows.rows.length === 0) return null;
-  const row = rows.rows[0]!;
+  const row = await storeFor(db).apiAuth.findActiveTransportConfig(tenantId);
+  if (!row) return null;
 
   // Delegate credential decryption + adapter construction to the shared function
   // in @claros/adapters. Same code path as the drain worker.
@@ -329,31 +309,21 @@ export default function authRoutes(opts: AuthRouteOptions) {
       const normalizedEmail = email.toLowerCase().trim();
 
       // Look up user by email (across all tenants for login - user belongs to exactly one tenant)
-      const userRows = await db
-        .select({
-          id: users.id,
-          tenantId: users.tenantId,
-          email: users.email,
-        })
-        .from(users)
-        .where(eq(users.email, normalizedEmail))
-        .limit(1);
+      const user = await storeFor(db).apiAuth.findUserByEmail(normalizedEmail);
 
-      if (userRows.length === 0) {
+      if (!user) {
         // User not found - return generic response to prevent enumeration.
         // Log for debugging but do not reveal to client.
         c.var.log.debug({ email: normalizedEmail }, "Login attempt for unknown email");
         return c.json({ message: "If that email is registered, a login link has been sent." });
       }
 
-      const user = userRows[0]!;
-
       // Generate token
       const { raw, hash } = generateToken();
       const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000);
 
       // Store token hash in DB
-      await db.insert(magicLinkTokens).values({
+      await storeFor(db).apiAuth.createMagicLinkToken({
         tenantId: user.tenantId,
         userId: user.id,
         tokenHash: hash,
@@ -370,18 +340,7 @@ export default function authRoutes(opts: AuthRouteOptions) {
       const loginUrl = `${dashboardUrl}/auth/verify?token=${raw}`;
 
       // Check if tenant has a configured transport
-      const transports = await db
-        .select({ id: transportConfigs.id })
-        .from(transportConfigs)
-        .where(
-          and(
-            eq(transportConfigs.tenantId, user.tenantId),
-            eq(transportConfigs.isActive, true),
-          ),
-        )
-        .limit(1);
-
-      const hasTransport = transports.length > 0;
+      const hasTransport = await storeFor(db).apiAuth.hasActiveTransport(user.tenantId);
 
       if (!hasTransport && isConsoleLoginAllowed()) {
         // Console fallback: print the login URL to server logs.
@@ -421,12 +380,7 @@ export default function authRoutes(opts: AuthRouteOptions) {
       const transport = await resolveAuthTransport(db, user.tenantId);
 
       // Resolve brand settings for the branded email shell
-      const tenantRows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
-        .from(tenants)
-        .where(eq(tenants.id, user.tenantId))
-        .limit(1);
-      const tenantRow = tenantRows[0];
+      const tenantRow = await storeFor(db).apiAuth.findTenantBrand(user.tenantId);
       const tenantSettings = (tenantRow?.settings as Record<string, unknown> | null) ?? {};
       const brand = (tenantSettings.brand as Record<string, unknown> | undefined) ?? {};
       const emailInput: TransactionalEmailInput = {
@@ -526,18 +480,7 @@ export default function authRoutes(opts: AuthRouteOptions) {
 
       // Read-only lookup. Consumption happens exclusively in the POST handler.
       const now = new Date();
-      const rows = await db
-        .select({
-          expiresAt: magicLinkTokens.expiresAt,
-          consumedAt: magicLinkTokens.consumedAt,
-          email: users.email,
-        })
-        .from(magicLinkTokens)
-        .innerJoin(users, eq(users.id, magicLinkTokens.userId))
-        .where(eq(magicLinkTokens.tokenHash, tokenHash))
-        .limit(1);
-
-      const row = rows[0];
+      const row = await storeFor(db).apiAuth.findMagicLinkToken(tokenHash);
       if (!row || row.consumedAt !== null || row.expiresAt < now) {
         return c.redirect(failRedirect, 302);
       }
@@ -586,28 +529,12 @@ export default function authRoutes(opts: AuthRouteOptions) {
       // Atomic CAS: consume the token only if it has not been consumed yet.
       // This ensures single-use even under concurrent requests.
       const now = new Date();
-      const consumed = await db
-        .update(magicLinkTokens)
-        .set({ consumedAt: now })
-        .where(
-          and(
-            eq(magicLinkTokens.tokenHash, tokenHash),
-            isNull(magicLinkTokens.consumedAt),
-          ),
-        )
-        .returning({
-          id: magicLinkTokens.id,
-          userId: magicLinkTokens.userId,
-          tenantId: magicLinkTokens.tenantId,
-          expiresAt: magicLinkTokens.expiresAt,
-        });
+      const tokenRow = await storeFor(db).apiAuth.consumeMagicLinkToken({ tokenHash, now });
 
-      if (consumed.length === 0) {
+      if (!tokenRow) {
         // Token not found, already consumed, or tampered.
         return c.redirect(failRedirect, 302);
       }
-
-      const tokenRow = consumed[0]!;
 
       // Check expiry
       if (tokenRow.expiresAt < now) {
@@ -620,26 +547,18 @@ export default function authRoutes(opts: AuthRouteOptions) {
       const sessionExpiresAt = new Date(
         Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
       );
-      const sessionRows = await db
-        .insert(sessions)
-        .values({
-          tenantId: tokenRow.tenantId,
-          userId: tokenRow.userId,
-          expiresAt: sessionExpiresAt,
-        })
-        .returning({ id: sessions.id });
-
-      const sessionId = sessionRows[0]!.id;
+      const sessionId = await storeFor(db).apiAuth.createSession({
+        tenantId: tokenRow.tenantId,
+        userId: tokenRow.userId,
+        expiresAt: sessionExpiresAt,
+      });
 
       // Set session cookie before the redirect so the browser sends it on the
       // first request to the dashboard.
       setCookie(c, SESSION_COOKIE_NAME, sessionId, sessionCookieOptions());
 
       // Update user's last_login_at
-      await db
-        .update(users)
-        .set({ lastLoginAt: now })
-        .where(eq(users.id, tokenRow.userId));
+      await storeFor(db).apiAuth.touchUserLastLogin({ userId: tokenRow.userId, now });
 
       return c.redirect(`${dashboardUrl}/`, 302);
     },
@@ -653,7 +572,7 @@ export default function authRoutes(opts: AuthRouteOptions) {
     const db: Db = c.var.db;
     const sessionId = getCookie(c, SESSION_COOKIE_NAME);
     if (sessionId) {
-      await db.delete(sessions).where(eq(sessions.id, sessionId));
+      await storeFor(db).apiAuth.deleteSession(sessionId);
     }
 
     clearSessionCookie(c);
@@ -671,39 +590,20 @@ export default function authRoutes(opts: AuthRouteOptions) {
       return c.json({ error: "Not authenticated." }, 401);
     }
 
-    const sessionRows = await db
-      .select({
-        userId: sessions.userId,
-        tenantId: sessions.tenantId,
-        expiresAt: sessions.expiresAt,
-      })
-      .from(sessions)
-      .where(eq(sessions.id, sessionId))
-      .limit(1);
+    const session = await storeFor(db).apiAuth.findSession(sessionId);
 
-    if (sessionRows.length === 0 || sessionRows[0]!.expiresAt < new Date()) {
+    if (!session || session.expiresAt < new Date()) {
       clearSessionCookie(c);
       return c.json({ error: "Not authenticated." }, 401);
     }
 
-    const session = sessionRows[0]!;
-    const userRows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        name: users.name,
-        role: users.role,
-      })
-      .from(users)
-      .where(eq(users.id, session.userId))
-      .limit(1);
+    const user = await storeFor(db).apiAuth.findUserById(session.userId);
 
-    if (userRows.length === 0) {
+    if (!user) {
       clearSessionCookie(c);
       return c.json({ error: "Not authenticated." }, 401);
     }
 
-    const user = userRows[0]!;
     return c.json({
       user: {
         id: user.id,

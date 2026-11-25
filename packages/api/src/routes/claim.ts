@@ -18,8 +18,7 @@
  */
 import { randomBytes, createHash } from "node:crypto";
 import { setCookie } from "hono/cookie";
-import { users, tenants, sessions } from "@claros/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { SESSION_COOKIE_NAME } from "./auth.js";
 import { createRouter, parseBody } from "../http/router.js";
@@ -67,8 +66,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
     const db: Db = c.var.db;
 
     // If any user exists, claim is over.
-    const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
-    if (existingUsers.length > 0) {
+    if (await storeFor(db).apiClaim.anyUserExists()) {
       return c.redirect(`${dashboardUrl}/login`, 302);
     }
 
@@ -122,8 +120,7 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
     const db: Db = c.var.db;
 
     // If any user exists, claim is over.
-    const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
-    if (existingUsers.length > 0) {
+    if (await storeFor(db).apiClaim.anyUserExists()) {
       return c.redirect(`${dashboardUrl}/login`, 302);
     }
 
@@ -157,13 +154,9 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
     }
 
     // Find the default tenant (created by bootstrapSeed).
-    const tenantRows = await db
-      .select({ id: tenants.id })
-      .from(tenants)
-      .where(eq(tenants.slug, "default"))
-      .limit(1);
+    const tenantId = await storeFor(db).apiClaim.findDefaultTenantId();
 
-    if (tenantRows.length === 0) {
+    if (tenantId === null) {
       return c.html(`
         <!doctype html>
         <html><head><title>Claros</title></head>
@@ -174,16 +167,10 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
       `, 500, HTML_HEADERS);
     }
 
-    const tenantId = tenantRows[0]!.id;
-
     // Create the owner user.
-    const [newUser] = await db
-      .insert(users)
-      .values({ tenantId, email, role: "owner" })
-      .onConflictDoNothing()
-      .returning({ id: users.id });
+    const newUserId = await storeFor(db).apiClaim.createOwnerUser({ tenantId, email });
 
-    if (!newUser) {
+    if (!newUserId) {
       // Race condition: another request created a user. Redirect to login.
       return c.redirect(`${dashboardUrl}/login`, 302);
     }
@@ -193,12 +180,9 @@ export default function claimRoutes(opts: ClaimRouteOptions) {
 
     // Create a session and sign the user in.
     const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
-    const [session] = await db
-      .insert(sessions)
-      .values({ tenantId, userId: newUser.id, expiresAt })
-      .returning({ id: sessions.id });
+    const sessionId = await storeFor(db).apiClaim.createSession({ tenantId, userId: newUserId, expiresAt });
 
-    setCookie(c, SESSION_COOKIE_NAME, session!.id, {
+    setCookie(c, SESSION_COOKIE_NAME, sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "Lax",
