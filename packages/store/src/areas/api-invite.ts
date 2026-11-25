@@ -30,10 +30,21 @@ export interface ApiInviteQueries {
   } | null>;
   /** User with this email in the tenant (active or deactivated), or null. */
   findUserByEmail(args: { tenantId: string; email: string }): Promise<{ id: string; deactivatedAt: Date | null } | null>;
-  /** Reactivate an existing user with the invite's role and stamp the login time. */
-  reactivateUser(args: { userId: string; role: string; now: Date }): Promise<void>;
-  /** Create a user from an accepted invite and return its id. */
+  /**
+   * Reactivate an existing user of the tenant with the invite's role, stamp
+   * the login time and upsert their membership of the tenant (one transaction).
+   */
+  reactivateUser(args: { userId: string; tenantId: string; role: string; now: Date }): Promise<void>;
+  /** Create a user from an accepted invite with its membership of the tenant (one transaction); returns its id. */
   createUser(args: { tenantId: string; email: string; role: string; now: Date }): Promise<string>;
+  /**
+   * An active user with this email whose home product is another tenant
+   * (oldest first), or null. Such a user joins the tenant by membership
+   * instead of getting a second user row.
+   */
+  findActiveUserElsewhere(args: { tenantId: string; email: string }): Promise<{ id: string } | null>;
+  /** Upsert the user's membership of the tenant with this role and stamp the login time (one transaction). */
+  addMembership(args: { userId: string; tenantId: string; role: string; now: Date }): Promise<void>;
   /** Create a session for the user and return its id. */
   createSession(args: { tenantId: string; userId: string; expiresAt: Date }): Promise<string>;
 }

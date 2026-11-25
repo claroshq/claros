@@ -7,6 +7,12 @@
  * values (Date for timestamps), never Drizzle objects.
  */
 
+/*
+ * Members of a tenant: active (not deactivated) users with a membership row
+ * for the tenant, plus active users whose home product (users.tenant_id) is
+ * the tenant. A member's role is users.role in their home product (as in
+ * v0.6), else the membership role.
+ */
 export interface ApiTeamQueries {
   /** Active (not deactivated) members of the tenant, oldest first. */
   listMembers(input: { tenantId: string }): Promise<Array<{
@@ -53,8 +59,16 @@ export interface ApiTeamQueries {
   getActiveMember(input: { tenantId: string; userId: string }): Promise<{ id: string; role: string } | null>;
   /** Number of active owners of the tenant. */
   countActiveOwners(input: { tenantId: string }): Promise<number>;
-  /** Set a user's role. */
-  setRole(input: { userId: string; role: string }): Promise<void>;
-  /** Deactivate a user (soft delete), then delete all their sessions. Two statements, not a transaction. */
-  deactivateMember(input: { userId: string; now: Date }): Promise<void>;
+  /**
+   * Set a member's role in the tenant (one transaction): upsert the
+   * membership, and update users.role when the tenant is the user's home product.
+   */
+  setRole(input: { tenantId: string; userId: string; role: string }): Promise<void>;
+  /**
+   * Remove a member from the tenant (one transaction): delete the membership
+   * and the user's sessions on the tenant. When the tenant is the user's home
+   * product, also deactivate the user (soft delete) and delete all their
+   * sessions, as before multi-product.
+   */
+  deactivateMember(input: { tenantId: string; userId: string; now: Date }): Promise<void>;
 }

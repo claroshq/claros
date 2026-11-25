@@ -14,7 +14,12 @@
  * path and cannot leave stale state behind.
  * This path must not trigger for /auth/me itself - fetchMe() does not go
  * through apiFetch().
+ *
+ * Products: every call carries the selected product (see product.ts). A 401
+ * while a product is selected first drops the selection and reloads on the
+ * session's product; only a 401 without a selection means the session is gone.
  */
+import { clearRefusedProduct, withProduct } from "./product.js";
 
 export interface MeResponse {
   user: {
@@ -43,7 +48,11 @@ export interface LoginResponse {
  * fetchMe() handles it directly.
  */
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(input, { credentials: "include", ...init });
+  const res = await fetch(input, withProduct(init));
+  if (res.status === 401 && clearRefusedProduct()) {
+    window.location.assign("/home");
+    return res;
+  }
   if (res.status === 401) {
     // Tell the login page WHY the user is landing there. sessionStorage
     // survives the navigation and dies with the tab; LoginPage clears it on
@@ -64,7 +73,7 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
 
 /** GET /auth/me - returns the signed-in user or throws on 401. */
 export async function fetchMe(): Promise<MeResponse> {
-  const res = await fetch("/auth/me", { credentials: "include" });
+  const res = await fetch("/auth/me", withProduct());
   if (!res.ok) {
     throw new Error(`/auth/me returned ${res.status}`);
   }
@@ -1609,4 +1618,70 @@ export async function removeMember(id: string): Promise<{ ok: boolean }> {
     throw new Error(err.error ?? `Remove failed (${res.status})`);
   }
   return res.json() as Promise<{ ok: boolean }>;
+}
+
+// ---------------------------------------------------------------------------
+// Products (multi-product instances)
+// ---------------------------------------------------------------------------
+
+export interface ProductSummary {
+  id: string;
+  slug: string;
+  name: string;
+  role: string;
+  archived: boolean;
+}
+
+export interface ProductsResponse {
+  products: ProductSummary[];
+  /** True for instance admins (they see and manage every product). */
+  instance_admin: boolean;
+}
+
+export interface Product {
+  id: string;
+  slug: string;
+  name: string;
+  locale: string | null;
+  public_host: string | null;
+  archived: boolean;
+  archived_at: string | null;
+  created_at: string | null;
+}
+
+async function productError(res: Response, fallback: string): Promise<Error> {
+  const body = (await res.json().catch(() => null)) as
+    | { error?: string; issues?: Array<{ path: string; message: string }> }
+    | null;
+  if (body?.issues?.length) {
+    return new Error(body.issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join("; "));
+  }
+  return new Error(body?.error ?? `${fallback} (${res.status})`);
+}
+
+/** GET /v1/products - products the signed-in user can act on. */
+export async function fetchProducts(): Promise<ProductsResponse> {
+  const res = await apiFetch("/v1/products");
+  if (!res.ok) throw new Error(`/v1/products returned ${res.status}`);
+  return res.json() as Promise<ProductsResponse>;
+}
+
+/** POST /v1/products - create a product (instance admins). */
+export async function createProduct(input: { name: string; slug: string; locale?: string | null }): Promise<Product> {
+  const res = await apiFetch("/v1/products", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await productError(res, "Could not create the product");
+  return ((await res.json()) as { product: Product }).product;
+}
+
+/** POST /v1/products/:slug/archive or /unarchive (instance admins). */
+export async function setProductArchived(slug: string, archived: boolean): Promise<Product> {
+  const res = await apiFetch(`/v1/products/${encodeURIComponent(slug)}/${archived ? "archive" : "unarchive"}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw await productError(res, "Could not update the product");
+  return ((await res.json()) as { product: Product }).product;
 }
