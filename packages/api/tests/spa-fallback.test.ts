@@ -20,8 +20,8 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ClarosApp } from "../src/index.js";
-import { buildApp, resolvedDashboardDist } from "../src/app.js";
+import type { NodeClarosApp as ClarosApp } from "../src/node.js";
+import { buildApp, resolvedDashboardDist } from "../src/node.js";
 
 // ---------------------------------------------------------------------------
 // Setup: minimal dist directory with index.html and an asset file.

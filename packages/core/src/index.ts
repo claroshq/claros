@@ -38,6 +38,8 @@ export {
   type GridSnapshotJobData,
 } from "./jobs.js";
 
+export { dueTicks } from "./ticks.js";
+
 export {
   matchesLifecycleTransition,
   matchesEventTrigger,

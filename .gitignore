@@ -48,3 +48,6 @@ packages/.claros-lock-sha
 
 # Miniflare / wrangler local state
 .wrangler/
+
+# wrangler dev local secrets
+.dev.vars

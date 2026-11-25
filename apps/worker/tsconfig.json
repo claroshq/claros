@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/api" },
+    { "path": "../../packages/store" },
+    { "path": "../../packages/worker" }
+  ]
+}

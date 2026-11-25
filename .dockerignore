@@ -6,3 +6,6 @@
 .env.*
 !.env.example
 .turbo
+
+# The Cloudflare Workers runtime is not part of the Node image.
+apps/worker

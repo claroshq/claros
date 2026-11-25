@@ -1,0 +1,69 @@
+// Development template for Claros on Cloudflare Workers.
+// The deploy CLI will generate the real configuration (resource ids, names).
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "claros",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-20",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "claros",
+      // Placeholder: `wrangler dev` uses a local database; a deploy needs the real id.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../drizzle/migrations-sqlite"
+    }
+  ],
+
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "claros-jobs" }],
+    "consumers": [
+      {
+        "queue": "claros-jobs",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "claros-jobs-dlq"
+      },
+      { "queue": "claros-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30 }
+    ]
+  },
+
+  // One trigger; dueTicks() in @claros/core decides which periodic jobs run.
+  "triggers": { "crons": ["*/5 * * * *"] },
+
+  // The built dashboard (npm run build -w @claros/dashboard). Files that exist
+  // are served by the platform; API paths always reach the Worker first, and
+  // anything else unmatched falls through to the Worker's SPA fallback.
+  "assets": {
+    "directory": "../dashboard/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "html_handling": "none",
+    "run_worker_first": [
+      "/health",
+      "/version",
+      "/auth",
+      "/auth/*",
+      "/invite",
+      "/invite/*",
+      "/unsubscribe",
+      "/unsubscribe/*",
+      "/webhooks/*",
+      "/v1",
+      "/v1/*"
+    ]
+  },
+
+  // Secrets (ENCRYPTION_KEY, UNSUBSCRIBE_SIGNING_KEY): `wrangler secret put`,
+  // locally in .dev.vars (see .dev.vars.example). NODE_ENV is not a var here:
+  // wrangler replaces process.env.NODE_ENV at build time ("production" for a
+  // deploy, "development" under `wrangler dev`).
+  "vars": {
+    "BASE_URL": "http://localhost:8787"
+  },
+
+  "observability": { "enabled": true }
+}

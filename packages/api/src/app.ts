@@ -1,24 +1,24 @@
 /**
- * HTTP app factory (Hono).
+ * HTTP app factory (Hono), runtime-neutral.
  *
- * Builds the Claros HTTP API. Called by apps/server when the role includes
- * the API (role=all or role=api). The external HTTP API is the v0.6 API:
- * same routes (tests/contract/v0.6-routes.txt), status codes, bodies and
- * framework error shapes.
+ * Builds the Claros HTTP API. Called by apps/server (through the Node adapter
+ * in ./node.ts) and by apps/worker (Cloudflare Workers). The external HTTP API
+ * is the v0.6 API: same routes (tests/contract/v0.6-routes.txt), status codes,
+ * bodies and framework error shapes.
+ *
+ * This module must not import Node-only modules (node:fs, node:path,
+ * node:url, @hono/node-server): the Workers bundle imports it. Serving the
+ * dashboard from disk and listening on a socket live in ./node.ts.
  *
  * Assembly:
  *   1. Context: db, enqueue, logger; session -> tenant resolution
  *   2. Public routes: health, version, auth, claim, unsubscribe, invite, webhooks
  *   3. Dashboard routes under /v1 (session cookie + per-route minimum role)
  *   4. Ingestion routes under /v1 (API key auth, CORS)
- *   5. Static dashboard + SPA fallback (only when serveDashboard is true)
+ *   5. Static dashboard + SPA fallback (when the runtime provides one)
  */
-import path from "node:path";
-import { existsSync, statSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { serve, type ServerType } from "@hono/node-server";
 
 import type { AppEnv } from "./http/env.js";
 import type { Db, EnqueueFn } from "./plugins/db.js";
@@ -27,6 +27,7 @@ import { bodyParser } from "./http/body.js";
 import { frameworkError, notFound } from "./http/errors.js";
 import { inject, type InjectOptions, type InjectResponse } from "./http/inject.js";
 import { createLogger, type AppLogger, type LoggerOption } from "./http/logger.js";
+import type { StaticFallback } from "./http/spa.js";
 import healthRoutes from "./routes/health.js";
 import versionRoutes from "./routes/version.js";
 import diagnosticsRoutes from "./routes/diagnostics.js";
@@ -54,19 +55,7 @@ import profileRoutes from "./routes/profile.js";
 import productsRoutes from "./routes/products.js";
 import instanceRoutes from "./routes/instance.js";
 
-/**
- * Top-level path prefixes owned by API routes. The SPA fallback never serves
- * index.html for these; an unknown /v1/whatever is a JSON 404.
- */
-export const API_PATH_PREFIXES = [
-  "/health",
-  "/version",
-  "/auth",
-  "/invite",
-  "/unsubscribe",
-  "/webhooks",
-  "/v1",
-] as const;
+export { API_PATH_PREFIXES } from "./http/spa.js";
 
 export interface BuildAppOptions {
   /** Process role reported in /health. Defaults to "all". */
@@ -77,16 +66,18 @@ export interface BuildAppOptions {
   logger?: LoggerOption;
   /** Drizzle database client. Most routes are registered only when it is provided. */
   db?: Db;
-  /** Job enqueue function (pg-boss send on Node). */
+  /** Job enqueue function (pg-boss send on Node, a Queue send on Workers). */
   enqueue?: EnqueueFn;
   /** Base URL of the API (magic links, unsubscribe links). */
   baseUrl?: string;
   /** Dashboard URL for post-login redirects. Defaults to baseUrl. */
   dashboardUrl?: string;
-  /** Serve the built dashboard SPA and the SPA fallback. Defaults to false. */
-  serveDashboard?: boolean;
-  /** Absolute path of the dashboard dist directory (else CLAROS_DASHBOARD_DIST, else auto). */
-  dashboardDist?: string;
+  /**
+   * Static dashboard + SPA fallback for requests no route matched, built from
+   * the app's logger. Returns null to serve nothing (JSON 404). The Node
+   * adapter (./node.ts) and apps/worker provide one; absent means no SPA.
+   */
+  staticFallback?: (log: AppLogger) => StaticFallback | null;
   /** One-time claim token for the first account; claim routes exist only while it is set. */
   claimToken?: string | null;
 }
@@ -101,9 +92,7 @@ export interface ClarosApp {
   inject(opts: InjectOptions | string): Promise<InjectResponse>;
   /** Kept for v0.6 call sites; the app is ready once built. */
   ready(): Promise<void>;
-  /** Start an HTTP server on Node. Resolves with the listening address. */
-  listen(opts: { port: number; host?: string }): Promise<string>;
-  /** Stop the server (closing all connections) if one was started. */
+  /** Release the app's resources (the Node adapter stops its server). */
   close(): Promise<void>;
   /** Registered routes as sorted "METHOD /path" lines (HEAD/OPTIONS/middleware left out). */
   routes(): string[];
@@ -204,7 +193,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     return frameworkError(c, 500, undefined, err.message);
   });
 
-  const spa = opts.serveDashboard ? prepareSpa(opts, log) : null;
+  const spa = opts.staticFallback ? opts.staticFallback(log) : null;
   // v0.6 parsed the body before answering 404, so a broken body on an
   // unknown route still got the 400/413/415 parse error.
   const notFoundBody = bodyParser();
@@ -215,32 +204,13 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
   });
 
   // --- Wrapper -----------------------------------------------------------------
-  let server: ServerType | null = null;
-
   return {
     hono: app,
     log,
     fetch: (request) => app.fetch(request),
     inject: (o) => inject(app, o),
     ready: async () => {},
-    listen: ({ port: listenPort, host }) =>
-      new Promise((resolve, reject) => {
-        const s = serve({ fetch: app.fetch, port: listenPort, hostname: host }, (info) => {
-          const address = `http://${info.address.includes(":") ? `[${info.address}]` : info.address}:${info.port}`;
-          log.info({}, `Server listening at ${address}`);
-          resolve(address);
-        });
-        s.once("error", reject);
-        server = s;
-      }),
-    close: () =>
-      new Promise((resolve) => {
-        if (!server) return resolve();
-        const s = server as unknown as { closeAllConnections?: () => void; close: (cb: () => void) => void };
-        s.closeAllConnections?.();
-        s.close(() => resolve());
-        server = null;
-      }),
+    close: async () => {},
     routes: () => listRoutes(app),
   };
 }
@@ -253,94 +223,4 @@ export function listRoutes(app: Hono<AppEnv>): string[] {
     out.add(`${r.method} ${r.path.length > 1 ? r.path.replace(/\/$/, "") : r.path}`);
   }
   return [...out].sort();
-}
-
-// ---------------------------------------------------------------------------
-// Static dashboard + SPA fallback
-// ---------------------------------------------------------------------------
-
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".txt": "text/plain; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".webmanifest": "application/manifest+json",
-};
-
-/**
- * Serve files from the dashboard dist for GET/HEAD. Hashed files under
- * assets/ are cached for a year; everything else is no-store. Unknown
- * non-API GET/HEAD paths get index.html (client-side routing). API-prefixed
- * paths and other methods get a JSON 404.
- *
- * Returns null (and logs a warning) when the dist directory does not exist.
- */
-function prepareSpa(opts: BuildAppOptions, log: AppLogger): ((c: Context<AppEnv>) => Response) | null {
-  const { distPath, mechanism } = resolvedDashboardDist(opts);
-  if (!existsSync(distPath)) {
-    log.warn(
-      `[dashboard] serveDashboard=true but dist directory not found. ` +
-        `mechanism=${mechanism} tried=${distPath} -- ` +
-        "If mechanism=auto, verify WORKDIR is the monorepo root or set CLAROS_DASHBOARD_DIST explicitly. " +
-        "Run `npm run build -w @claros/dashboard` to create the dist directory. " +
-        "Static serving and SPA fallback are disabled until the path exists.",
-    );
-    return null;
-  }
-  const root = path.resolve(distPath);
-
-  const sendFile = (c: Context<AppEnv>, filePath: string, cacheControl: string): Response => {
-    const type = MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
-    const data = readFileSync(filePath);
-    return new Response(c.req.method === "HEAD" ? null : data, {
-      status: 200,
-      headers: { "content-type": type, "cache-control": cacheControl, "content-length": String(data.length) },
-    });
-  };
-
-  return (c) => {
-    const method = c.req.method.toUpperCase();
-    if (method !== "GET" && method !== "HEAD") {
-      return c.json({ error: "Not Found" }, 404);
-    }
-    const pathname = decodeURIComponent(new URL(c.req.url).pathname);
-
-    const isApiPath = API_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-    if (isApiPath) {
-      return c.json({ error: "Not Found" }, 404);
-    }
-
-    const candidate = path.resolve(root, `.${pathname}`);
-    if (candidate.startsWith(root + path.sep) && existsSync(candidate) && statSync(candidate).isFile()) {
-      const cache = candidate.includes(`${path.sep}assets${path.sep}`)
-        ? "public, max-age=31536000, immutable"
-        : "no-store";
-      return sendFile(c, candidate, cache);
-    }
-    return sendFile(c, path.join(root, "index.html"), "no-store");
-  };
-}
-
-/**
- * Resolve the absolute path to apps/dashboard/dist and how it was resolved:
- * opts.dashboardDist, then CLAROS_DASHBOARD_DIST, then relative to this file
- * (packages/api/{src,dist} -> three levels up is the repo root).
- */
-export function resolvedDashboardDist(opts: BuildAppOptions): { distPath: string; mechanism: "opts" | "env" | "auto" } {
-  if (opts.dashboardDist) return { distPath: opts.dashboardDist, mechanism: "opts" };
-  if (process.env.CLAROS_DASHBOARD_DIST) return { distPath: process.env.CLAROS_DASHBOARD_DIST, mechanism: "env" };
-  const __filename = fileURLToPath(import.meta.url);
-  const monoRoot = path.resolve(path.dirname(__filename), "../../..");
-  return { distPath: path.join(monoRoot, "apps", "dashboard", "dist"), mechanism: "auto" };
 }

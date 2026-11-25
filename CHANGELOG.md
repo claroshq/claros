@@ -13,6 +13,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 - Dashboard requests pick a product with the `X-Claros-Product: <slug>` header or `?product=<slug>`; without either they act on the session's product, as before. The dashboard shows a product switcher when you can act on more than one product, and a Settings, Products page for instance admins.
 - Archived products stay readable; dashboard API writes to them answer `409 {"error": "Product is archived."}`.
 - Inviting an address that already belongs to a user of another product adds the product to that user (one login per person).
+- Cloudflare Workers runtime (in progress, not usable yet): `apps/worker` runs the same API and job handlers as one Worker on D1, with Cloudflare Queues for jobs and one Cron Trigger for the periodic jobs. Login and API key authentication on D1 are not finished, so it cannot serve a product yet. Local trial with `wrangler dev`: see [Install on Cloudflare Workers + D1](docs/install/cloudflare.md). The Postgres + Node install is unchanged.
 
 ### Changed
 
