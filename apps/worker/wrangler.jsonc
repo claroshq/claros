@@ -52,6 +52,7 @@
       "/unsubscribe",
       "/unsubscribe/*",
       "/webhooks/*",
+      "/brand/*",
       "/v1",
       "/v1/*"
     ]

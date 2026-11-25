@@ -28,3 +28,4 @@ export { opsEvents, opsAlerts } from "./ops.js";
 export { webhookEndpoints, webhookOutbox } from "./webhooks.js";
 export { contactDates } from "./contact-dates.js";
 export { tenantDailyUsage } from "./tenant-daily-usage.js";
+export { brandAssets } from "./brand-assets.js";

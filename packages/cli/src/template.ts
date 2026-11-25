@@ -24,6 +24,7 @@ export const RUN_WORKER_FIRST = [
   "/unsubscribe",
   "/unsubscribe/*",
   "/webhooks/*",
+  "/brand/*",
   "/v1",
   "/v1/*",
 ];

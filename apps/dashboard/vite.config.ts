@@ -46,6 +46,10 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
       },
+      "/brand": {
+        target: apiTarget,
+        changeOrigin: true,
+      },
       "/v1": {
         target: apiTarget,
         changeOrigin: true,

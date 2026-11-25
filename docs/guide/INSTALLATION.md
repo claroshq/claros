@@ -190,8 +190,27 @@ Costs: compilation is one call per prompt change. AI content is three calls (dec
 ### Postal address and tenant settings
 
 - `postal_address` (required to send): footer of every email. `claros postal-address set default` or Settings → Postal.
-- Branding (Settings → Branding): brand name, logo URL, logo height (16-64 px), accent color, footer text, reply-to address.
+- Branding (Settings → Branding): brand name, logo (uploaded, or an external logo URL), logo height (16-64 px), accent color, footer text, reply-to address.
 - `brain_context` (Settings): up to 4,000 characters of free text about your product, injected into compile and draft prompts. This is how the AI learns what your product does.
+
+### Brand logo
+
+From v0.8.5 you can upload the logo instead of linking to an image on another site. Claros stores it in its database (Postgres or D1) and serves it, so the logo in mail keeps working when your website moves or puts image requests behind bot protection.
+
+- Upload in Settings → Branding, or `POST /v1/settings/brand/logo` with the image as the request body (owner session, or an [admin key](API_KEYS.md) with the `config` scope):
+
+  ```bash
+  curl -X POST https://claros.example.com/v1/settings/brand/logo \
+    -H "Authorization: Bearer clr_ak_..." \
+    -H "Content-Type: image/png" \
+    --data-binary @logo.png
+  ```
+
+- PNG or JPEG only, at most 256 KB. The file type is checked from the file itself and must match `Content-Type`. SVG and other types answer `415`, larger files `413`.
+- The upload sets `brand.logo_url` to the hosted URL: `https://<public host>/brand/logo?v=<hash>` for a product with a [public host](PRODUCTS.md), else `<BASE_URL>/brand/<product slug>/logo?v=<hash>`. When `brand.logo_height` is unset it is set from the image: at most 48 px high and 240 px wide.
+- The logo is served without authentication. With the current `?v=` it is cached for a year (`Cache-Control: public, max-age=31536000, immutable`); without it, or with an older `?v=`, for five minutes. Mail sent with an older URL shows the current logo. A product's public host serves only that product's logo; the instance host serves every product's logo by slug. After you change a product's public host, upload the logo again so new mail uses the new host.
+- `GET /v1/settings/brand/logo` returns the uploaded logo's URL, type, size and dimensions (`{"logo": null}` when there is none). `DELETE /v1/settings/brand/logo` removes it and clears `brand.logo_url` if it pointed at the upload.
+- An external logo URL (Settings → Branding, or `brand.logo_url` in `PATCH /v1/settings/tenant` or a config document) replaces the uploaded logo in mail; the upload stays stored until you remove it.
 
 ### Throttle and send window
 

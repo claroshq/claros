@@ -72,6 +72,12 @@ export interface BodyOptions {
   parsers?: Record<string, BodyParser>;
   /** Maximum body size in bytes. */
   limit?: number;
+  /**
+   * Media types (lowercase, no parameters) whose body reaches the handler
+   * as raw bytes (a Uint8Array in c.var.body) instead of text. Used by the
+   * logo upload, which takes the image bytes as the body.
+   */
+  binary?: (mediaType: string) => boolean;
 }
 
 /**
@@ -93,6 +99,17 @@ export function bodyParser(options: BodyOptions = {}): MiddlewareHandler<AppEnv>
     const declaredLength = Number(c.req.header("content-length") ?? "NaN");
     if (Number.isFinite(declaredLength) && declaredLength > limit) {
       return frameworkError(c, 413, "FST_ERR_CTP_BODY_TOO_LARGE", "Request body is too large");
+    }
+
+    const contentType = c.req.header("content-type");
+    const binaryType = contentType ? contentType.split(";")[0]!.trim().toLowerCase() : "";
+    if (contentType && options.binary?.(binaryType)) {
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      if (bytes.byteLength > limit) {
+        return frameworkError(c, 413, "FST_ERR_CTP_BODY_TOO_LARGE", "Request body is too large");
+      }
+      c.set("body", bytes);
+      return next();
     }
 
     const raw = await c.req.text();
