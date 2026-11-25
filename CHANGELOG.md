@@ -20,6 +20,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Fixed
 
+- Flows list: the row action for an active flow (**Pause**) and for a paused one (**Resume**) looked the same. Pause is now a quiet button with a pause icon; Resume and Activate are outlined with a play icon. The flow editor's buttons carry the same icons.
 - `GET /v1/capabilities` reports `kb.semantic: true` on D1: D1 has done similarity search over stored vectors since v0.8.0 (without a vector index). The docs said D1 used full-text search; they now describe what runs.
 - The Knowledge Base page no longer says failed entries "will not inform drafts": pinned entries and `kb_select` use them either way; only semantic search skips them.
 

@@ -50,6 +50,7 @@
  */
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Pause, Play } from "lucide-react";
 import {
   useFlowWithPolling,
   useCreateFlow,
@@ -758,6 +759,7 @@ function StatusActions({ flow, busy, onTransition, onArchive }: StatusActionsPro
           }
           onClick={() => onTransition("active")}
         >
+          <Play size={16} strokeWidth={1.5} aria-hidden="true" />
           {flow.status === "paused" ? "Resume" : "Activate"}
         </Button>
       )}
@@ -768,6 +770,7 @@ function StatusActions({ flow, busy, onTransition, onArchive }: StatusActionsPro
           disabled={busy}
           onClick={() => onTransition("paused")}
         >
+          <Pause size={16} strokeWidth={1.5} aria-hidden="true" />
           Pause
         </Button>
       )}
