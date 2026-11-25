@@ -18,7 +18,7 @@ Contents:
 
 ## Ways to run
 
-Claros is a single Docker image plus Postgres. There are three practical ways to run it.
+This guide covers the Postgres + Node install: a single Docker image plus Postgres. Claros also runs on Cloudflare Workers + D1 (since v0.8); see [Install on Cloudflare Workers + D1](../install/cloudflare.md). There are three practical ways to run the Postgres + Node install.
 
 ### 1. Docker Compose (recommended)
 
@@ -224,7 +224,7 @@ echo '{"email":"teammate@example.com","role":"member"}' \
 docker compose exec app claros login-link teammate@example.com
 ```
 
-There is no self-service signup. A self-hosted instance is effectively one workspace: the schema is multi-tenant, but community has no UI or API for creating additional tenants.
+There is no self-service signup. Since v0.8 an instance can serve several products: instance admins create them in Settings, Products. See [PRODUCTS.md](./PRODUCTS.md).
 
 ---
 

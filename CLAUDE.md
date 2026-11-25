@@ -14,9 +14,9 @@ If code and docs diverge, say so before writing code. Do not silently "fix" eith
 
 ## Stack
 
-TypeScript (Node 22+) · npm workspaces · Hono (HTTP, on `@hono/node-server`) · Postgres 16 + pgvector · Drizzle ORM · pg-boss · Zod at all boundaries · Vitest · Vite + React dashboard · one Docker image with `--role=all|api|worker|scheduler`.
+Two runtimes, one engine: Node + Postgres 16 (pgvector, pg-boss, one Docker image with `--role=all|api|worker|scheduler`) and Cloudflare Workers + D1 (Queues, one cron trigger, Static Assets; `apps/worker`, installed with `packages/cli`). TypeScript (Node 22+) · npm workspaces · Hono (HTTP) · Drizzle ORM · Zod at all boundaries · Vitest · Vite + React dashboard.
 
-HTTP conventions (packages/api/src/http): dashboard routes use `RoleRouter` (every route declares its minimum role), bodies are parsed per route with v0.6 rules, schema-validated bodies use `validatedBody` + `validateBody`; Hono matches routes in registration order, so register static paths before overlapping param paths. In progress (see DECISIONS.md): a repository layer with twin Drizzle schemas (pg + sqlite) and an `apps/worker` Cloudflare Workers runtime on D1. Until each piece lands, the Postgres + Node path is the only released one.
+HTTP conventions (packages/api/src/http): dashboard routes use `RoleRouter` (every route declares its minimum role), bodies are parsed per route with v0.6 rules, schema-validated bodies use `validatedBody` + `validateBody`; Hono matches routes in registration order, so register static paths before overlapping param paths. All database access goes through `@claros/store` (docs/dev/storage.md): every query method has a Postgres and a D1 implementation and contract tests on both; schema changes touch both `drizzle/schema` and `drizzle/schema-sqlite`.
 
 New dependencies: only the ones approved in DECISIONS.md (D6). Anything else needs the maintainer.
 
@@ -38,7 +38,7 @@ New dependencies: only the ones approved in DECISIONS.md (D6). Anything else nee
 - Drain is per-tenant round-robin with per-tenant sub-batch caps. A big tenant must never starve a small tenant's dunning.
 - `contacts.email` is nullable; uniqueness via partial index. Email conflict (email owned by another external_id) -> reject the update, keep the event, surface it to the admin. No silent merges.
 - Suppression is checked before everything else at send time.
-- Every outgoing email carries the compliant footer and List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) headers, including test sends to real addresses. The only exception (D18, unreleased): messages whose topic kind is `transactional` carry no List-Unsubscribe headers (footer kept).
+- Every outgoing email carries the compliant footer and List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) headers, including test sends to real addresses. The only exception (D18): messages whose topic kind is `transactional` carry no List-Unsubscribe headers (footer kept).
 - A `cloudflare` transport sends only messages whose topic kind is `transactional` (D16 hard guard, default deny): enforced in the drain right before send and when saving routing.
 - Embeddings on Postgres: OpenAI-compatible endpoint, `vector(1536)`.
 - Postgres `events` is partitioned by `received_at` (monthly range, no DEFAULT partition). The real primary key is `(id, received_at)`. Never query events by `id` without an additional filter (tenant_id, contact_id, or a received_at range).

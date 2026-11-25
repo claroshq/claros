@@ -1,6 +1,6 @@
 # Transports
 
-> Status: several transports per product, routing and Cloudflare Email Service are unreleased (planned for v0.8). Released versions up to v0.7 have one transport per product, Resend or SMTP.
+> Since v0.8: several transports per product, routing and Cloudflare Email Service. Versions up to v0.7 have one transport per product, Resend or SMTP.
 
 A transport is how a product's mail leaves Claros. Each product brings its own credentials; they are stored encrypted with `ENCRYPTION_KEY` and never shown again.
 

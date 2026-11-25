@@ -1,6 +1,6 @@
 # Config as code
 
-> Status: unreleased (planned for v0.8).
+> Since v0.8.
 
 A product's flows, templates, topics, transport routing, settings and webhooks can live in one JSON file in your repository, reviewed like code and applied with one command. The file is validated against [docs/reference/claros.config.schema.json](../reference/claros.config.schema.json) (add `"$schema"` to the file for editor completion).
 

@@ -20,9 +20,9 @@ To use external Postgres:
 
 You may remove the `postgres` service from docker-compose.yml entirely once external Postgres is confirmed working.
 
-### Why not SQLite?
+### Why Postgres?
 
-Claros requires Postgres specifically. SQLite cannot substitute. The reasons:
+The Docker / Node install requires Postgres specifically; plain SQLite cannot substitute. (The separate Cloudflare Workers install runs on D1, see [Install on Cloudflare Workers + D1](../install/cloudflare.md).) The reasons:
 
 - **pgvector**: knowledge base embeddings use `vector(1536)` columns with cosine-distance indexes
 - **Table partitioning**: the `events` table is range-partitioned by `received_at` (monthly)

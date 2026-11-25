@@ -95,8 +95,9 @@ One Postgres database holds everything. `docker compose exec postgres pg_dump -U
 
 Only what you configure, to two kinds of destinations:
 
-- **Your transport:** email content and recipient addresses go to Resend or your SMTP server when messages are sent
+- **Your transport:** email content and recipient addresses go to Resend, your SMTP server or Cloudflare Email Service when messages are sent
 - **Your LLM provider (if configured):** prompts for compilation and drafting, which include your flow prompt, your `brain_context`, relevant contact context (traits, event history, lifecycle state), and any knowledge base entries you reference
+- **Your webhooks, analytics sink and context sources (if configured):** the events and request data described in [WEBHOOKS.md](./WEBHOOKS.md) and [FLOWS.md](./FLOWS.md)
 
 There is no telemetry, analytics, or phone-home to Claros or anyone else. There is no inbound email processing. Webhooks only arrive if you register them yourself with Resend.
 
@@ -104,20 +105,18 @@ There is no telemetry, analytics, or phone-home to Claros or anyone else. There 
 
 Yes, through its SMTP endpoint: configure the `smtp` transport with the SES SMTP host and credentials. There is no SES API-mode integration, so no SES bounce/complaint webhooks. Details in [INSTALLATION.md](./INSTALLATION.md#email-transport).
 
-### Can I run multiple workspaces on one instance?
+### Can I run several products on one instance?
 
-Not through any UI or API today. The schema is multi-tenant and the engine is tenant-safe, but community creates exactly one workspace (`default`) at first boot. Multiple workspaces would require manual SQL and is unsupported.
+Yes, since v0.8. An instance admin creates products in Settings, Products (or with `POST /v1/products`); each product has its own contacts, flows, settings, keys and team. An existing install keeps its one product (`default`) until a second one is created. See [PRODUCTS.md](./PRODUCTS.md).
 
 ### Can I use SQLite instead of Postgres?
 
-No. Postgres is a hard requirement, not a preference. The reasons are structural:
+Not with the Docker / Node install: there Postgres is a hard requirement. Since v0.8 the other install option, Cloudflare Workers + D1 (SQLite-based), runs the same API and engine; see [Install on Cloudflare Workers + D1](../install/cloudflare.md). Plain SQLite on Node is not supported. The Node install needs Postgres for structural reasons:
 
 - **pgvector**: knowledge base embeddings use `vector(1536)` columns with cosine-distance indexes
 - **Table partitioning**: the events table is range-partitioned by month
 - **pg-boss**: the job queue depends on Postgres schemas, `LISTEN/NOTIFY`, and advisory locks
 - **Advisory locks**: ingest deduplication serializes concurrent writes per contact
-
-There is no SQLite adapter and building one is not planned.
 
 ### What does each secret do and what happens if it changes?
 

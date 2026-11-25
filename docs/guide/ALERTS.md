@@ -1,6 +1,6 @@
 # Alerts and health
 
-> Status: unreleased (planned for v0.8). Released versions up to v0.7 write failures to the logs only.
+> Since v0.8. Versions up to v0.7 write failures to the logs only.
 
 Claros records operational failures, groups repeats, and mails a person when something needs attention. It works the same on Postgres + Node and on Cloudflare Workers + D1. Nothing has to be configured: an install that never sets an alert recipient mails the oldest instance admin, and without a usable transport alerts show only on the Health page and in the logs.
 

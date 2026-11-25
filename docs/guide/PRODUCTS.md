@@ -1,6 +1,6 @@
 # Products
 
-> Status: multi-product instances are unreleased (planned for v0.8). Released versions up to v0.7 run one product per install.
+> Since v0.8. Versions up to v0.7 run one product per install.
 
 One Claros install can serve several products. Each product has its own contacts, events, flows, templates, knowledge base, settings, transport, API keys and team. Data never crosses between products: the same email address in two products is two separate contacts.
 
