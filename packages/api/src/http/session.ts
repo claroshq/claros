@@ -9,8 +9,7 @@
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { matchedRoutes } from "hono/route";
-import { eq } from "drizzle-orm";
-import { sessions, tenants, users } from "@claros/db/schema";
+import { storeFor } from "@claros/store";
 import type { AppEnv } from "./env.js";
 import type { UserRole } from "../types.js";
 
@@ -30,24 +29,8 @@ export const resolveSession: MiddlewareHandler<AppEnv> = async (c, next) => {
   const db = c.var.db;
   if (!sessionId || !db) return next();
 
-  // Session + tenant + user in one query. The user join makes a session whose
-  // user row is gone unusable; deactivated users cannot authenticate.
-  const rows = await db
-    .select({
-      sessionUserId: sessions.userId,
-      sessionExpiresAt: sessions.expiresAt,
-      tenantId: tenants.id,
-      tenantSlug: tenants.slug,
-      userRole: users.role,
-      userDeactivatedAt: users.deactivatedAt,
-    })
-    .from(sessions)
-    .innerJoin(tenants, eq(sessions.tenantId, tenants.id))
-    .innerJoin(users, eq(sessions.userId, users.id))
-    .where(eq(sessions.id, sessionId))
-    .limit(1);
-
-  const row = rows[0];
+  // Session + tenant + user in one query (see apiSession.findSessionWithTenantAndUser).
+  const row = await storeFor(db).apiSession.findSessionWithTenantAndUser(sessionId);
   if (row && row.sessionExpiresAt >= new Date() && row.userDeactivatedAt === null) {
     c.set("tenant", {
       id: row.tenantId,

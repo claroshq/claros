@@ -67,9 +67,8 @@
  *   values that are clearly not a known provider identifier.
  */
 import { z } from "zod";
-import { eq, and, sql } from "drizzle-orm";
+import { storeFor } from "@claros/store";
 import { encrypt, decrypt, parseEncryptionKey, resolveTransportAdapter, SmtpTransportAdapter } from "@claros/adapters";
-import { transportConfigs, llmConfigs, tenants } from "@claros/db/schema";
 import { wrapInShell, wrapInTextShell, buildShellComplianceHtml, buildShellComplianceText, resolveThrottleConfig, type BrandSettings } from "@claros/core";
 import {
   KNOWN_LLM_PROVIDERS,
@@ -352,34 +351,16 @@ export default function settingsRoutes() {
       //   - If insert fails, the tenant is left with no active config.
       //     The operator retries the PUT. This is the safer failure mode
       //     vs. wrapping in a transaction and rolling back the deactivation.
-      await db
-        .update(transportConfigs)
-        .set({ isActive: false })
-        .where(
-          and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)),
-        );
+      await storeFor(db).apiSettings.deactivateActiveTransportConfigs(tenantId);
 
-      const [inserted] = await db
-        .insert(transportConfigs)
-        .values({
-          tenantId,
-          provider,
-          config: sql`${encryptedConfig}::jsonb`,
-          isActive: true,
-          fromEmail: from_email,
-          fromName: from_name ?? null,
-          dailyLimit: daily_limit ?? null,
-        })
-        .returning({
-          id: transportConfigs.id,
-          provider: transportConfigs.provider,
-          fromEmail: transportConfigs.fromEmail,
-          fromName: transportConfigs.fromName,
-          dailyLimit: transportConfigs.dailyLimit,
-          dkimVerified: transportConfigs.dkimVerified,
-          isActive: transportConfigs.isActive,
-          createdAt: transportConfigs.createdAt,
-        });
+      const inserted = await storeFor(db).apiSettings.insertActiveTransportConfig({
+        tenantId,
+        provider,
+        encryptedConfig,
+        fromEmail: from_email,
+        fromName: from_name ?? null,
+        dailyLimit: daily_limit ?? null,
+      });
 
       return c.json({
         transport: {
@@ -412,28 +393,12 @@ export default function settingsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select({
-        id: transportConfigs.id,
-        provider: transportConfigs.provider,
-        fromEmail: transportConfigs.fromEmail,
-        fromName: transportConfigs.fromName,
-        dailyLimit: transportConfigs.dailyLimit,
-        dkimVerified: transportConfigs.dkimVerified,
-        isActive: transportConfigs.isActive,
-        createdAt: transportConfigs.createdAt,
-      })
-      .from(transportConfigs)
-      .where(
-        and(eq(transportConfigs.tenantId, tenantId), eq(transportConfigs.isActive, true)),
-      )
-      .limit(1);
+    const row = await storeFor(db).apiSettings.findActiveTransportConfig(tenantId);
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ transport: null });
     }
 
-    const row = rows[0]!;
     return c.json({
       transport: {
         id: row.id,
@@ -581,27 +546,13 @@ export default function settingsRoutes() {
       // Deactivate existing active rows, then insert a fresh one.
       // Same pattern as transport: safer than a transaction because the
       // failure mode (no active config) is recoverable with a retry PUT.
-      await db
-        .update(llmConfigs)
-        .set({ isActive: false })
-        .where(
-          and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)),
-        );
+      await storeFor(db).apiSettings.deactivateActiveLlmConfigs(tenantId);
 
-      const [inserted] = await db
-        .insert(llmConfigs)
-        .values({
-          tenantId,
-          provider,
-          config: encryptedConfig,
-          isActive: true,
-        })
-        .returning({
-          id: llmConfigs.id,
-          provider: llmConfigs.provider,
-          isActive: llmConfigs.isActive,
-          createdAt: llmConfigs.createdAt,
-        });
+      const inserted = await storeFor(db).apiSettings.insertActiveLlmConfig({
+        tenantId,
+        provider,
+        encryptedConfig,
+      });
 
       return c.json({
         llm: {
@@ -638,25 +589,12 @@ export default function settingsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select({
-        id: llmConfigs.id,
-        provider: llmConfigs.provider,
-        config: llmConfigs.config,
-        isActive: llmConfigs.isActive,
-        createdAt: llmConfigs.createdAt,
-      })
-      .from(llmConfigs)
-      .where(
-        and(eq(llmConfigs.tenantId, tenantId), eq(llmConfigs.isActive, true)),
-      )
-      .limit(1);
+    const row = await storeFor(db).apiSettings.findActiveLlmConfig(tenantId);
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ llm: null });
     }
 
-    const row = rows[0]!;
 
     // Decrypt for the non-secret effective values only. The api_key is
     // parsed out of the envelope and deliberately never copied to the
@@ -712,24 +650,12 @@ export default function settingsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const rows = await db
-      .select({
-        id: tenants.id,
-        name: tenants.name,
-        slug: tenants.slug,
-        plan: tenants.plan,
-        settings: tenants.settings,
-        createdAt: tenants.createdAt,
-      })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
+    const row = await storeFor(db).apiSettings.findTenant(tenantId);
 
-    if (rows.length === 0) {
+    if (!row) {
       return c.json({ error: "Tenant not found." }, 404);
     }
 
-    const row = rows[0]!;
     const settings = (row.settings as Record<string, unknown> | null) ?? {};
     const brand = (settings.brand as Record<string, unknown> | undefined) ?? {};
 
@@ -849,17 +775,13 @@ export default function settingsRoutes() {
       }
 
       // Read current settings, merge, write back
-      const tenantRows = await db
-        .select({ settings: tenants.settings })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
+      const tenantRow = await storeFor(db).apiSettings.findTenantSettings(tenantId);
 
-      if (tenantRows.length === 0) {
+      if (!tenantRow) {
         return c.json({ error: "Tenant not found." }, 404);
       }
 
-      const existing = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
+      const existing = (tenantRow.settings as Record<string, unknown> | null) ?? {};
       const updated: Record<string, unknown> = { ...existing };
 
       if (postal_address !== undefined) {
@@ -892,7 +814,7 @@ export default function settingsRoutes() {
         updated.brand = mergedBrand;
       }
 
-      await db.update(tenants).set({ settings: updated }).where(eq(tenants.id, tenantId));
+      await storeFor(db).apiSettings.updateTenantSettings(tenantId, updated);
 
       const finalBrand = (updated.brand as Record<string, unknown> | undefined) ?? {};
 
@@ -930,17 +852,13 @@ export default function settingsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const tenantRows = await db
-      .select({ settings: tenants.settings })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
+    const tenantRow = await storeFor(db).apiSettings.findTenantSettings(tenantId);
 
-    if (tenantRows.length === 0) {
+    if (!tenantRow) {
       return c.json({ error: "Tenant not found." });
     }
 
-    const settings = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
+    const settings = (tenantRow.settings as Record<string, unknown> | null) ?? {};
     const config = resolveThrottleConfig(settings.throttle ?? null);
 
     return c.json({ throttle: config });
@@ -1002,17 +920,13 @@ export default function settingsRoutes() {
         return c.json({ error: "tenant_timezone is required when send_window_timezone is 'tenant_fixed'." }, 400);
       }
 
-      const tenantRows = await db
-        .select({ settings: tenants.settings })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
+      const tenantRow = await storeFor(db).apiSettings.findTenantSettings(tenantId);
 
-      if (tenantRows.length === 0) {
+      if (!tenantRow) {
         return c.json({ error: "Tenant not found." }, 404);
       }
 
-      const existing = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
+      const existing = (tenantRow.settings as Record<string, unknown> | null) ?? {};
       const existingThrottle = (existing.throttle as Record<string, unknown> | undefined) ?? {};
 
       const updates: Record<string, unknown> = {};
@@ -1029,7 +943,7 @@ export default function settingsRoutes() {
       const mergedThrottle = { ...existingThrottle, ...updates };
 
       const updatedSettings = { ...existing, throttle: mergedThrottle };
-      await db.update(tenants).set({ settings: updatedSettings }).where(eq(tenants.id, tenantId));
+      await storeFor(db).apiSettings.updateTenantSettings(tenantId, updatedSettings);
 
       const resolved = resolveThrottleConfig(mergedThrottle);
       return c.json({ throttle: resolved });
@@ -1064,18 +978,14 @@ export default function settingsRoutes() {
       }
 
       // Resolve tenant settings (name, postal_address, brand)
-      const tenantRows = await db
-        .select({ name: tenants.name, settings: tenants.settings })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
+      const tenantRow = await storeFor(db).apiSettings.findTenantNameAndSettings(tenantId);
 
-      if (tenantRows.length === 0) {
+      if (!tenantRow) {
         return c.json({ error: "Tenant not found." }, 404);
       }
 
-      const tenantName = tenantRows[0]!.name;
-      const settings = (tenantRows[0]!.settings as Record<string, unknown> | null) ?? {};
+      const tenantName = tenantRow.name;
+      const settings = (tenantRow.settings as Record<string, unknown> | null) ?? {};
       const postalAddress = settings.postal_address as string | undefined;
       const brand = (settings.brand as BrandSettings | undefined) ?? {};
 
@@ -1084,24 +994,12 @@ export default function settingsRoutes() {
       }
 
       // Resolve transport
-      const configRows = await db.execute<{
-        provider: string;
-        config: string;
-        from_email: string;
-        from_name: string | null;
-      }>(sql`
-        SELECT provider, config::text AS config, from_email, from_name
-        FROM transport_configs
-        WHERE tenant_id = ${tenantId}::uuid
-          AND is_active = true
-        LIMIT 1
-      `);
+      const configRow = await storeFor(db).apiSettings.findActiveTransportForSend(tenantId);
 
-      if (configRows.rows.length === 0) {
+      if (!configRow) {
         return c.json({ error: "Email transport is not configured. Set it up in Settings before sending a test email." }, 400);
       }
 
-      const configRow = configRows.rows[0]!;
       const resolveResult = resolveTransportAdapter(configRow.provider, configRow.config);
 
       if (!resolveResult.ok) {
