@@ -25,6 +25,9 @@ const productColumns = {
   createdAt: tenants.createdAt,
 };
 
+/** settings.brand.logo_url when it is a non-empty string, else null. */
+const logoUrlColumn = sql<string | null>`CASE WHEN json_type(${tenants.settings}, '$.brand.logo_url') = 'text' THEN NULLIF(json_extract(${tenants.settings}, '$.brand.logo_url'), '') END`;
+
 const productOrder = [sql`${tenants.createdAt} IS NULL`, asc(tenants.createdAt), asc(tenants.slug)] as const;
 
 /** True for a SQLite UNIQUE constraint failure on tenants.public_host. */
@@ -42,6 +45,7 @@ export function d1ApiProducts(db: D1Db): ApiProductsQueries {
       return db
         .select({
           ...productColumns,
+          logoUrl: logoUrlColumn,
           role: sql<string>`CASE WHEN ${users.tenantId} = ${tenants.id} THEN ${users.role} ELSE ${memberships.role} END`,
         })
         .from(tenants)
@@ -52,7 +56,7 @@ export function d1ApiProducts(db: D1Db): ApiProductsQueries {
     },
 
     async listAll() {
-      return db.select(productColumns).from(tenants).orderBy(...productOrder);
+      return db.select({ ...productColumns, logoUrl: logoUrlColumn }).from(tenants).orderBy(...productOrder);
     },
 
     async create({ name, slug, locale, ownerUserId }) {

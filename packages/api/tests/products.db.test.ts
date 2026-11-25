@@ -284,6 +284,15 @@ describe("products routes", () => {
     expect(listed.products.find((p: { slug: string }) => p.slug === createdSlug).public_host).toBe(host);
     expect(listed.products.find((p: { slug: string }) => p.slug === slugC).public_host).toBeNull();
 
+    // logo_url: the product's brand.logo_url, null when unset.
+    expect(listed.products.find((p: { slug: string }) => p.slug === createdSlug).logo_url).toBeNull();
+    const logo = "https://cdn.example.com/acme.png";
+    const brand = await send("PATCH", "/v1/settings/tenant", adminSession, { brand: { logo_url: logo } }, createdSlug);
+    expect(brand.statusCode).toBe(200);
+    const relisted = JSON.parse((await get("/v1/products", adminSession)).payload);
+    expect(relisted.products.find((p: { slug: string }) => p.slug === createdSlug).logo_url).toBe(logo);
+    expect(relisted.products.find((p: { slug: string }) => p.slug === slugC).logo_url).toBeNull();
+
     const dup = await send("PATCH", `/v1/products/${slugC}`, adminSession, { public_host: host });
     expect(dup.statusCode).toBe(409);
     expect((await send("PATCH", `/v1/products/nope-${RUN}`, adminSession, { name: "Z" })).statusCode).toBe(404);

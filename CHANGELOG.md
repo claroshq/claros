@@ -11,7 +11,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Added
 
 - Dashboard product picker. With two or more active products, signing in or opening a new tab shows a full-screen picker before the app: one card per product (name, slug, public host, role), the last chosen product highlighted, arrow keys, Enter and `1` to `9`. Archived products sit in a collapsed group and open read-only; instance admins can create a product there. The picker shows once per tab; `/products` opens it any time. See [Products](docs/guide/PRODUCTS.md#opening-and-switching-products-in-the-dashboard).
-- `GET /v1/products` returns each product's `public_host` (additive field).
+- `GET /v1/products` returns each product's `public_host` and `logo_url` (additive fields). `logo_url` is the product's `brand.logo_url` (an uploaded logo's hosted URL or an external URL), or `null`; it is read in the same list query on Postgres and D1.
+- The product picker and the sidebar switcher show each product's brand logo, contained on a white tile in both themes, and fall back to the two-letter monogram when a product has no logo or the image does not load.
 
 ### Changed
 

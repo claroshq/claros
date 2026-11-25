@@ -198,7 +198,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
         )}
       >
         {current ? (
-          <ProductAvatar name={current.name} size="sm" tone={current.archived ? "muted" : "accent"} />
+          <ProductAvatar name={current.name} logoUrl={current.logo_url} size="sm" tone={current.archived ? "muted" : "accent"} />
         ) : (
           <ProductAvatar name="?" size="sm" tone="muted" />
         )}
@@ -301,7 +301,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                     highlighted && "bg-selected",
                   )}
                 >
-                  <ProductAvatar name={p.name} size="xs" tone={isCurrent ? "accent" : "neutral"} />
+                  <ProductAvatar name={p.name} logoUrl={p.logo_url} size="xs" tone={isCurrent ? "accent" : "neutral"} />
                   <span className="min-w-0 flex-1">
                     <span
                       className={cn(

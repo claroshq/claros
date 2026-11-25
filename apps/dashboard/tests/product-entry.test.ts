@@ -20,6 +20,7 @@ function product(slug: string, opts: { archived?: boolean; role?: string } = {})
     role: opts.role ?? "owner",
     archived: opts.archived ?? false,
     public_host: null,
+    logo_url: null,
   };
 }
 

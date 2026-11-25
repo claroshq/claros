@@ -106,6 +106,7 @@ function ProductCard({
       >
         <ProductAvatar
           name={product.name}
+          logoUrl={product.logo_url}
           tone={product.archived ? "muted" : highlighted ? "accent" : "neutral"}
         />
 
