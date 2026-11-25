@@ -5,9 +5,14 @@
  * They are registered under the /v1 prefix inside the authenticated scope.
  *
  * Endpoints:
- *   POST /v1/suppressions          add a single address (manual block)
- *   POST /v1/suppressions/import   bulk import from plain-text or CSV body
- *   GET  /v1/suppressions          list tenant's suppressions (paginated)
+ *   POST   /v1/suppressions          add a single address (manual block), or
+ *                                    { emails: [...], reason } in bulk (G12)
+ *   POST   /v1/suppressions/import   bulk import from plain-text or CSV body
+ *   GET    /v1/suppressions          list tenant's suppressions (paginated, ?since=)
+ *   DELETE /v1/suppressions/:email   remove one (complaint / hard_bounce need ?force=1)
+ *
+ * Every route also accepts a product admin key with the `suppressions`
+ * scope (G1).
  *
  * Suppression import (task 24):
  *   Accepts a plain-text or CSV body (Content-Type: text/plain or text/csv)
@@ -56,7 +61,7 @@
  *   keyed on (created_at, id), ?limit= (default 50, max 200), ?after=<cursor>,
  *   next_cursor in the response.
  */
-import { RoleRouter } from "../http/router.js";
+import { RoleRouter, allowAdminKey } from "../http/router.js";
 import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 
@@ -76,6 +81,15 @@ const DEFAULT_PAGE_SIZE = 50;
 
 /** Maximum page size for GET /v1/suppressions list. */
 const MAX_PAGE_SIZE = 200;
+
+/** Maximum addresses in one bulk POST /v1/suppressions call. */
+const BULK_MAX = 1000;
+
+/** Reasons a bulk suppression may carry. */
+const BULK_REASONS = ["manual", "unsubscribe", "hard_bounce", "complaint", "imported"] as const;
+
+/** Suppressions only removed with ?force=1: the provider reported them. */
+const PROTECTED_REASONS = ["complaint", "hard_bounce"];
 
 // ---------------------------------------------------------------------------
 // Email validation
@@ -159,11 +173,38 @@ export default function suppressionRoutes() {
    * 201 { email, added: true } on a new row, 200 { email, added: false }
    * when the address was already suppressed.
    */
-  r.post("/", "member", async (c) => {
+  r.post("/", "member", allowAdminKey("suppressions"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
     const body = c.var.body as Record<string, unknown> | null;
+
+    // Bulk form (G12): { emails: string[], reason? }.
+    if (body && typeof body === "object" && "emails" in body) {
+      if (!Array.isArray(body.emails) || body.emails.length === 0 || body.emails.length > BULK_MAX) {
+        return c.json({ error: `'emails' must be an array of 1-${BULK_MAX} addresses.` }, 400);
+      }
+      const reason = body.reason === undefined ? "manual" : body.reason;
+      if (typeof reason !== "string" || !(BULK_REASONS as readonly string[]).includes(reason)) {
+        return c.json({ error: `'reason' must be one of: ${BULK_REASONS.join(", ")}.` }, 400);
+      }
+      const valid: string[] = [];
+      const invalid: unknown[] = [];
+      for (const raw of body.emails) {
+        const e = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+        if (isValidEmail(e)) valid.push(e);
+        else invalid.push(raw);
+      }
+      const added = await storeFor(db).apiSuppressions.addSuppressions({
+        tenantId,
+        emails: valid,
+        reason,
+        source: c.var.tenant!.apiKeyId ? "api" : "admin",
+        now: new Date(),
+      });
+      return c.json({ added, skipped: valid.length - added.length, invalid });
+    }
+
     const email = typeof body?.email === "string"
       ? body.email.trim().toLowerCase()
       : "";
@@ -172,7 +213,9 @@ export default function suppressionRoutes() {
       return c.json({ error: "Body must contain a valid 'email' address." }, 400);
     }
 
-    const added = await storeFor(db).apiSuppressions.addManualSuppression({ tenantId, email });
+    // Same row as v0.6 (reason manual, source admin), plus contact.suppressed (G5).
+    const added =
+      (await storeFor(db).apiSuppressions.addSuppressions({ tenantId, emails: [email], reason: "manual", source: "admin", now: new Date() })).length > 0;
     return c.json({ email, added }, added ? 201 : 200);
   });
 
@@ -185,7 +228,7 @@ export default function suppressionRoutes() {
    *
    * Returns { imported, skipped, invalid, total_rows }.
    */
-  r.post("/import", "member", async (c) => {
+  r.post("/import", "member", allowAdminKey("suppressions"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
@@ -262,10 +305,17 @@ export default function suppressionRoutes() {
    *
    * Response: { suppressions: SuppressionEntry[], next_cursor: string | null }
    */
-  r.get("/", "member", async (c) => {
+  r.get("/", "member", allowAdminKey("suppressions"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
-    const query = c.req.query() as { limit?: string; after?: string };
+    const query = c.req.query() as { limit?: string; after?: string; since?: string };
+    let since: Date | null = null;
+    if (query.since !== undefined) {
+      since = new Date(query.since);
+      if (Number.isNaN(since.getTime())) {
+        return c.json({ error: "'since' must be an ISO-8601 timestamp." }, 400);
+      }
+    }
 
     const rawLimit = parseInt(query.limit ?? "", 10);
     const limit = isNaN(rawLimit) || rawLimit < 1
@@ -282,6 +332,7 @@ export default function suppressionRoutes() {
       tenantId,
       after: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
       limit: fetchLimit,
+      since,
     });
 
     const hasNextPage = rows.length > limit;
@@ -304,5 +355,34 @@ export default function suppressionRoutes() {
       next_cursor: nextCursor,
     });
   });
+  /**
+   * DELETE /v1/suppressions/:email (G12)
+   *
+   * Remove one suppression (case-insensitive). Complaint and hard-bounce
+   * suppressions are refused with 409 unless ?force=1: the provider reported
+   * them, and mailing the address again hurts deliverability.
+   */
+  r.delete("/:email", "member", allowAdminKey("suppressions"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const email = decodeURIComponent(c.req.param("email")!).trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      return c.json({ error: "Not a valid email address." }, 400);
+    }
+    const force = c.req.query("force") === "1" || c.req.query("force") === "true";
+    const out = await storeFor(db).apiSuppressions.removeSuppression({
+      tenantId,
+      email,
+      force,
+      protectedReasons: PROTECTED_REASONS,
+      now: new Date(),
+    });
+    if (out.result === "not_found") return c.json({ error: "Address is not suppressed." }, 404);
+    if (out.result === "protected") {
+      return c.json({ error: `Suppression reason '${out.reason}' is removed only with ?force=1.`, reason: out.reason }, 409);
+    }
+    return c.json({ email, deleted: true, reason: out.reason });
+  });
+
   return r.app;
 }

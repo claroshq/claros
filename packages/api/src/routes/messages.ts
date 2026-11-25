@@ -11,6 +11,15 @@
  *   POST  /v1/messages/:id/retry     re-queue a generation-failed message (failed -> pending_generation)
  *   POST  /v1/messages/bulk/approve  approve many pending_approval messages at once
  *   POST  /v1/messages/bulk/reject   reject many pending_approval messages at once
+ *   PATCH /v1/messages/:id           edit subject/body while pending_approval (G20)
+ *   POST  /v1/messages/:id/regenerate  new draft, optionally forcing the action type (G20)
+ *   POST  /v1/messages/:id/cancel      approved -> cancelled (G20)
+ *   POST  /v1/messages/:id/unapprove   approved -> pending_approval (G20)
+ *
+ * Every route also accepts a product admin key with the `messages` scope
+ * (G1). Approve/reject/edit/cancel record who acted ("user:<id>" or
+ * "api_key:<id>"). Stale actions (the message moved on) answer 409 and
+ * change nothing. The list puts critical-class flows first.
  *
  * CAS conventions: approve and reject use WHERE status = 'pending_approval'
  * to guarantee atomic state transitions. Approving an already-approved message
@@ -21,8 +30,11 @@
  */
 import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
-import { RoleRouter } from "../http/router.js";
-import { QUEUE } from "@claros/core";
+import { RoleRouter, allowAdminKey } from "../http/router.js";
+import { QUEUE, pendingApprovalBatch } from "@claros/core";
+import { renderMarkdownToHtml, markdownToText } from "@claros/brain-oss";
+import { actorOf } from "../http/admin-auth.js";
+import type { AppContext } from "../http/env.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -56,6 +68,17 @@ type MessageListRow = Record<string, unknown> & {
   contact_name: string | null;
   contact_external_id: string | null;
   scheduled_send_at: string | Date | null;
+  flow_name?: string | null;
+  flow_class?: string | null;
+  status_reason?: string | null;
+  approved_by?: string | null;
+  rejected_by?: string | null;
+  edited_by?: string | null;
+  edited_at?: string | Date | null;
+  original_subject?: string | null;
+  original_body_html?: string | null;
+  original_body_text?: string | null;
+  forced_action_type?: string | null;
 };
 
 function serializeMessageRow(r: MessageListRow) {
@@ -92,6 +115,16 @@ function serializeMessageRow(r: MessageListRow) {
     updated_at: r.updated_at,
     scheduled_send_at: r.scheduled_send_at,
     waiting_reason,
+    flow: { name: r.flow_name ?? null, class: r.flow_class ?? null },
+    status_reason: r.status_reason ?? null,
+    approved_by: r.approved_by ?? null,
+    rejected_by: r.rejected_by ?? null,
+    edited_by: r.edited_by ?? null,
+    edited_at: r.edited_at ?? null,
+    original: r.edited_at
+      ? { subject: r.original_subject ?? null, body_html: r.original_body_html ?? null, body_text: r.original_body_text ?? null }
+      : null,
+    forced_action_type: r.forced_action_type ?? null,
     contact: {
       email: r.contact_email,
       name: r.contact_name,
@@ -107,13 +140,15 @@ function serializeMessageRow(r: MessageListRow) {
 interface CursorPayload {
   created_at: string;
   id: string;
+  /** 0 = critical-class flow, 1 = other (G20 order); absent in older cursors. */
+  rank?: number;
 }
 
-function encodeCursor(createdAt: Date | string | null | undefined, id: string): string {
+function encodeCursor(createdAt: Date | string | null | undefined, id: string, rank: number): string {
   const ts = createdAt instanceof Date
     ? createdAt.toISOString()
     : (createdAt ?? new Date(0).toISOString());
-  const payload: CursorPayload = { created_at: ts, id };
+  const payload: CursorPayload = { created_at: ts, id, rank };
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
 
@@ -151,7 +186,7 @@ export default function messagesRoutes() {
    *
    * Response: { messages: [...], next_cursor: string | null }
    */
-  router.get("/", "member", async (c) => {
+  router.get("/", "member", allowAdminKey("messages"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const query = c.req.query();
@@ -172,7 +207,9 @@ export default function messagesRoutes() {
     const rows = await storeFor(db).apiMessages.listMessages({
       tenantId,
       status: statusFilter,
-      after: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+      after: cursor
+        ? { createdAt: cursor.created_at, id: cursor.id, rank: typeof cursor.rank === "number" ? cursor.rank : 1 }
+        : null,
       limit: fetchLimit,
     });
 
@@ -181,7 +218,7 @@ export default function messagesRoutes() {
 
     const lastRow = pageRows[pageRows.length - 1];
     const nextCursor = hasNextPage && lastRow
-      ? encodeCursor(lastRow.created_at, lastRow.id)
+      ? encodeCursor(lastRow.created_at, lastRow.id, lastRow.flow_class === "critical" ? 0 : 1)
       : null;
 
     return c.json({
@@ -205,7 +242,7 @@ export default function messagesRoutes() {
    *
    * Response: { approved: string[], skipped: string[] }
    */
-  router.post("/bulk/approve", "member", async (c) => {
+  router.post("/bulk/approve", "member", allowAdminKey("messages"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
@@ -215,7 +252,7 @@ export default function messagesRoutes() {
     }
 
     const now = new Date();
-    const approved = await storeFor(db).apiMessages.approveMessages({ tenantId, ids, now });
+    const approved = await storeFor(db).apiMessages.approveMessages({ tenantId, ids, now, actor: actorOf(c.var.tenant!) });
 
     const enqueue = c.var.enqueue;
     if (enqueue) {
@@ -244,7 +281,7 @@ export default function messagesRoutes() {
    *
    * Response: { rejected: string[], skipped: string[] }
    */
-  router.post("/bulk/reject", "member", async (c) => {
+  router.post("/bulk/reject", "member", allowAdminKey("messages"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
@@ -254,7 +291,7 @@ export default function messagesRoutes() {
     }
 
     const now = new Date();
-    const rejected = await storeFor(db).apiMessages.rejectMessages({ tenantId, ids, now });
+    const rejected = await storeFor(db).apiMessages.rejectMessages({ tenantId, ids, now, actor: actorOf(c.var.tenant!) });
     const rejectedSet = new Set(rejected);
     return c.json({
       rejected,
@@ -272,7 +309,7 @@ export default function messagesRoutes() {
    * If the message does not exist or belongs to another tenant: 404.
    * If the message is in a different non-approved status: 409 Conflict.
    */
-  router.post("/:id/approve", "member", async (c) => {
+  router.post("/:id/approve", "member", allowAdminKey("messages"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const messageId = c.req.param("id")!;
@@ -285,7 +322,7 @@ export default function messagesRoutes() {
     const now = new Date();
 
     // Attempt CAS: pending_approval -> approved
-    if (await storeFor(db).apiMessages.approveMessage({ tenantId, messageId, now })) {
+    if (await storeFor(db).apiMessages.approveMessage({ tenantId, messageId, now, actor: actorOf(c.var.tenant!) })) {
       // Transition succeeded - enqueue targeted drain for immediate send
       const enqueue = c.var.enqueue;
       if (enqueue) {
@@ -331,7 +368,7 @@ export default function messagesRoutes() {
    * If the message does not exist or belongs to another tenant: 404.
    * If the message is in any other status: 409 Conflict.
    */
-  router.post("/:id/reject", "member", async (c) => {
+  router.post("/:id/reject", "member", allowAdminKey("messages"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const messageId = c.req.param("id")!;
@@ -343,7 +380,7 @@ export default function messagesRoutes() {
     const now = new Date();
 
     // Attempt CAS: pending_approval -> rejected
-    if (await storeFor(db).apiMessages.rejectMessage({ tenantId, messageId, now })) {
+    if (await storeFor(db).apiMessages.rejectMessage({ tenantId, messageId, now, actor: actorOf(c.var.tenant!) })) {
       return c.json({ message: "Message rejected.", id: messageId, status: "rejected" });
     }
 
@@ -384,7 +421,7 @@ export default function messagesRoutes() {
    * that already has approved content would discard it, and resurrecting a
    * bounced send needs a different decision. Those return 409.
    */
-  router.post("/:id/retry", "member", async (c) => {
+  router.post("/:id/retry", "member", allowAdminKey("messages"), async (c) => {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const messageId = c.req.param("id")!;
@@ -414,7 +451,136 @@ export default function messagesRoutes() {
       409,
     );
   });
+  /**
+   * PATCH /v1/messages/:id (G20)
+   *
+   * Edit a pending_approval message: { subject?, body_markdown? }. The
+   * body is rendered to HTML and text like a drafted body. The content as
+   * drafted stays in `original` (kept from the first edit). 409 when the
+   * message is no longer pending_approval.
+   */
+  router.patch("/:id", "member", allowAdminKey("messages"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
+    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
+    const body = (c.var.body ?? {}) as Record<string, unknown>;
+    const subject = body.subject;
+    const markdown = body.body_markdown;
+    if (subject === undefined && markdown === undefined) {
+      return c.json({ error: "Body must contain 'subject' and/or 'body_markdown'." }, 400);
+    }
+    if (subject !== undefined && (typeof subject !== "string" || subject.trim().length === 0 || subject.length > 300)) {
+      return c.json({ error: "'subject' must be a non-empty string of at most 300 characters." }, 400);
+    }
+    if (markdown !== undefined && (typeof markdown !== "string" || markdown.trim().length === 0 || markdown.length > 50_000)) {
+      return c.json({ error: "'body_markdown' must be a non-empty string of at most 50000 characters." }, 400);
+    }
+    const current = await storeFor(db).apiMessages.getMessageContent({ tenantId, messageId });
+    if (!current) return c.json({ error: "Message not found." }, 404);
+    if (current.status !== "pending_approval") {
+      return c.json({ error: `Cannot edit message in status '${current.status}'.`, id: messageId, status: current.status }, 409);
+    }
+    const edited = await storeFor(db).apiMessages.editMessage({
+      tenantId,
+      messageId,
+      subject: typeof subject === "string" ? subject.trim() : current.subject ?? "",
+      bodyHtml: typeof markdown === "string" ? renderMarkdownToHtml(markdown) : current.bodyHtml ?? "",
+      bodyText: typeof markdown === "string" ? markdownToText(markdown) : current.bodyText ?? "",
+      actor: actorOf(c.var.tenant!),
+      now: new Date(),
+    });
+    if (!edited) return stale(c, db, tenantId, messageId, "edit");
+    return c.json({ message: "Message edited.", id: messageId, status: "pending_approval" });
+  });
+
+  /**
+   * POST /v1/messages/:id/regenerate (G20)
+   *
+   * Body (optional): { action_type }. Sends a pending_approval message back
+   * to content generation (pending_generation). With action_type the brain
+   * drafts that action and skips its decide step. 409 when stale.
+   */
+  router.post("/:id/regenerate", "member", allowAdminKey("messages"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
+    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
+    const raw = (c.var.body as { action_type?: unknown } | null | undefined)?.action_type;
+    if (raw !== undefined && raw !== null && (typeof raw !== "string" || !/^[a-z0-9_]{1,64}$/.test(raw))) {
+      return c.json({ error: "'action_type' must match [a-z0-9_]{1,64}." }, 400);
+    }
+    const actionType = typeof raw === "string" ? raw : null;
+    const ok = await storeFor(db).apiMessages.regenerateMessage({ tenantId, messageId, actionType, now: new Date() });
+    if (!ok) return stale(c, db, tenantId, messageId, "regenerate");
+    const enqueue = c.var.enqueue;
+    if (enqueue) {
+      await enqueue(
+        QUEUE.PROCESS_MESSAGE,
+        { tenant_id: tenantId, message_id: messageId },
+        { singletonKey: messageId, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
+      ).catch(() => {});
+    }
+    return c.json({ message: "Message sent back for a new draft.", id: messageId, status: "pending_generation", forced_action_type: actionType });
+  });
+
+  /**
+   * POST /v1/messages/:id/cancel (G20)
+   *
+   * approved -> cancelled (terminal): an approved message that should not
+   * go out. Already cancelled answers 200; any other status 409.
+   */
+  router.post("/:id/cancel", "member", allowAdminKey("messages"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
+    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
+    if (await storeFor(db).apiMessages.cancelMessage({ tenantId, messageId, actor: actorOf(c.var.tenant!), now: new Date() })) {
+      return c.json({ message: "Message cancelled.", id: messageId, status: "cancelled" });
+    }
+    const status = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
+    if (status === "cancelled") return c.json({ message: "Message already cancelled.", id: messageId, status });
+    return stale(c, db, tenantId, messageId, "cancel", status);
+  });
+
+  /**
+   * POST /v1/messages/:id/unapprove (G20)
+   *
+   * approved -> pending_approval: pull an approved message back to review.
+   * 409 when it is no longer approved (for example already sending).
+   */
+  router.post("/:id/unapprove", "member", allowAdminKey("messages"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
+    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
+    const now = new Date();
+    const batch = pendingApprovalBatch(now);
+    const ok = await storeFor(db).apiMessages.unapproveMessage({
+      tenantId,
+      messageId,
+      now,
+      outbox: [{ event: "message.pending_approval", payload: { message_id: messageId }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt }],
+    });
+    if (!ok) return stale(c, db, tenantId, messageId, "unapprove");
+    return c.json({ message: "Message back in review.", id: messageId, status: "pending_approval" });
+  });
+
   return router.app;
+}
+
+/** 404 for an unknown message, else 409 naming its current status. */
+async function stale(
+  c: AppContext,
+  db: Db,
+  tenantId: string,
+  messageId: string,
+  action: string,
+  known?: string | null,
+): Promise<Response> {
+  const status = known !== undefined ? known : await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
+  if (status === null) return c.json({ error: "Message not found." }, 404);
+  return c.json({ error: `Cannot ${action} message in status '${status}'.`, id: messageId, status }, 409);
 }
 
 // ---------------------------------------------------------------------------

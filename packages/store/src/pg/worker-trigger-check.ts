@@ -3,11 +3,13 @@
  */
 import { eq, and, sql } from "drizzle-orm";
 import { flows } from "@claros/db/schema";
+import { pgContactConditions } from "./contact-conditions.js";
 import type { PgDb } from "./db.js";
 import type { WorkerTriggerCheckQueries } from "../areas/worker-trigger-check.js";
 
 export function pgWorkerTriggerCheck(db: PgDb): WorkerTriggerCheckQueries {
   return {
+    ...pgContactConditions(db),
     async listActiveEventFlows(tenantId) {
       // Load active, compiled event-trigger flows for this tenant
       return db

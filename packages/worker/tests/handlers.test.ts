@@ -103,6 +103,9 @@ vi.mock("../src/process-message.js", () => ({
   }),
 }));
 vi.mock("../src/drain-message.js", () => ({ handleDrainMessage: record("drainMessage", { claimed: false }) }));
+vi.mock("../src/webhooks.js", () => ({
+  processWebhookTick: record("webhookTick", { claimed: 0, delivered: 0, retried: 0, dead: 0 }),
+}));
 vi.mock("../src/snapshot-retention-grid.js", () => ({
   processGridSnapshotTick: record("gridSnapshot", { tenantsProcessed: 0, rowsWritten: 0, snapshotDate: "2026-11-25" }),
 }));

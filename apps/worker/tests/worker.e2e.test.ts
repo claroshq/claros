@@ -31,7 +31,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "@claros/db/schema-sqlite";
 import { encrypt, parseEncryptionKey } from "@claros/adapters";
-import { QUEUE } from "@claros/core";
+import { QUEUE, verifyWebhook } from "@claros/core";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(appDir, "../..");
@@ -46,6 +46,7 @@ const EVENT = "workers_e2e_signed_up";
 interface OutboundCall {
   url: string;
   body: string;
+  headers?: Record<string, string>;
 }
 
 let tmp: string;
@@ -120,9 +121,13 @@ beforeAll(async () => {
       // Fake outside world: the Resend API accepts every email.
       outboundService: async (request: Request) => {
         const body = await request.text();
-        outbound.push({ url: request.url, body });
+        outbound.push({ url: request.url, body, headers: Object.fromEntries(request.headers) });
         if (request.url.startsWith("https://api.resend.com/")) {
           return Response.json({ id: `re_${randomUUID()}` });
+        }
+        // Fake webhook receiver (G5).
+        if (request.url.startsWith("https://hooks.workers-e2e.test/")) {
+          return new Response(null, { status: 204 });
         }
         return new Response("unexpected outbound request", { status: 599 });
       },
@@ -482,6 +487,68 @@ describe("Workers runtime: alerts", () => {
 
 // Keep the temporary bundle small enough for Workers (paid plan: 10 MB
 // compressed; free: 3 MB). Reported by `npm run build`; asserted here as a guard.
+describe("Workers runtime: management API (admin key, config, webhooks)", () => {
+  let adminKey: string;
+  let productId: string;
+
+  beforeAll(async () => {
+    productId = randomUUID();
+    await db.insert(schema.tenants).values({ id: productId, name: "Workers Admin", slug: "workers-admin", settings: { postal_address: POSTAL_ADDRESS } });
+    adminKey = `clr_ak_${randomBytes(32).toString("base64url")}`;
+    await db.insert(schema.apiKeys).values({
+      tenantId: productId,
+      keyHash: createHash("sha256").update(adminKey).digest("hex"),
+      prefix: adminKey.slice(0, 8),
+      kind: "admin",
+      scopes: ["config", "suppressions"],
+    });
+  });
+
+  it("an admin key applies a config document on D1; a suppression is delivered as a signed webhook", async () => {
+    const auth = { authorization: `Bearer ${adminKey}`, "content-type": "application/json" };
+    const doc = {
+      settings: { locale: "en", links: { home: "https://workers-admin.test/" } },
+      topics: [{ slug: "lifecycle", name: "Lifecycle", kind: "lifecycle" }],
+      flows: [{ slug: "welcome", name: "Welcome", topic: "lifecycle", trigger: { type: "event", event: "signed_up" }, steps: [{ order: 1, action_type: "welcome", delay: "0m" }] }],
+      webhooks: [{ slug: "app", url: "https://hooks.workers-e2e.test/claros", events: ["contact.suppressed"] }],
+    };
+    const dry = await mf.dispatchFetch("http://localhost/v1/config?dry_run=1", { method: "PUT", headers: auth, body: JSON.stringify(doc) });
+    expect(dry.status).toBe(200);
+    expect(((await dry.json()) as { changes: unknown[] }).changes.length).toBe(5);
+    const applied = await mf.dispatchFetch("http://localhost/v1/config", { method: "PUT", headers: auth, body: JSON.stringify(doc) });
+    expect(applied.status).toBe(200);
+    const body = (await applied.json()) as { config_version: number; webhook_secrets: Record<string, string> };
+    expect(body.config_version).toBe(1);
+    const secret = body.webhook_secrets.app!;
+    const again = await mf.dispatchFetch("http://localhost/v1/config", { method: "PUT", headers: auth, body: JSON.stringify(doc) });
+    expect(await again.json()).toEqual({ dry_run: false, changes: [], config_version: 1 });
+    const flowsRows = await db.select().from(schema.flows).where(eq(schema.flows.tenantId, productId));
+    expect(flowsRows.map((f: { slug: string }) => f.slug)).toEqual(["welcome"]);
+
+    // Scope check: this key cannot read messages; ingestion refuses it.
+    expect((await mf.dispatchFetch("http://localhost/v1/messages", { headers: auth })).status).toBe(403);
+    expect((await mf.dispatchFetch("http://localhost/v1/track", { method: "POST", headers: auth, body: JSON.stringify({ userId: "u", event: "x" }) })).status).toBe(401);
+
+    const added = await mf.dispatchFetch("http://localhost/v1/suppressions", {
+      method: "POST", headers: auth, body: JSON.stringify({ emails: ["gone@workers-admin.test"], reason: "complaint" }),
+    });
+    expect(await added.json()).toEqual({ added: ["gone@workers-admin.test"], skipped: 0, invalid: [] });
+
+    const worker = await mf.getWorker();
+    await worker.scheduled({ cron: "*/5 * * * *", scheduledTime: new Date("2026-11-25T00:05:00Z") });
+    const call = await waitFor("the webhook delivery", async () => outbound.find((o) => o.url === "https://hooks.workers-e2e.test/claros"));
+    expect(verifyWebhook({ headers: call.headers!, body: call.body, secret })).toBe(true);
+    expect(JSON.parse(call.body)).toMatchObject({
+      type: "contact.suppressed",
+      data: { product: "workers-admin", reason: "complaint", source: "api", contact: { external_id: null, email: "gone@workers-admin.test" } },
+    });
+    await waitFor("the outbox row to be delivered", async () => {
+      const rows = await db.select().from(schema.webhookOutbox).where(eq(schema.webhookOutbox.tenantId, productId));
+      return rows.length === 1 && rows[0].status === "delivered";
+    });
+  }, 60_000);
+});
+
 describe("Workers bundle", () => {
   it("is under 3 MB uncompressed", () => {
     const size = statSync(join(tmp, "out", "index.js")).size;

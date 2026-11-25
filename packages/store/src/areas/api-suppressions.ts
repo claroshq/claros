@@ -30,5 +30,26 @@ export interface ApiSuppressionsQueries {
     tenantId: string;
     after: { createdAt: string; id: string } | null;
     limit: number;
+    /** Only rows created at or after this time (G12 ?since=). */
+    since?: Date | null;
   }): Promise<SuppressionRow[]>;
+  /**
+   * Suppress addresses with a reason and source (G12 bulk API), skipping
+   * existing ones case-insensitively (first occurrence in the list wins).
+   * Writes a contact.suppressed outbox entry per inserted address in the
+   * same atomic unit. Returns the inserted addresses.
+   */
+  addSuppressions(input: { tenantId: string; emails: string[]; reason: string; source: string; now: Date }): Promise<string[]>;
+  /**
+   * Delete the suppression of an address (case-insensitive). Reasons in
+   * `protectedReasons` are kept unless `force`. Writes contact.resubscribed
+   * with the deletion. "protected" carries the stored reason.
+   */
+  removeSuppression(input: {
+    tenantId: string;
+    email: string;
+    force: boolean;
+    protectedReasons: string[];
+    now: Date;
+  }): Promise<{ result: "deleted" | "not_found" | "protected"; reason: string | null }>;
 }

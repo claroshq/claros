@@ -26,7 +26,9 @@
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
-import { parseDelay, delayToMs, type CompiledStep, type PlanExitCondition } from "@claros/core";
+import { parseDelay, delayToMs, type CompiledStep, type PlanExitCondition,
+  cachedConditionContext,
+} from "@claros/core";
 import {
   evaluateStepCondition,
   evaluatePlanExitCondition,
@@ -251,6 +253,7 @@ async function processTenantStepAdvancement(
           now,
           exitReason: "flow_archived",
           clearConditionError: false,
+          events: exitEvent(tenantId, membership, "flow_archived"),
         });
         stats.membershipsExitedArchived++;
         continue;
@@ -285,6 +288,13 @@ async function processTenantStepAdvancement(
             since,
           });
         },
+        contact: cachedConditionContext({
+          now,
+          traits: async () =>
+            (await storeFor(db).workerScanStepAdvancement.getContactTraits({ tenantId, contactId: membership.contactId })) ?? {},
+          countSends: (f) =>
+            storeFor(db).workerScanStepAdvancement.countSends({ tenantId, contactId: membership.contactId, ...f }),
+        }),
       };
 
       // -----------------------------------------------------------------------
@@ -337,6 +347,7 @@ async function processTenantStepAdvancement(
             now,
             exitReason: "condition_met",
             clearConditionError: membership.conditionError !== null,
+            events: exitEvent(tenantId, membership, "condition_met"),
           });
           stats.membershipsExitedCondition++;
           continue;
@@ -439,6 +450,7 @@ async function processTenantStepAdvancement(
             now,
             exitReason: "condition_met",
             clearConditionError: membership.conditionError !== null,
+            events: exitEvent(tenantId, membership, "condition_met"),
           });
           stats.membershipsExitedCondition++;
           continue;
@@ -619,4 +631,12 @@ function isFkViolation(err: unknown): boolean {
     }
   }
   return false;
+}
+
+/** Outbox entry (G5) for a membership exit. */
+function exitEvent(tenantId: string, membership: { id: string; contactId: string; flowId: string }, reason: string) {
+  return {
+    tenantId,
+    outbox: [{ event: "flow.exited", payload: { membership_id: membership.id, contact_id: membership.contactId, flow_id: membership.flowId, reason } }],
+  };
 }

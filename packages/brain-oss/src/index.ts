@@ -191,3 +191,5 @@ export {
   type AssessSuccess,
   type AssessFailure,
 } from "./assess.js";
+
+export { renderMarkdownToHtml, markdownToText } from "./markdown.js";

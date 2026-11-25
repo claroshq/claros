@@ -145,6 +145,7 @@ const PERIODIC = new Set<string>([
   QUEUE.CONTENT_GENERATION,
   QUEUE.GRID_SNAPSHOT,
   QUEUE.ALERTS_DIGEST,
+  QUEUE.WEBHOOK_DELIVERY,
 ]);
 
 /** work() registration order and polling interval (seconds) per queue. */
@@ -163,4 +164,5 @@ const POLLING: ReadonlyArray<readonly [string, number]> = [
   [QUEUE.GRID_SNAPSHOT, 30],
   [QUEUE.DRAIN_MESSAGE, 2],
   [QUEUE.ALERTS_DIGEST, 30],
+  [QUEUE.WEBHOOK_DELIVERY, 5],
 ];

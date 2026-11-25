@@ -93,6 +93,10 @@ import {
   topicBlocks,
   transportPolicyAllows,
   carriesListUnsubscribe,
+  tagHtmlLinks,
+  tagTextLinks,
+  resolveLinkTracking,
+  type LinkTracking,
 } from "@claros/core";
 import type { TenantTransportAdapter, TransportResolver } from "./transport.js";
 import {
@@ -600,7 +604,7 @@ export async function processOneMessage(
         `to a cloudflare transport (${transportInfo?.id}). Cloudflare Email Service is for transactional mail only. ` +
         `Marked failed (transport_policy). Route this mail to another transport.`,
     );
-    await storeFor(db).workerDrain.markFailed(candidate.id, now, "transport_policy");
+    await storeFor(db).workerDrain.markFailed(candidate.id, now, "transport_policy", messageEvent(candidate, "message.failed", { reason: "transport_policy" }));
     return "transport_policy";
   }
 
@@ -632,14 +636,31 @@ export async function processOneMessage(
   const tenantName = tenantSettings?.tenantName ?? "Our Team";
   const brand = tenantSettings?.brand ?? {};
 
+  // Step 8a (G6): UTM parameters and the click id on links to the product's
+  // own domains, in the body only (never the footer or unsubscribe links).
+  let bodyHtml = candidate.bodyHtml ?? "";
+  let bodyText = candidate.bodyText ?? "";
+  if (tenantSettings?.linkTracking) {
+    const label = await storeFor(db).workerDrain.getFlowLabel(candidate.flowId);
+    const ctx = {
+      messageId: candidate.id,
+      flowSlug: label?.slug ?? null,
+      flowName: label?.name ?? null,
+      stepOrder: candidate.flowStepOrder,
+      actionType: null,
+    };
+    bodyHtml = tagHtmlLinks(bodyHtml, tenantSettings.linkTracking, ctx);
+    bodyText = tagTextLinks(bodyText, tenantSettings.linkTracking, ctx);
+  }
+
   const deliveredHtml = wrapInShell({
-    bodyHtml: candidate.bodyHtml ?? "",
+    bodyHtml,
     brand,
     tenantName,
     complianceFooterHtml: shellComplianceHtml,
   });
   const deliveredText = wrapInTextShell({
-    bodyText: candidate.bodyText ?? "",
+    bodyText,
     brand,
     tenantName,
     complianceFooterText: shellComplianceText,
@@ -701,6 +722,7 @@ export async function processOneMessage(
         sendResult.providerMessageId ?? null,
         now,
         transportInfo?.id ?? null,
+        messageEvent(candidate, "message.sent", {}),
       );
       return "sent";
     } else if (sendResult.permanent === true) {
@@ -708,7 +730,8 @@ export async function processOneMessage(
       // CAS: same guard as suppress. If reap already moved the row, this hits
       // 0 rows and the reap outcome wins. The provider's error is kept as the
       // status reason (the send-error alert check reads it, e.g. 401/403).
-      await storeFor(db).workerDrain.markFailed(candidate.id, now, providerErrorReason(sendResult.error));
+      const reason = providerErrorReason(sendResult.error);
+      await storeFor(db).workerDrain.markFailed(candidate.id, now, reason, messageEvent(candidate, "message.failed", { reason: reason ?? null }));
       return "permanent_failure";
     } else {
       // Transient failure: message stays at 'sending'.
@@ -856,6 +879,8 @@ interface TenantDrainSettings {
   tenantName: string;
   brand: BrandSettings;
   publicHost: string | null;
+  /** G6 link tagging, when configured. */
+  linkTracking?: LinkTracking | null;
 }
 
 /**
@@ -880,5 +905,11 @@ async function resolveTenantDrainSettings(db: Db, tenantId: string): Promise<Ten
     tenantName: tenantRow.name,
     brand,
     publicHost: tenantRow.publicHost ?? null,
+    linkTracking: resolveLinkTracking(settings),
   };
+}
+
+/** Outbox entry (G5) for a send outcome of a drained message. */
+function messageEvent(candidate: { id: string; tenantId: string }, event: string, extra: Record<string, unknown>) {
+  return { tenantId: candidate.tenantId, outbox: [{ event, payload: { message_id: candidate.id, ...extra } }] };
 }

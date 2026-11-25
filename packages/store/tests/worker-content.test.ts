@@ -42,6 +42,7 @@ for (const factory of testBackends()) {
           membershipId: expect.any(String),
           flowStepOrder: expect.any(Number),
           brainActionType: null,
+          forcedActionType: null,
         });
         expect((await getMessage(b, m1)).status).toBe("generating");
         expect((await getMessage(b, m1)).updatedAt).toEqual(NOW);

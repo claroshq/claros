@@ -3,6 +3,8 @@
  */
 import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type {
   WorkerContentQueries,
   WorkerContentTemplate,
@@ -10,6 +12,20 @@ import type {
 } from "../areas/worker-content.js";
 
 export function pgWorkerContent(db: PgDb): WorkerContentQueries {
+  /** Run a CAS; with outbox entries, in a transaction that writes them when the CAS won. */
+  async function withOutbox(
+    events: { tenantId: string; outbox: OutboxEntry[] } | undefined,
+    now: Date,
+    cas: (tx: PgDb) => Promise<boolean>,
+  ): Promise<boolean> {
+    if (!events || events.outbox.length === 0) return cas(db);
+    return db.transaction(async (tx) => {
+      const won = await cas(tx as unknown as PgDb);
+      if (won) await pgWriteOutbox(tx as unknown as PgDb, events.tenantId, events.outbox, now);
+      return won;
+    });
+  }
+
   return {
     /**
      * Uses a CTE with FOR UPDATE SKIP LOCKED to:
@@ -31,6 +47,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         membership_id: string;
         flow_step_order: number | null;
         brain_action_type: string | null;
+        forced_action_type: string | null;
       }>(sql`
         WITH candidates AS (
           SELECT lm.id
@@ -45,9 +62,9 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
           UPDATE lifecycle_messages
           SET status = 'generating', updated_at = ${now}
           WHERE id IN (SELECT id FROM candidates)
-          RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type
+          RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type
         )
-        SELECT id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type
+        SELECT id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type
         FROM claimed
       `);
 
@@ -59,6 +76,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         membershipId: row.membership_id,
         flowStepOrder: row.flow_step_order,
         brainActionType: row.brain_action_type,
+        forcedActionType: row.forced_action_type,
       }));
     },
 
@@ -130,8 +148,8 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
       return gatedResult.rows.length > 0;
     },
 
-    async completeDraft(messageId, targetStatus, { subject, bodyHtml, bodyText }, approvedAt, now) {
-      const finalResult = await db.execute<{ id: string }>(sql`
+    async completeDraft(messageId, targetStatus, { subject, bodyHtml, bodyText }, approvedAt, now, events) {
+      return withOutbox(events, now, async (tx) => (await tx.execute<{ id: string }>(sql`
         UPDATE lifecycle_messages
         SET
           status = ${targetStatus},
@@ -143,12 +161,11 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         WHERE id = ${messageId}
           AND status = 'awaiting_content'
         RETURNING id
-      `);
-      return finalResult.rows.length > 0;
+      `)).rows.length > 0);
     },
 
-    async completeTemplate(messageId, targetStatus, { subject, bodyHtml, bodyText }, approvedAt, reasoning, now) {
-      const finalResult = await db.execute<{ id: string }>(sql`
+    async completeTemplate(messageId, targetStatus, { subject, bodyHtml, bodyText }, approvedAt, reasoning, now, events) {
+      return withOutbox(events, now, async (tx) => (await tx.execute<{ id: string }>(sql`
         UPDATE lifecycle_messages
         SET
           status = ${targetStatus},
@@ -161,8 +178,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         WHERE id = ${messageId}
           AND status = 'generating'
         RETURNING id
-      `);
-      return finalResult.rows.length > 0;
+      `)).rows.length > 0);
     },
 
     async getFlowApprovalMode(flowId) {

@@ -5,6 +5,8 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { contactTopics, topics } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type { ContactTopicStatusRow } from "../areas/shared-topics.js";
 
 /** Every topic of the tenant with the contact's explicit status (null = default). */
@@ -65,10 +67,15 @@ export async function setContactTopicStatuses(
     statuses: Array<{ topicId: string; status: "subscribed" | "unsubscribed" }>;
     source: string;
     now: Date;
+    /** Outbox entries (G5) written in the same transaction. */
+    outbox?: OutboxEntry[];
   },
 ): Promise<void> {
   if (input.statuses.length === 0) return;
   await db.transaction(async (tx) => {
+    if (input.outbox && input.outbox.length > 0) {
+      await pgWriteOutbox(tx as unknown as PgDb, input.tenantId, input.outbox, input.now);
+    }
     for (const s of input.statuses) {
       await tx.execute(
         upsertContactTopicSql({

@@ -17,8 +17,15 @@
  * reconciled out of the queue with a quiet notice, not an error banner.
  *
  * Pagination is cursor-based; the queue appends via "Load more".
+ * Critical-class flows (dunning, trial ending) come first.
+ *
+ * Reviewer actions (G20): edit subject and body (Markdown; the drafted
+ * version is kept), regenerate (optionally forcing an action type), exclude
+ * the person (suppression plus every unsent message cancelled), and for
+ * approved messages not sent yet, cancel or pull back to review.
+ * Keyboard: j/k move, a approve, r reject, e edit (not while typing).
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Inbox } from "lucide-react";
 import {
   useMessageQueue,
@@ -28,6 +35,12 @@ import {
   useBulkRejectMessages,
   useFailedMessages,
   useRetryMessage,
+  useEditMessage,
+  useRegenerateMessage,
+  useExcludeContact,
+  useApprovedMessages,
+  useCancelMessage,
+  useUnapproveMessage,
   removeFromQueue,
 } from "../messages.js";
 import { useFlows } from "../flows.js";
@@ -102,6 +115,9 @@ function QueueItem({ message, flowName, active, checked, onPreview, onToggleChec
           {contactLabel(message)}
         </span>
         <span className="mt-0.5 block truncate text-[13px] text-foreground">
+          {message.flow?.class === "critical" && (
+            <span className="mr-1.5 rounded-sm bg-danger-soft px-1 text-[11px] font-medium text-danger">critical</span>
+          )}
           {message.subject ?? "(no subject)"}
         </span>
         <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
@@ -251,6 +267,107 @@ function FailedSection() {
   );
 }
 
+/**
+ * Approved messages the drain has not sent yet: a reviewer can cancel one
+ * (terminal) or pull it back into the review queue. Collapsed, like the
+ * failed list.
+ */
+function ApprovedSection() {
+  const approved = useApprovedMessages();
+  const cancel = useCancelMessage();
+  const unapprove = useUnapproveMessage();
+  const [error, setError] = useState<string | null>(null);
+  const items = approved.data?.messages ?? [];
+  if (approved.isLoading || items.length === 0) return null;
+  const onError = (err: unknown) => {
+    const e = err as MessageActionError;
+    setError(e?.status === 409 ? `Already ${e.currentStatus ?? "moved on"}; nothing changed.` : (e?.message ?? "Action failed."));
+  };
+  return (
+    <details className="group mt-6 rounded-lg border border-border bg-card">
+      <summary className="flex cursor-pointer select-none items-center gap-3 px-6 py-4">
+        <span className="text-[15px] font-medium text-foreground">Approved, not sent yet</span>
+        <Badge variant="neutral">{items.length}</Badge>
+        <span className="flex-1" />
+        <span className="text-[13px] text-muted-foreground transition-transform duration-(--dur-fast) group-open:rotate-90">
+          &rsaquo;
+        </span>
+      </summary>
+      <div className="border-t border-border px-6 pb-6">
+        <ul className="mt-2 divide-y divide-border">
+          {items.map((m) => (
+            <li key={m.id} className="flex items-center justify-between gap-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-medium text-foreground">{m.subject ?? "(no subject)"}</p>
+                <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+                  to {contactLabel(m)}{m.waiting_reason ? ` · ${m.waiting_reason}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" disabled={unapprove.isPending} onClick={() => { setError(null); unapprove.mutate(m.id, { onError }); }}>
+                  Back to review
+                </Button>
+                <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => { setError(null); cancel.mutate(m.id, { onError }); }}>
+                  Cancel send
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {error && <p className="mt-3 text-[14px] text-muted-foreground" role="status">{error}</p>}
+      </div>
+    </details>
+  );
+}
+
+/** Inline editor for the draft under review: subject and Markdown body. */
+function DraftEditor({ message, onDone }: { message: Message; onDone: (notice: string | null) => void }) {
+  const edit = useEditMessage();
+  const [subject, setSubject] = useState(message.subject ?? "");
+  const [body, setBody] = useState(message.body_text ?? "");
+  function save() {
+    edit.mutate(
+      { id: message.id, subject: subject.trim(), body_markdown: body },
+      {
+        onSuccess: () => onDone("Draft updated. The drafted version is kept on the message."),
+        onError: (err) => {
+          const e = err as unknown as MessageActionError;
+          onDone(e?.status === 409 ? `That draft is already ${e.currentStatus ?? "handled"}; the edit was not saved.` : `Could not save: ${e?.message ?? "unexpected error"}.`);
+        },
+      },
+    );
+  }
+  return (
+    <div className="mt-5 space-y-3">
+      <label className="block text-[13px] font-medium text-muted-foreground">
+        Subject
+        <input
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          className="mt-1 h-9 w-full rounded-md border border-border bg-card px-3 text-[14px] text-foreground"
+        />
+      </label>
+      <label className="block text-[13px] font-medium text-muted-foreground">
+        Body (Markdown)
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={14}
+          className="mt-1 w-full rounded-md border border-border bg-card p-3 font-mono text-[13px] text-foreground"
+        />
+      </label>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={save} disabled={edit.isPending || subject.trim().length === 0 || body.trim().length === 0}>
+          {edit.isPending ? "Saving..." : "Save edit"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => onDone(null)} disabled={edit.isPending}>
+          Discard
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -262,7 +379,11 @@ export default function ApprovalsPage() {
   const reject = useRejectMessage();
   const bulkApprove = useBulkApproveMessages();
   const bulkReject = useBulkRejectMessages();
+  const regenerate = useRegenerateMessage();
+  const exclude = useExcludeContact();
   const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [forcedAction, setForcedAction] = useState("");
 
   const messages = useMemo(
     () => queue.data?.pages.flatMap((p) => p.messages) ?? [],
@@ -299,7 +420,13 @@ export default function ApprovalsPage() {
   }, [messages, selectedId, checkedIds.size]);
 
   const selected = messages.find((m) => m.id === selectedId) ?? null;
-  const actionPending = approve.isPending || reject.isPending;
+  const actionPending = approve.isPending || reject.isPending || regenerate.isPending || exclude.isPending;
+
+  // Leave edit mode when the selection changes.
+  useEffect(() => {
+    setEditing(false);
+    setForcedAction("");
+  }, [selectedId]);
   const bulkPending = bulkApprove.isPending || bulkReject.isPending;
 
   function handleActionError(err: unknown, verb: string) {
@@ -333,6 +460,61 @@ export default function ApprovalsPage() {
       onError: (err) => handleActionError(err, "reject"),
     });
   }
+
+  function handleRegenerate() {
+    if (!selected) return;
+    setNotice(null);
+    const actionType = forcedAction.trim() || undefined;
+    regenerate.mutate(
+      { id: selected.id, actionType },
+      {
+        onSuccess: () => setNotice(actionType ? `Sent back for a new draft as "${actionType}".` : "Sent back for a new draft."),
+        onError: (err) => handleActionError(err, "regenerate"),
+      },
+    );
+  }
+
+  function handleExclude() {
+    if (!selected) return;
+    const who = contactLabel(selected);
+    if (!window.confirm(`Exclude ${who} from lifecycle mail? Their address is suppressed and every message not sent yet is cancelled.`)) return;
+    setNotice(null);
+    exclude.mutate(selected.contact_id, {
+      onSuccess: (r) => setNotice(`${who} excluded. ${r.cancelled.length} unsent ${r.cancelled.length === 1 ? "message" : "messages"} cancelled.`),
+      onError: (err) => setNotice(`Could not exclude: ${err instanceof Error ? err.message : "unexpected error"}.`),
+    });
+  }
+
+  // Keyboard: j/k move through the queue, a approve, r reject, e edit.
+  const onKey = useCallback(
+    (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || messages.length === 0) return;
+      const index = messages.findIndex((m) => m.id === selectedId);
+      if (e.key === "j" || e.key === "k") {
+        const next = e.key === "j" ? Math.min(index + 1, messages.length - 1) : Math.max(index - 1, 0);
+        setSelectedId(messages[next]!.id);
+        setNotice(null);
+        e.preventDefault();
+      } else if (e.key === "a" && !editing && !actionPending) {
+        handleApprove();
+        e.preventDefault();
+      } else if (e.key === "r" && !editing && !actionPending) {
+        handleReject();
+        e.preventDefault();
+      } else if (e.key === "e" && !editing) {
+        setEditing(true);
+        e.preventDefault();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, selectedId, editing, actionPending],
+  );
+  useEffect(() => {
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onKey]);
 
   function toggleCheck(id: string) {
     setCheckedIds((prev) => {
@@ -508,16 +690,44 @@ export default function ApprovalsPage() {
                     </span>
                   </p>
                 </div>
-                {selected.brain_action_type && (
-                  <span className="shrink-0 rounded-full bg-sunken px-2.5 py-1 font-mono text-[12px] text-muted-foreground">
-                    {selected.brain_action_type}
-                  </span>
-                )}
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  {selected.flow?.class === "critical" && <Badge variant="danger">critical</Badge>}
+                  {selected.brain_action_type && (
+                    <span className="rounded-full bg-sunken px-2.5 py-1 font-mono text-[12px] text-muted-foreground">
+                      {selected.brain_action_type}
+                    </span>
+                  )}
+                  {selected.edited_at && (
+                    <span className="text-[12px] text-muted-foreground">edited</span>
+                  )}
+                </div>
               </div>
 
-              <div className="mt-5">
-                <DraftBody message={selected} />
-              </div>
+              {editing ? (
+                <DraftEditor
+                  message={selected}
+                  onDone={(text) => {
+                    setEditing(false);
+                    if (text) setNotice(text);
+                  }}
+                />
+              ) : (
+                <div className="mt-5">
+                  <DraftBody message={selected} />
+                </div>
+              )}
+
+              {selected.original && !editing && (
+                <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
+                  <summary className="cursor-pointer select-none text-[14px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                    As drafted
+                  </summary>
+                  <p className="mt-2 text-[14px] font-medium text-foreground">{selected.original.subject}</p>
+                  <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[13px] text-muted-foreground">
+                    {selected.original.body_text}
+                  </pre>
+                </details>
+              )}
 
               {selected.brain_reasoning && (
                 <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
@@ -550,14 +760,34 @@ export default function ApprovalsPage() {
                 >
                   {reject.isPending ? "Rejecting..." : "Reject"}
                 </Button>
+                <Button variant="ghost" onClick={() => setEditing((v) => !v)} disabled={actionPending}>
+                  Edit
+                </Button>
                 <span className="text-[13px] text-muted-foreground">
-                  Approval queues it to send. Rejection is final.
+                  Approval queues it to send. Rejection is final. Keys: j/k, a, r, e.
                 </span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  value={forcedAction}
+                  onChange={(e) => setForcedAction(e.target.value)}
+                  placeholder="Force action type (optional)"
+                  className="h-8 w-56 rounded-md border border-border bg-card px-2.5 font-mono text-[13px] text-foreground"
+                />
+                <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={actionPending}>
+                  {regenerate.isPending ? "Sending back..." : "Regenerate"}
+                </Button>
+                <span className="flex-1" />
+                <Button variant="outline" size="sm" onClick={handleExclude} disabled={actionPending}>
+                  Exclude person
+                </Button>
               </div>
             </div>
           )}
         </div>
       )}
+
+      <ApprovedSection />
 
       <FailedSection />
 

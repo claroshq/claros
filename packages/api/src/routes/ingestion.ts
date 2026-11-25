@@ -10,13 +10,15 @@
  *
  * Key kinds:
  *   publishable - browser-embeddable, write-only, optional origin allowlist,
- *                 stricter rate limit. Prefix cl_pub_.
- *   secret      - server-side. Prefix cl_live_ (matches the pre-existing
- *                 README convention).
+ *                 stricter rate limit. Prefix clr_pk_.
+ *   secret      - server-side ingestion. Prefix clr_sk_.
+ *   admin       - management API key of the product (G1), with scopes.
+ *                 Prefix clr_ak_. Owner only (create, update, revoke).
+ * Keys created before the clr_ prefixes (cl_pub_, cl_live_) keep working.
  *
  * Only the SHA-256 hash of a key is stored. The raw value is returned by
  * POST once and is unrecoverable afterwards; the prefix column supports
- * masked display (cl_pub_ab...).
+ * masked display (clr_pk_a...).
  *
  * GET /v1/ingestion/status powers the "waiting for your first event"
  * indicator on the Integrate screen. Events queries are bounded to recent
@@ -30,12 +32,15 @@ import type { AppContext } from "../http/env.js";
 import { z } from "zod";
 import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
+import { ADMIN_SCOPES, KEY_PREFIX } from "../http/admin-auth.js";
 
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
-const KEY_KINDS = ["publishable", "secret"] as const;
+const KEY_KINDS = ["publishable", "secret", "admin"] as const;
+
+const scopesSchema = z.array(z.enum(ADMIN_SCOPES)).min(1).max(ADMIN_SCOPES.length);
 
 /**
  * An origin entry must be a bare origin: scheme + host + optional port,
@@ -59,12 +64,14 @@ const createKeySchema = z.object({
   kind: z.enum(KEY_KINDS),
   label: z.string().max(120).optional(),
   allowed_origins: z.array(originSchema).max(50).optional(),
+  scopes: scopesSchema.optional(),
 });
 
 const updateKeySchema = z
   .object({
     label: z.string().max(120).nullable().optional(),
     allowed_origins: z.array(originSchema).max(50).optional(),
+    scopes: scopesSchema.optional(),
   })
   .strict();
 
@@ -91,6 +98,7 @@ interface KeyRow {
   prefix: string;
   label: string | null;
   allowedOrigins: string[] | null;
+  scopes?: string[] | null;
   lastUsedAt: Date | null;
   createdAt: Date | null;
   revokedAt: Date | null;
@@ -103,6 +111,7 @@ function serializeKey(row: KeyRow) {
     prefix: row.prefix,
     label: row.label,
     allowed_origins: row.allowedOrigins ?? [],
+    ...(row.kind === "admin" ? { scopes: row.scopes ?? [] } : {}),
     last_used_at: row.lastUsedAt?.toISOString() ?? null,
     created_at: row.createdAt?.toISOString() ?? null,
     revoked_at: row.revokedAt?.toISOString() ?? null,
@@ -136,18 +145,26 @@ export default function ingestionRoutes() {
     if (!parsed.success) {
       return validationError(c, parsed.error.issues);
     }
-    const { kind, label, allowed_origins } = parsed.data;
+    const { kind, label, allowed_origins, scopes } = parsed.data;
 
-    if (kind === "secret" && allowed_origins && allowed_origins.length > 0) {
+    if (kind !== "publishable" && allowed_origins && allowed_origins.length > 0) {
       return c.json({ error: "allowed_origins applies to publishable keys only." }, 400);
+    }
+    if (kind === "admin") {
+      if (c.var.tenant!.userRole !== "owner") {
+        return c.json({ error: "Forbidden: only owners manage admin keys." }, 403);
+      }
+      if (!scopes) {
+        return c.json({ error: "Admin keys need scopes.", scopes: ADMIN_SCOPES }, 400);
+      }
+    } else if (scopes) {
+      return c.json({ error: "scopes applies to admin keys only." }, 400);
     }
 
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
 
-    const raw =
-      (kind === "publishable" ? "cl_pub_" : "cl_live_") +
-      randomBytes(32).toString("base64url");
+    const raw = KEY_PREFIX[kind] + randomBytes(32).toString("base64url");
     const keyHash = createHash("sha256").update(raw).digest("hex");
 
     const row = await storeFor(db).apiIngestion.createKey({
@@ -157,6 +174,7 @@ export default function ingestionRoutes() {
       label: label ?? null,
       kind,
       allowedOrigins: kind === "publishable" ? (allowed_origins ?? null) : null,
+      scopes: kind === "admin" ? [...new Set(scopes)] : null,
     });
 
     return c.json({ key: raw, ...serializeKey(row!) }, 201);
@@ -182,7 +200,11 @@ export default function ingestionRoutes() {
       return c.json({ error: "Key not found." }, 404);
     }
 
-    const updates: { label?: string | null; allowedOrigins?: string[] } = {};
+    if (existing.kind === "admin" && c.var.tenant!.userRole !== "owner") {
+      return c.json({ error: "Forbidden: only owners manage admin keys." }, 403);
+    }
+
+    const updates: { label?: string | null; allowedOrigins?: string[]; scopes?: string[] } = {};
     if ("label" in parsed.data) {
       updates.label = parsed.data.label;
     }
@@ -191,6 +213,12 @@ export default function ingestionRoutes() {
         return c.json({ error: "allowed_origins applies to publishable keys only." }, 400);
       }
       updates.allowedOrigins = parsed.data.allowed_origins;
+    }
+    if (parsed.data.scopes !== undefined) {
+      if (existing.kind !== "admin") {
+        return c.json({ error: "scopes applies to admin keys only." }, 400);
+      }
+      updates.scopes = [...new Set(parsed.data.scopes)];
     }
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "Nothing to update." }, 400);
@@ -212,6 +240,10 @@ export default function ingestionRoutes() {
     const existing = await storeFor(db).apiIngestion.findKeyRevocation(tenantId, params.id);
     if (!existing) {
       return c.json({ error: "Key not found." }, 404);
+    }
+    const kind = await storeFor(db).apiIngestion.findKeyKind(tenantId, params.id);
+    if (kind?.kind === "admin" && c.var.tenant!.userRole !== "owner") {
+      return c.json({ error: "Forbidden: only owners manage admin keys." }, 403);
     }
 
     if (existing.revokedAt === null) {

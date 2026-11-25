@@ -1,0 +1,489 @@
+/**
+ * Config as code (G2): compare a config document with the product's current
+ * state and produce the changes (for ?dry_run=1 and the apply response) and
+ * the row-level operations the store applies in one atomic unit.
+ *
+ * Pure apart from id and secret generation, which the caller injects.
+ * Idempotent by construction: an item whose normalized fields equal the
+ * current row produces no change, so applying a document twice yields an
+ * empty diff the second time.
+ */
+import type { ClarosConfig, ConfigFlow } from "./schema.js";
+import { ANALYTICS_ENDPOINT_SLUG, ANALYTICS_SOURCE_EVENTS } from "../webhooks.js";
+
+export interface StateTopic {
+  id: string;
+  slug: string;
+  name: string;
+  kind: string;
+  description: string | null;
+  defaultSubscribed: boolean;
+}
+export interface StateTemplate {
+  id: string;
+  slug: string;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string | null;
+  category: string | null;
+  isActive: boolean | null;
+}
+export interface StateFlow {
+  id: string;
+  slug: string | null;
+  name: string;
+  description: string | null;
+  status: string | null;
+  triggerType: string;
+  triggerConfig: unknown;
+  steps: unknown;
+  compiledPlan: unknown;
+  promptSource: string | null;
+  contentMode: string | null;
+  approvalMode: string | null;
+  flowClass: string;
+  priority: number | null;
+  reentryPolicy: string;
+  reentryCooldownDays: number | null;
+  topicId: string | null;
+}
+export interface StateTransport {
+  id: string;
+  name: string | null;
+  kind: string;
+  isActive: boolean;
+}
+export interface StateEndpoint {
+  id: string;
+  slug: string;
+  kind: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  /** Encrypted secret, or null. */
+  secret: string | null;
+  config: Record<string, unknown> | null;
+}
+export interface ConfigState {
+  settings: Record<string, unknown>;
+  locale: string | null;
+  configVersion: number;
+  topics: StateTopic[];
+  templates: StateTemplate[];
+  flows: StateFlow[];
+  transports: StateTransport[];
+  endpoints: StateEndpoint[];
+}
+
+export type ConfigChangeKind = "setting" | "routing" | "topic" | "template" | "flow" | "webhook" | "analytics";
+export interface ConfigChange {
+  kind: ConfigChangeKind;
+  key: string;
+  action: "create" | "update" | "delete" | "archive";
+  fields?: string[];
+}
+
+export interface FlowValues {
+  slug: string;
+  name: string;
+  description: string | null;
+  status: string;
+  triggerType: string;
+  triggerConfig: Record<string, unknown>;
+  steps: unknown[];
+  compiledPlan: Record<string, unknown> | null;
+  compileStatus: string | null;
+  promptSource: string | null;
+  contentMode: string;
+  approvalMode: string;
+  flowClass: string;
+  priority: number;
+  reentryPolicy: string;
+  reentryCooldownDays: number;
+  topicId: string | null;
+}
+
+export type ConfigOp =
+  | { op: "upsertTopic"; id: string; create: boolean; values: { slug: string; name: string; kind: string; description: string | null; defaultSubscribed: boolean } }
+  | { op: "deleteTopic"; id: string }
+  | { op: "upsertTemplate"; id: string; create: boolean; values: { slug: string; name: string; subject: string; bodyHtml: string; bodyText: string | null; category: string | null } }
+  | { op: "deleteTemplate"; id: string }
+  | { op: "upsertFlow"; id: string; create: boolean; values: FlowValues; compile: boolean }
+  | { op: "archiveFlow"; id: string }
+  | {
+      op: "upsertEndpoint";
+      id: string;
+      create: boolean;
+      values: { slug: string; kind: string; url: string; events: string[]; enabled: boolean; config: Record<string, unknown> | null };
+      /** Plain secret to encrypt and store; undefined keeps the current one. */
+      secret?: string;
+    }
+  | { op: "deleteEndpoint"; id: string }
+  | { op: "setSettings"; patch: Record<string, unknown> }
+  | { op: "setLocale"; locale: string | null };
+
+export interface ConfigPlan {
+  changes: ConfigChange[];
+  ops: ConfigOp[];
+  errors: string[];
+  /** Secrets generated for new webhooks (slug -> secret), returned once by apply. */
+  generatedSecrets: Record<string, string>;
+}
+
+export interface PlanDeps {
+  newId(): string;
+  newSecret(): string;
+  /** Decrypt a stored secret (to compare with the document); null when it cannot be read. */
+  readSecret(encrypted: string): string | null;
+}
+
+/** Deep equality with object keys in any order (jsonb does not keep key order). */
+export function sameJson(a: unknown, b: unknown): boolean {
+  return stable(a) === stable(b);
+}
+
+function stable(v: unknown): string {
+  if (v === undefined) return "null";
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .filter((k) => o[k] !== undefined)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stable(o[k])}`)
+    .join(",")}}`;
+}
+
+/** Drop undefined values (so a normalized object compares like its stored JSON). */
+function clean<T extends Record<string, unknown>>(o: T): T {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+}
+
+function diffFields(current: Record<string, unknown>, next: Record<string, unknown>, keys: string[]): string[] {
+  return keys.filter((k) => !sameJson(current[k], next[k]));
+}
+
+const SETTINGS_KEYS = ["brand", "throttle", "postal_address", "links", "link_tracking", "brain", "data_sources", "date_traits", "activation_events"] as const;
+
+export function planConfig(config: ClarosConfig, state: ConfigState, deps: PlanDeps): ConfigPlan {
+  const changes: ConfigChange[] = [];
+  const ops: ConfigOp[] = [];
+  const errors: string[] = [];
+  const generatedSecrets: Record<string, string> = {};
+  const prune = config.prune === true;
+
+  // --- Settings -------------------------------------------------------------
+  const patch: Record<string, unknown> = {};
+  const s = config.settings ?? {};
+  for (const key of SETTINGS_KEYS) {
+    const want = (s as Record<string, unknown>)[key];
+    if (want === undefined) continue;
+    const have = state.settings[key];
+    if (want === null) {
+      if (have !== undefined && have !== null) {
+        patch[key] = null;
+        changes.push({ kind: "setting", key, action: "delete" });
+      }
+      continue;
+    }
+    const normalized = key === "brain" ? clean(want as Record<string, unknown>) : want;
+    if (!sameJson(have, normalized)) {
+      patch[key] = normalized;
+      changes.push({ kind: "setting", key, action: have === undefined ? "create" : "update" });
+    }
+  }
+  if (s.locale !== undefined && (s.locale ?? null) !== state.locale) {
+    ops.push({ op: "setLocale", locale: s.locale ?? null });
+    changes.push({ kind: "setting", key: "locale", action: state.locale === null ? "create" : s.locale === null ? "delete" : "update" });
+  }
+
+  // --- Transport routing (by name) -------------------------------------------
+  if (config.transports?.routing) {
+    const want = config.transports.routing;
+    const current = (state.settings.transport_routing ?? {}) as Record<string, unknown>;
+    const next: Record<string, string> = {};
+    for (const route of ["transactional", "default"] as const) {
+      const name = want[route];
+      if (name === undefined) {
+        if (typeof current[route] === "string") next[route] = current[route] as string;
+        continue;
+      }
+      if (name === null) continue;
+      const t = state.transports.filter((x) => x.isActive && x.name === name);
+      if (t.length === 0) {
+        errors.push(`transports.routing.${route}: no active transport named '${name}'`);
+        continue;
+      }
+      if (t.length > 1) {
+        errors.push(`transports.routing.${route}: more than one active transport is named '${name}'`);
+        continue;
+      }
+      if (route === "default" && t[0]!.kind === "cloudflare") {
+        errors.push(
+          `transports.routing.default: '${name}' is a cloudflare transport; Cloudflare Email Service sends transactional mail only. Route lifecycle and marketing mail to a resend or smtp transport.`,
+        );
+        continue;
+      }
+      next[route] = t[0]!.id;
+    }
+    if (!sameJson(current, next)) {
+      patch.transport_routing = Object.keys(next).length > 0 ? next : null;
+      changes.push({ kind: "routing", key: "transport_routing", action: Object.keys(current).length === 0 ? "create" : "update" });
+    }
+  }
+
+  // --- Topics ----------------------------------------------------------------
+  const topicIdBySlug = new Map(state.topics.map((t) => [t.slug, t.id]));
+  const listedTopics = new Set<string>();
+  for (const t of config.topics ?? []) {
+    listedTopics.add(t.slug);
+    const cur = state.topics.find((x) => x.slug === t.slug);
+    const values = {
+      slug: t.slug,
+      name: t.name,
+      kind: t.kind,
+      description: t.description ?? null,
+      defaultSubscribed: t.default_subscribed ?? true,
+    };
+    if (!cur) {
+      const id = deps.newId();
+      topicIdBySlug.set(t.slug, id);
+      ops.push({ op: "upsertTopic", id, create: true, values });
+      changes.push({ kind: "topic", key: t.slug, action: "create" });
+      continue;
+    }
+    const fields = diffFields(cur as unknown as Record<string, unknown>, values, ["name", "kind", "description", "defaultSubscribed"]);
+    if (fields.length > 0) {
+      ops.push({ op: "upsertTopic", id: cur.id, create: false, values });
+      changes.push({ kind: "topic", key: t.slug, action: "update", fields });
+    }
+  }
+
+  // --- Templates -------------------------------------------------------------
+  const templateSlugs = new Set(state.templates.map((t) => t.slug));
+  const listedTemplates = new Set<string>();
+  for (const t of config.templates ?? []) {
+    listedTemplates.add(t.slug);
+    templateSlugs.add(t.slug);
+    const cur = state.templates.find((x) => x.slug === t.slug);
+    const values = { slug: t.slug, name: t.name, subject: t.subject, bodyHtml: t.body_html, bodyText: t.body_text ?? null, category: t.category ?? null };
+    if (!cur) {
+      ops.push({ op: "upsertTemplate", id: deps.newId(), create: true, values });
+      changes.push({ kind: "template", key: t.slug, action: "create" });
+      continue;
+    }
+    const fields = diffFields({ ...cur } as unknown as Record<string, unknown>, values, ["name", "subject", "bodyHtml", "bodyText", "category"]);
+    if (cur.isActive === false) fields.push("isActive");
+    if (fields.length > 0) {
+      ops.push({ op: "upsertTemplate", id: cur.id, create: false, values });
+      changes.push({ kind: "template", key: t.slug, action: "update", fields });
+    }
+  }
+
+  // --- Flows -----------------------------------------------------------------
+  const listedFlows = new Set<string>();
+  const remainingTemplateRefs = new Set<string>();
+  for (const f of config.flows ?? []) {
+    listedFlows.add(f.slug);
+    const cur = state.flows.find((x) => x.slug === f.slug);
+    if (cur && cur.status === "archived") {
+      errors.push(`flows.${f.slug}: the flow with this slug is archived; use a new slug`);
+      continue;
+    }
+    let topicId: string | null = null;
+    if (f.topic) {
+      const id = topicIdBySlug.get(f.topic);
+      if (!id || (prune && config.topics && !listedTopics.has(f.topic))) {
+        errors.push(`flows.${f.slug}: unknown topic '${f.topic}'`);
+        continue;
+      }
+      topicId = id;
+    } else if (f.topic === undefined && cur) {
+      topicId = cur.topicId;
+    }
+    for (const step of f.steps ?? []) {
+      if (step.template_ref) {
+        remainingTemplateRefs.add(step.template_ref);
+        if (!templateSlugs.has(step.template_ref)) {
+          errors.push(`flows.${f.slug}: step ${step.order} references unknown template '${step.template_ref}'`);
+        }
+      }
+    }
+    const values = flowValues(f, cur, topicId);
+    if (!cur) {
+      ops.push({ op: "upsertFlow", id: deps.newId(), create: true, values, compile: values.promptSource !== null });
+      changes.push({ kind: "flow", key: f.slug, action: "create" });
+      continue;
+    }
+    const current: Record<string, unknown> = {
+      name: cur.name,
+      description: cur.description,
+      status: cur.status,
+      triggerType: cur.triggerType,
+      triggerConfig: cur.triggerConfig,
+      steps: cur.steps,
+      compiledPlan: cur.compiledPlan,
+      promptSource: cur.promptSource,
+      contentMode: cur.contentMode,
+      approvalMode: cur.approvalMode,
+      flowClass: cur.flowClass,
+      priority: cur.priority ?? 0,
+      reentryPolicy: cur.reentryPolicy,
+      reentryCooldownDays: cur.reentryCooldownDays ?? 30,
+      topicId: cur.topicId,
+    };
+    const keys = ["name", "description", "status", "triggerType", "triggerConfig", "contentMode", "approvalMode", "flowClass", "priority", "reentryPolicy", "reentryCooldownDays", "topicId"];
+    if (values.promptSource !== null) keys.push("promptSource");
+    else keys.push("steps", "compiledPlan", "promptSource");
+    const fields = diffFields(current, values as unknown as Record<string, unknown>, keys);
+    if (fields.length === 0) continue;
+    const recompile = values.promptSource !== null && fields.includes("promptSource");
+    if (values.promptSource !== null && !recompile) {
+      // Prompt unchanged: keep the compiled plan the compile worker wrote.
+      values.compiledPlan = (cur.compiledPlan as Record<string, unknown> | null) ?? null;
+      values.compileStatus = null;
+      values.steps = Array.isArray(cur.steps) ? (cur.steps as unknown[]) : [];
+    }
+    ops.push({ op: "upsertFlow", id: cur.id, create: false, values, compile: recompile });
+    changes.push({ kind: "flow", key: f.slug, action: "update", fields });
+  }
+
+  // --- Webhooks and the analytics sink --------------------------------------
+  const listedWebhooks = new Set<string>();
+  for (const w of config.webhooks ?? []) {
+    listedWebhooks.add(w.slug);
+    if (w.slug === ANALYTICS_ENDPOINT_SLUG) {
+      errors.push(`webhooks.${w.slug}: the slug '${ANALYTICS_ENDPOINT_SLUG}' is reserved for settings.analytics`);
+      continue;
+    }
+    const cur = state.endpoints.find((e) => e.slug === w.slug && e.kind === "webhook");
+    const values = { slug: w.slug, kind: "webhook", url: w.url, events: [...w.events].sort(), enabled: w.enabled ?? true, config: null };
+    if (!cur) {
+      const secret = w.secret ?? deps.newSecret();
+      if (!w.secret) generatedSecrets[w.slug] = secret;
+      ops.push({ op: "upsertEndpoint", id: deps.newId(), create: true, values, secret });
+      changes.push({ kind: "webhook", key: w.slug, action: "create" });
+      continue;
+    }
+    const fields = diffFields({ ...cur, events: [...cur.events].sort() } as unknown as Record<string, unknown>, values, ["url", "events", "enabled"]);
+    const secretChanged = w.secret !== undefined && (cur.secret === null || deps.readSecret(cur.secret) !== w.secret);
+    if (secretChanged) fields.push("secret");
+    if (fields.length > 0) {
+      ops.push({ op: "upsertEndpoint", id: cur.id, create: false, values, ...(secretChanged ? { secret: w.secret } : {}) });
+      changes.push({ kind: "webhook", key: w.slug, action: "update", fields });
+    }
+  }
+  const analytics = s.analytics;
+  const curAnalytics = state.endpoints.find((e) => e.kind === "analytics");
+  if (analytics) {
+    const values = {
+      slug: ANALYTICS_ENDPOINT_SLUG,
+      kind: "analytics",
+      url: analytics.endpoint,
+      events: [...ANALYTICS_SOURCE_EVENTS].sort(),
+      enabled: true,
+      config: clean({ sink: analytics.sink, site_key: analytics.site_key }),
+    };
+    if (!curAnalytics) {
+      ops.push({ op: "upsertEndpoint", id: deps.newId(), create: true, values, ...(analytics.secret ? { secret: analytics.secret } : {}) });
+      changes.push({ kind: "analytics", key: ANALYTICS_ENDPOINT_SLUG, action: "create" });
+    } else {
+      const fields = diffFields(
+        { ...curAnalytics, events: [...curAnalytics.events].sort() } as unknown as Record<string, unknown>,
+        values,
+        ["url", "events", "enabled", "config"],
+      );
+      const secretChanged = analytics.secret !== undefined && (curAnalytics.secret === null || deps.readSecret(curAnalytics.secret) !== analytics.secret);
+      if (secretChanged) fields.push("secret");
+      if (fields.length > 0) {
+        ops.push({ op: "upsertEndpoint", id: curAnalytics.id, create: false, values, ...(secretChanged ? { secret: analytics.secret } : {}) });
+        changes.push({ kind: "analytics", key: ANALYTICS_ENDPOINT_SLUG, action: "update", fields });
+      }
+    }
+  } else if (analytics === null && curAnalytics) {
+    ops.push({ op: "deleteEndpoint", id: curAnalytics.id });
+    changes.push({ kind: "analytics", key: ANALYTICS_ENDPOINT_SLUG, action: "delete" });
+  }
+
+  // --- Prune (opt-in): only kinds the document lists --------------------------
+  if (prune) {
+    if (config.flows) {
+      for (const f of state.flows) {
+        if (f.status === "archived" || (f.slug !== null && listedFlows.has(f.slug))) continue;
+        ops.push({ op: "archiveFlow", id: f.id });
+        changes.push({ kind: "flow", key: f.slug ?? `id:${f.id}`, action: "archive" });
+      }
+    }
+    if (config.webhooks) {
+      for (const e of state.endpoints) {
+        if (e.kind !== "webhook" || listedWebhooks.has(e.slug)) continue;
+        ops.push({ op: "deleteEndpoint", id: e.id });
+        changes.push({ kind: "webhook", key: e.slug, action: "delete" });
+      }
+    }
+    if (config.templates) {
+      // Templates still used by a flow that stays (listed, or kept because
+      // flows are not listed) are kept.
+      const keptFlows = config.flows ? [] : state.flows.filter((f) => f.status !== "archived");
+      for (const f of keptFlows) {
+        for (const step of Array.isArray(f.steps) ? (f.steps as Array<{ template_ref?: string }>) : []) {
+          if (step.template_ref) remainingTemplateRefs.add(step.template_ref);
+        }
+      }
+      for (const t of state.templates) {
+        if (listedTemplates.has(t.slug) || remainingTemplateRefs.has(t.slug)) continue;
+        ops.push({ op: "deleteTemplate", id: t.id });
+        changes.push({ kind: "template", key: t.slug, action: "delete" });
+      }
+    }
+    if (config.topics) {
+      for (const t of state.topics) {
+        if (listedTopics.has(t.slug)) continue;
+        // Any flow row (archived ones too) keeps a reference to its topic.
+        const usedBy = state.flows.some((f) => f.topicId === t.id) || (config.flows ?? []).some((f) => f.topic === t.slug);
+        if (usedBy) {
+          errors.push(`prune: topic '${t.slug}' is used by a flow; keep it in the document`);
+          continue;
+        }
+        ops.push({ op: "deleteTopic", id: t.id });
+        changes.push({ kind: "topic", key: t.slug, action: "delete" });
+      }
+    }
+  }
+
+  if (Object.keys(patch).length > 0) ops.push({ op: "setSettings", patch });
+  return { changes, ops, errors, generatedSecrets };
+}
+
+function flowValues(f: ConfigFlow, cur: StateFlow | undefined, topicId: string | null): FlowValues {
+  const { type, ...triggerConfig } = f.trigger;
+  const steps = (f.steps ?? []) as unknown[];
+  const allFixed = f.steps !== undefined && f.steps.every((s) => typeof s.template_ref === "string");
+  const compiledPlan = f.steps
+    ? clean({
+        trigger: { type, condition: triggerConfig },
+        steps: f.steps,
+        exit_conditions: f.exit_conditions && f.exit_conditions.length > 0 ? f.exit_conditions : undefined,
+      })
+    : null;
+  return {
+    slug: f.slug,
+    name: f.name,
+    description: f.description ?? null,
+    status: f.status ?? cur?.status ?? "active",
+    triggerType: type,
+    triggerConfig: triggerConfig as Record<string, unknown>,
+    steps,
+    compiledPlan,
+    compileStatus: f.steps ? "ready" : "pending",
+    promptSource: f.prompt ?? null,
+    contentMode: f.content_mode ?? (allFixed ? "fixed_content" : "ai_drafted"),
+    approvalMode: f.approval_mode ?? "require",
+    flowClass: f.flow_class ?? "nurture",
+    priority: f.priority ?? 0,
+    reentryPolicy: f.reentry?.policy ?? "cooldown",
+    reentryCooldownDays: f.reentry?.cooldown_days ?? 30,
+    topicId,
+  };
+}

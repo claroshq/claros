@@ -24,7 +24,6 @@
     "@claros/core": "*",
     "@claros/db": "*",
     "drizzle-orm": "^0.45.2",
-    "marked": "^18.0.7",
     "pg-boss": "^12.26.2",
     "@claros/store": "*"
   },

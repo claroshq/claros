@@ -11,10 +11,18 @@
  *   and LIMIT) become subqueries in FROM, which SQLite allows.
  * - Integer ms timestamps are returned as Date, JSON text columns parsed.
  */
-import { sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { lifecycleMessages, suppressions } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { ApiContactsQueries, ContactListRow } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
+import { rawBatch } from "./raw-batch.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Statuses a message has before it is handed to the drain (G20 cancel). */
+const NOT_SENT = ["pending_generation", "generating", "awaiting_content", "pending_approval", "approved"];
 
 const DAY_MS = 86_400_000;
 
@@ -217,5 +225,64 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
     listContactTopics({ tenantId, contactId }) {
       return listContactTopicStatuses(db, tenantId, contactId);
     },
-  };
+  
+    async findContactByRef({ tenantId, ref }) {
+      type Row = { id: string; external_id: string; email: string | null };
+      let rows = await db.all<Row>(sql`
+        SELECT id, external_id, email FROM contacts WHERE tenant_id = ${tenantId} AND external_id = ${ref} LIMIT 1
+      `);
+      if (rows.length === 0 && UUID_RE.test(ref)) {
+        rows = await db.all<Row>(sql`
+          SELECT id, external_id, email FROM contacts WHERE tenant_id = ${tenantId} AND id = ${ref.toLowerCase()} LIMIT 1
+        `);
+      }
+      const row = rows[0];
+      return row ? { id: row.id, externalId: row.external_id, email: row.email } : null;
+    },
+
+    async eraseContact({ tenantId, contactId }) {
+      // One batch: all deletes commit together (D1 batch is one transaction).
+      const results = await rawBatch(db, [
+        sql`DELETE FROM message_events WHERE tenant_id = ${tenantId} AND message_id IN (SELECT id FROM lifecycle_messages WHERE tenant_id = ${tenantId} AND contact_id = ${contactId})`,
+        sql`DELETE FROM lifecycle_messages WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM flow_memberships WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM contact_topics WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM contact_conflicts WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM lifecycle_transitions WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM events WHERE tenant_id = ${tenantId} AND contact_id = ${contactId}`,
+        sql`DELETE FROM webhook_outbox WHERE tenant_id = ${tenantId} AND status = 'pending' AND json_extract(payload, '$.contact_id') = ${contactId}`,
+        sql`DELETE FROM contacts WHERE tenant_id = ${tenantId} AND id = ${contactId} RETURNING id`,
+      ]);
+      return (results[8] ?? []).length > 0;
+    },
+
+    async excludeContact({ tenantId, contactId, email, now }) {
+      const statements: unknown[] = [];
+      const lower = email ? email.toLowerCase() : null;
+      if (lower) {
+        const entries = [{ event: "contact.suppressed", payload: { email: lower, reason: "manual", source: "admin", contact_id: contactId } }];
+        const endpoints = await d1OutboxEndpoints(db, tenantId, entries);
+        statements.push(
+          db.insert(suppressions).select(sql`
+            SELECT ${crypto.randomUUID()}, ${tenantId}, ${lower}, 'manual', 'admin', ${now.getTime()}
+            WHERE NOT EXISTS (SELECT 1 FROM suppressions s WHERE s.tenant_id = ${tenantId} AND lower(s.email) = ${lower})
+          `).returning({ id: suppressions.id }),
+          ...d1OutboxInserts(db, tenantId, endpoints, entries, now, { afterChange: true }),
+        );
+      }
+      const cancelIndex = statements.length;
+      statements.push(
+        db
+          .update(lifecycleMessages)
+          .set({ status: "cancelled", statusReason: "excluded", updatedAt: now })
+          .where(and(eq(lifecycleMessages.tenantId, tenantId), eq(lifecycleMessages.contactId, contactId), inArray(lifecycleMessages.status, NOT_SENT)))
+          .returning({ id: lifecycleMessages.id }),
+      );
+      const results = (await db.batch(statements as never)) as unknown[][];
+      return {
+        suppressed: lower ? (results[0] ?? []).length > 0 : false,
+        cancelled: (results[cancelIndex] ?? []).map((r) => (r as { id: string }).id),
+      };
+    },
+};
 }

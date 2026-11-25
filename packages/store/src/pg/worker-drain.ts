@@ -4,9 +4,25 @@
 import { eq, and, sql } from "drizzle-orm";
 import { tenants, contacts, flows, lifecycleMessages, suppressions, topics, contactTopics } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type { WorkerDrainQueries } from "../areas/worker-drain.js";
 
 export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
+  /** Run a CAS; with outbox entries, in a transaction that writes them when the CAS won. */
+  async function withOutbox(
+    events: { tenantId: string; outbox: OutboxEntry[] } | undefined,
+    now: Date,
+    cas: (tx: PgDb) => Promise<boolean>,
+  ): Promise<boolean> {
+    if (!events || events.outbox.length === 0) return cas(db);
+    return db.transaction(async (tx) => {
+      const won = await cas(tx as unknown as PgDb);
+      if (won) await pgWriteOutbox(tx as unknown as PgDb, events.tenantId, events.outbox, now);
+      return won;
+    });
+  }
+
   return {
     /**
      * Uses a CTE with FOR UPDATE SKIP LOCKED to:
@@ -168,8 +184,8 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
       return updated.length > 0;
     },
 
-    async markSent(messageId, providerMessageId, now, transportId) {
-      const updated = await db
+    async markSent(messageId, providerMessageId, now, transportId, events) {
+      return withOutbox(events, now, async (tx) => (await tx
         .update(lifecycleMessages)
         .set({
           status: "sent",
@@ -179,17 +195,15 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
           ...(transportId ? { transportId } : {}),
         })
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
-        .returning({ id: lifecycleMessages.id });
-      return updated.length > 0;
+        .returning({ id: lifecycleMessages.id })).length > 0);
     },
 
-    async markFailed(messageId, now, reason) {
-      const updated = await db
+    async markFailed(messageId, now, reason, events) {
+      return withOutbox(events, now, async (tx) => (await tx
         .update(lifecycleMessages)
         .set({ status: "failed", updatedAt: now, ...(reason ? { statusReason: reason } : {}) })
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
-        .returning({ id: lifecycleMessages.id });
-      return updated.length > 0;
+        .returning({ id: lifecycleMessages.id })).length > 0);
     },
 
     async getContact(contactId) {
@@ -219,6 +233,11 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         )
         .limit(1);
       return suppressionRow.length > 0;
+    },
+
+    async getFlowLabel(flowId) {
+      const rows = await db.select({ slug: flows.slug, name: flows.name }).from(flows).where(eq(flows.id, flowId)).limit(1);
+      return rows[0] ?? null;
     },
 
     async getFlowThrottleInfo(flowId) {

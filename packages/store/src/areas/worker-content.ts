@@ -8,6 +8,8 @@
  */
 
 /** A message claimed for content generation (status already 'generating'). */
+import type { OutboxEntry } from "./shared-outbox.js";
+
 export interface WorkerContentClaimedMessage {
   id: string;
   tenantId: string;
@@ -16,6 +18,8 @@ export interface WorkerContentClaimedMessage {
   membershipId: string;
   flowStepOrder: number | null;
   brainActionType: string | null;
+  /** Set by a regenerate request that forced the action type (G20): decide is skipped. */
+  forcedActionType?: string | null;
 }
 
 /** Rendered content written to a message. */
@@ -56,6 +60,8 @@ export interface WorkerContentQueries {
     fromStatus: "generating" | "awaiting_content",
     reasoning: string,
     now: Date,
+    /** Outbox entries (G5) written with the transition, when it happens. */
+    events?: { tenantId: string; outbox: OutboxEntry[] },
   ): Promise<boolean>;
   /** CAS generating -> skipped with brain_reasoning; true when this call won. */
   markSkipped(messageId: string, reasoning: string, now: Date): Promise<boolean>;
@@ -73,6 +79,8 @@ export interface WorkerContentQueries {
     body: WorkerContentBody,
     approvedAt: Date | null,
     now: Date,
+    /** Outbox entries (G5) written with the transition, when it happens. */
+    events?: { tenantId: string; outbox: OutboxEntry[] },
   ): Promise<boolean>;
   /**
    * CAS generating -> status (pending_approval or approved) with rendered template content and
@@ -85,6 +93,8 @@ export interface WorkerContentQueries {
     approvedAt: Date | null,
     reasoning: string,
     now: Date,
+    /** Outbox entries (G5) written with the transition, when it happens. */
+    events?: { tenantId: string; outbox: OutboxEntry[] },
   ): Promise<boolean>;
   /** The flow's approval_mode, or null when unset or the flow does not exist. */
   getFlowApprovalMode(flowId: string): Promise<string | null>;

@@ -29,6 +29,7 @@ for (const factory of testBackends()) {
         membership_id: expect.any(String),
         flow_step_order: expect.any(Number),
         brain_action_type: "welcome",
+        forced_action_type: null,
       });
       expect(await getMessage(b, id)).toMatchObject({ status: "generating", updatedAt: NOW });
       expect(await b.store.workerProcessMessage.claimPendingGenerationMessage(t, id, NOW)).toBeNull();

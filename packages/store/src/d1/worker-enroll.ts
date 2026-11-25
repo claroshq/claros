@@ -31,6 +31,7 @@ import {
   type PriorMembership,
 } from "@claros/core";
 import type { D1Db } from "./db.js";
+import { d1OutboxEndpoints, d1OutboxInserts, d1OutboxFromSelect, type OutboxEndpoints } from "./outbox.js";
 import type { WorkerEnrollQueries, WorkerEnrollResult } from "../areas/worker-enroll.js";
 
 /** Active nurture-class membership of the contact (correlated predicate body). */
@@ -99,7 +100,25 @@ async function attemptEnrollment(
   contactId: string,
   suppressed: boolean,
   now: Date,
+  endpoints: OutboxEndpoints = [],
 ): Promise<WorkerEnrollResult> {
+  // G5: flow.enrolled after the guarded insert, flow.exited for the evicted
+  // membership, both in the insert's batch (the enrolled event is guarded by
+  // changes(), so a refused insert writes nothing).
+  const membershipId = crypto.randomUUID();
+  const enrolledEvent = () =>
+    d1OutboxInserts(db, tenantId, endpoints, [{ event: "flow.enrolled", payload: { membership_id: membershipId, contact_id: contactId, flow_id: flow.id } }], now, { afterChange: true });
+  const evictedEvent = () =>
+    d1OutboxFromSelect(
+      db,
+      tenantId,
+      endpoints,
+      "flow.exited",
+      sql`flow_memberships src`,
+      sql`src.contact_id = ${contactId} AND src.status = 'exited' AND src.exit_reason = 'priority_override' AND src.exited_at = ${now.getTime()}`,
+      sql`json_object('membership_id', src.id, 'contact_id', src.contact_id, 'flow_id', src.flow_id, 'reason', 'priority_override')`,
+      now,
+    );
   // Guard 1: suppression
   if (suppressed) return { enrolled: false, reason: "suppressed" };
 
@@ -108,10 +127,10 @@ async function attemptEnrollment(
     if (!(await reentryAllowed(db, contactId, flow, now))) {
       return { enrolled: false, reason: "reentry_blocked" };
     }
-    const inserted = await db
+    const insertCritical = db
       .insert(flowMemberships)
       .values({
-        id: crypto.randomUUID(),
+        id: membershipId,
         tenantId,
         contactId,
         flowId: flow.id,
@@ -121,7 +140,8 @@ async function attemptEnrollment(
       })
       .onConflictDoNothing()
       .returning({ id: flowMemberships.id });
-    if (inserted.length === 0) return { enrolled: false, reason: "concurrent_enrollment" };
+    const [inserted] = (await db.batch([insertCritical, ...enrolledEvent()] as never)) as Array<Array<{ id: string }>>;
+    if (!inserted || inserted.length === 0) return { enrolled: false, reason: "concurrent_enrollment" };
     return { enrolled: true, membershipId: inserted[0]!.id, evictedMembershipId: undefined };
   }
 
@@ -170,7 +190,10 @@ async function attemptEnrollment(
   // Guard 3: re-entry policy. Postgres evicts before checking re-entry, so an
   // eviction still happens when re-entry then blocks; keep that order.
   if (!(await reentryAllowed(db, contactId, flow, now))) {
-    if (mustEvict) await evict;
+    if (mustEvict) {
+      const ev = evictedEvent();
+      await db.batch((ev ? [evict, ev] : [evict]) as never);
+    }
     return { enrolled: false, reason: "reentry_blocked" };
   }
 
@@ -182,14 +205,15 @@ async function attemptEnrollment(
   const insert = db
     .insert(flowMemberships)
     .select(sql`
-      SELECT ${crypto.randomUUID()}, ${tenantId}, ${contactId}, ${flow.id}, 1, 'active', ${now.getTime()},
+      SELECT ${membershipId}, ${tenantId}, ${contactId}, ${flow.id}, 1, 'active', ${now.getTime()},
              NULL, NULL, NULL, NULL
       WHERE NOT EXISTS (${activeNurtureExists(contactId)})
     `)
     .onConflictDoNothing()
     .returning({ id: flowMemberships.id });
 
-  const [evicted, inserted] = await db.batch([evict, insert]);
+  const ev = evictedEvent();
+  const [evicted, inserted] = (await db.batch([evict, insert, ...enrolledEvent(), ...(ev ? [ev] : [])] as never)) as Array<Array<{ id: string }>>;
   if (inserted.length === 0) return { enrolled: false, reason: "concurrent_enrollment" };
   return {
     enrolled: true,
@@ -208,9 +232,10 @@ export function d1WorkerEnroll(db: D1Db): WorkerEnrollQueries {
       const criticalFlows = sorted.filter((f) => f.flowClass === "critical");
       const nurtureFlows = sorted.filter((f) => f.flowClass === "nurture");
       const suppressed = await isSuppressed(db, tenantId, contactId);
+      const endpoints = await d1OutboxEndpoints(db, tenantId, [{ event: "flow.enrolled", payload: {} }]);
 
       for (const flow of criticalFlows) {
-        results.push(await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now));
+        results.push(await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now, endpoints));
       }
 
       let nurtureEnrolled = false;
@@ -219,7 +244,7 @@ export function d1WorkerEnroll(db: D1Db): WorkerEnrollQueries {
           results.push({ enrolled: false, reason: "nurture_concurrency:higher_priority_enrolled" });
           continue;
         }
-        const result = await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now);
+        const result = await attemptEnrollment(db, flow, tenantId, contactId, suppressed, now, endpoints);
         results.push(result);
         if (result.enrolled) nurtureEnrolled = true;
         if (!result.enrolled && result.reason.startsWith("nurture_concurrency:existing_priority")) {

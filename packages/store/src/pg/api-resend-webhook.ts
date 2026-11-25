@@ -4,7 +4,8 @@
 import { eq, and, sql } from "drizzle-orm";
 import { lifecycleMessages } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
-import type { ApiResendWebhookQueries } from "../areas/api-resend-webhook.js";
+import type { ApiResendWebhookQueries, OutboxEvents } from "../areas/api-resend-webhook.js";
+import { pgWriteOutbox } from "./outbox.js";
 
 /** A transport_configs row for webhook secret resolution. */
 interface TransportConfigSecretRow extends Record<string, unknown> {
@@ -12,6 +13,16 @@ interface TransportConfigSecretRow extends Record<string, unknown> {
 }
 
 export function pgApiResendWebhook(db: PgDb): ApiResendWebhookQueries {
+  /** Run a change; with outbox entries, in a transaction that writes them when the change happened. */
+  async function withOutbox(events: OutboxEvents | undefined, change: (db: PgDb) => Promise<boolean>): Promise<boolean> {
+    if (!events || events.outbox.length === 0) return change(db);
+    return db.transaction(async (tx) => {
+      const changed = await change(tx as unknown as PgDb);
+      if (changed) await pgWriteOutbox(tx as unknown as PgDb, events.tenantId, events.outbox, events.now);
+      return changed;
+    });
+  }
+
   return {
     async findActiveResendConfig(tenantId) {
       const rows = await db.execute<TransportConfigSecretRow>(sql`
@@ -26,19 +37,18 @@ export function pgApiResendWebhook(db: PgDb): ApiResendWebhookQueries {
       return rows.rows[0]?.config ?? null;
     },
 
-    async setTerminalFeedback({ messageId, feedback }) {
+    async setTerminalFeedback({ messageId, feedback, events }) {
       // Terminal states override anything except another terminal.
       // Guard: WHERE feedback NOT IN ('bounced', 'complained') OR feedback IS NULL
-      const result = await db.execute(sql`
+      return withOutbox(events, async (db) => ((await db.execute(sql`
         UPDATE lifecycle_messages
         SET feedback = ${feedback}, updated_at = NOW()
         WHERE id = ${messageId}::uuid
           AND (feedback IS NULL OR feedback NOT IN ('bounced', 'complained'))
-      `);
-      return (result.rowCount ?? 0) > 0;
+      `)).rowCount ?? 0) > 0);
     },
 
-    async advanceFeedback({ messageId, feedback, predecessors }) {
+    async advanceFeedback({ messageId, feedback, predecessors, events }) {
       // Build WHERE clause: feedback IS NULL OR feedback IN (predecessors excluding null)
       const nonNullPredecessors = predecessors.filter((p) => p !== null) as string[];
       const includesNull = predecessors.includes(null);
@@ -55,22 +65,20 @@ export function pgApiResendWebhook(db: PgDb): ApiResendWebhookQueries {
         whereClause = sql`feedback IN (${sql.raw(inList)})`;
       }
 
-      const result = await db.execute(sql`
+      return withOutbox(events, async (db) => ((await db.execute(sql`
         UPDATE lifecycle_messages
         SET feedback = ${feedback}, updated_at = NOW()
         WHERE id = ${messageId}::uuid
           AND ${whereClause}
-      `);
-
-      return (result.rowCount ?? 0) > 0;
+      `)).rowCount ?? 0) > 0);
     },
 
-    async insertSuppression({ tenantId, email, reason }) {
-      await db.execute(sql`
+    async insertSuppression({ tenantId, email, reason, events }) {
+      await withOutbox(events, async (db) => ((await db.execute(sql`
         INSERT INTO suppressions (tenant_id, email, reason, source)
         VALUES (${tenantId}::uuid, ${email}, ${reason}, 'webhook')
         ON CONFLICT (tenant_id, lower(email)) DO NOTHING
-      `);
+      `)).rowCount ?? 0) > 0);
     },
 
     async findMessageByProviderId({ tenantId, providerMessageId }) {
@@ -100,8 +108,8 @@ export function pgApiResendWebhook(db: PgDb): ApiResendWebhookQueries {
       return countResult.rows[0]?.cnt ?? 0;
     },
 
-    async insertMessageEvent({ tenantId, messageId, eventType, occurredAt, providerEventId, metadataJson }) {
-      await db.execute(sql`
+    async insertMessageEvent({ tenantId, messageId, eventType, occurredAt, providerEventId, metadataJson, events }) {
+      await withOutbox(events, async (db) => ((await db.execute(sql`
         INSERT INTO message_events (tenant_id, message_id, event_type, occurred_at, provider_event_id, metadata)
         VALUES (
           ${tenantId}::uuid,
@@ -114,7 +122,7 @@ export function pgApiResendWebhook(db: PgDb): ApiResendWebhookQueries {
         ON CONFLICT (tenant_id, provider_event_id)
           WHERE provider_event_id IS NOT NULL
         DO NOTHING
-      `);
+      `)).rowCount ?? 0) > 0);
     },
   };
 }

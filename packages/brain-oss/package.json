@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claros/core": "*"
+    "@claros/core": "*",
+    "marked": "^18.0.7"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

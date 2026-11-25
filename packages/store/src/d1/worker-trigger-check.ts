@@ -3,11 +3,13 @@
  */
 import { eq, and, isNotNull } from "drizzle-orm";
 import { flows } from "@claros/db/schema-sqlite";
+import { d1ContactConditions } from "./contact-conditions.js";
 import type { D1Db } from "./db.js";
 import type { WorkerTriggerCheckQueries } from "../areas/worker-trigger-check.js";
 
 export function d1WorkerTriggerCheck(db: D1Db): WorkerTriggerCheckQueries {
   return {
+    ...d1ContactConditions(db),
     async listActiveEventFlows(tenantId) {
       return db
         .select({

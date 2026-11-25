@@ -6,6 +6,7 @@
  *   claros products set-host <slug> <host> [--name <instance>]
  *   claros doctor [--name <instance>]
  *   claros claim-url [--name <instance>]
+ *   claros apply -f claros.config.json [--dry-run] [--url <url>] [--key <admin key>] [--name <instance>]
  */
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
@@ -13,6 +14,7 @@ import { resolveAssets, packageVersion, type Assets } from "./assets.js";
 import { claimUrlCommand, defaultContextParts, deploy, doctor, setProductHost, upgrade, type Context, type Io } from "./ops.js";
 import { defaultConfigDir } from "./state.js";
 import { spawnRunner, Wrangler, type Runner } from "./wrangler.js";
+import { applyConfig } from "./apply.js";
 
 export const USAGE = `Usage: claros <command> [options]
 
@@ -25,13 +27,16 @@ Commands:
                                Serve a product's links on its own host (custom domain)
   doctor                       Check secrets, migrations, routes, /health and /version
   claim-url                    Mint a new first-account claim link (no user yet)
+  apply -f <file>              Apply a product config document (PUT /v1/config);
+                               --dry-run lists the changes. URL: --url, CLAROS_URL or
+                               the instance --name; key: --key or CLAROS_ADMIN_KEY
 
 Options:
   --name <instance>            Instance name (default "default"); resources are claros-<name>
   --domain <host>              deploy: custom domain for the instance (default: workers.dev)
   --account <id>               Cloudflare account id or name
   --non-interactive            Never prompt (CI)
-  --dry-run                    deploy: list the changes without making them
+  --dry-run                    deploy, apply: list the changes without making them
   --force                      deploy: deploy the Worker even when nothing changed
   -h, --help                   This help
   -v, --version                The Claros version this package deploys
@@ -77,6 +82,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         "non-interactive": { type: "boolean" },
         "dry-run": { type: "boolean" },
         force: { type: "boolean" },
+        file: { type: "string", short: "f" },
+        url: { type: "string" },
+        key: { type: "string" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean", short: "v" },
       },
@@ -129,6 +137,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     case "claim-url":
       await claimUrlCommand(ctx, common);
       return 0;
+    case "apply":
+      return applyConfig(ctx, { file: values.file, dryRun: values["dry-run"], url: values.url, key: values.key, name: values.name });
     default:
       console.error(`Unknown command "${command}".\n\n${USAGE}`);
       return 2;

@@ -28,7 +28,7 @@ export const lifecycleMessages = sqliteTable(
       .notNull()
       .references(() => flowMemberships.id),
     flowStepOrder: integer("flow_step_order"),
-    status: text("status").notNull(), // pending_generation|generating|awaiting_content|pending_approval|approved|sending|sent|failed|suppressed|skipped|value_gated|rejected
+    status: text("status").notNull(), // pending_generation|generating|awaiting_content|pending_approval|approved|sending|sent|failed|suppressed|skipped|value_gated|rejected|cancelled
     feedback: text("feedback"), // opened|clicked|bounced|complained - ADVANCE-ONLY (see BACKLOG.md "Advance-only feedback guards")
     subject: text("subject"),
     bodyHtml: text("body_html"),
@@ -55,6 +55,17 @@ export const lifecycleMessages = sqliteTable(
     transportId: text("transport_id"),
     /** Why the message reached a terminal non-sent state (topic_unsubscribed, transport_policy), when recorded. */
     statusReason: text("status_reason"),
+    /** Approval actors (G20): "user:<id>" or "api_key:<id>". */
+    approvedBy: text("approved_by"),
+    rejectedBy: text("rejected_by"),
+    editedBy: text("edited_by"),
+    editedAt: integer("edited_at", { mode: "timestamp_ms" }),
+    /** Content as drafted, kept on the first edit (G20). */
+    originalSubject: text("original_subject"),
+    originalBodyHtml: text("original_body_html"),
+    originalBodyText: text("original_body_text"),
+    /** Action type forced by a regenerate request (G20); null = the step's own. */
+    forcedActionType: text("forced_action_type"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
   },

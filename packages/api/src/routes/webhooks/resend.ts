@@ -291,12 +291,17 @@ export async function advanceFeedback(
   db: Db,
   messageId: string,
   newFeedback: "opened" | "clicked" | "bounced" | "complained",
+  tenantId?: string,
 ): Promise<boolean> {
   const isTerminal = newFeedback === "bounced" || newFeedback === "complained";
+  // G5: message.<feedback> is written with the advance, once per message.
+  const events = tenantId
+    ? { tenantId, now: new Date(), outbox: [{ event: `message.${newFeedback}`, payload: { message_id: messageId } }] }
+    : undefined;
 
   if (isTerminal) {
     // Terminal states override anything except another terminal.
-    return storeFor(db).apiResendWebhook.setTerminalFeedback({ messageId, feedback: newFeedback });
+    return storeFor(db).apiResendWebhook.setTerminalFeedback({ messageId, feedback: newFeedback, events });
   }
 
   // Non-terminal: advance-only via predecessors
@@ -310,6 +315,7 @@ export async function advanceFeedback(
     messageId,
     feedback: newFeedback,
     predecessors,
+    events,
   });
 }
 
@@ -328,9 +334,19 @@ async function writeSuppression(
   tenantId: string,
   email: string,
   reason: "hard_bounce" | "complaint",
+  messageId?: string,
 ): Promise<void> {
   const normalizedEmail = email.toLowerCase();
-  await storeFor(db).apiResendWebhook.insertSuppression({ tenantId, email: normalizedEmail, reason });
+  await storeFor(db).apiResendWebhook.insertSuppression({
+    tenantId,
+    email: normalizedEmail,
+    reason,
+    events: {
+      tenantId,
+      now: new Date(),
+      outbox: [{ event: "contact.suppressed", payload: { email: normalizedEmail, reason, source: "webhook", ...(messageId ? { message_id: messageId } : {}) } }],
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -465,7 +481,7 @@ export async function processResendWebhookEvent(
 
   // Advance feedback (only for engagement/terminal events, not delivery)
   if (feedback) {
-    await advanceFeedback(db, message.id, feedback);
+    await advanceFeedback(db, message.id, feedback, message.tenantId);
   }
 
   // Write event to message_events table (all event types including delivery).
@@ -489,6 +505,7 @@ export async function processResendWebhookEvent(
       message.tenantId,
       message.recipientAddress, // Always from the resolved message, never from payload
       suppressionReason,
+      message.id,
     );
   }
 
@@ -524,6 +541,12 @@ async function writeMessageEvent(
     occurredAt,
     providerEventId,
     metadataJson,
+    // G5: message.delivered once per provider event (feedback events are
+    // written with the feedback advance instead).
+    events:
+      eventType === "delivered"
+        ? { tenantId, now: new Date(), outbox: [{ event: "message.delivered", payload: { message_id: messageId } }] }
+        : undefined,
   });
 }
 

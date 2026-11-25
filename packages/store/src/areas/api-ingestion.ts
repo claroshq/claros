@@ -14,6 +14,8 @@ export interface IngestionKeyRow {
   prefix: string;
   label: string | null;
   allowedOrigins: string[] | null;
+  /** Admin keys: granted scopes; null for other kinds. */
+  scopes: string[] | null;
   lastUsedAt: Date | null;
   createdAt: Date | null;
   revokedAt: Date | null;
@@ -26,11 +28,14 @@ export interface NewIngestionKey {
   label: string | null;
   kind: string;
   allowedOrigins: string[] | null;
+  /** Admin keys only. */
+  scopes?: string[] | null;
 }
 
 export interface IngestionKeyUpdates {
   label?: string | null;
   allowedOrigins?: string[] | undefined;
+  scopes?: string[] | undefined;
 }
 
 /** The most recent event with its contact's external id. */

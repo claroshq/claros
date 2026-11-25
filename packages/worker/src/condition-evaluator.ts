@@ -10,7 +10,14 @@
  * The evaluator is pure logic over its inputs. I/O (event queries) is handled
  * by the caller and passed in via the EventChecker interface.
  */
-import { stepConditionSchema, type StepCondition, type PlanExitCondition } from "@claros/core";
+import {
+  stepConditionSchema,
+  isContactCondition,
+  evaluateContactCondition,
+  type StepCondition,
+  type PlanExitCondition,
+  type ContactConditionContext,
+} from "@claros/core";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -42,6 +49,20 @@ export interface EventChecker {
    * since the reference time.
    */
   hasEventSince(eventName: string, since: Date): Promise<boolean>;
+  /**
+   * Lookups for trait, history and first_contact conditions (G4, G28).
+   * Absent: those conditions are reported as unknown shapes.
+   */
+  contact?: ContactConditionContext;
+}
+
+async function contactCondition(condition: unknown, eventChecker: EventChecker): Promise<ConditionResult> {
+  if (!eventChecker.contact) {
+    return { outcome: "unknown_shape", message: `contact condition without a lookup context: ${JSON.stringify(condition)}` };
+  }
+  const r = await evaluateContactCondition(condition, eventChecker.contact);
+  if (r === null) return { outcome: "unknown_shape", message: `unrecognized condition shape: ${JSON.stringify(condition)}` };
+  return r ? { outcome: "pass" } : { outcome: "fail" };
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +98,10 @@ export async function evaluateStepCondition(
   }
 
   const cond: StepCondition = parsed.data;
+
+  if (isContactCondition(cond)) {
+    return contactCondition(cond, eventChecker);
+  }
 
   if ("lifecycle_state" in cond) {
     return contact.lifecycleState === cond.lifecycle_state
@@ -134,6 +159,10 @@ export async function evaluatePlanExitCondition(
       outcome: "unknown_shape",
       message: `exit condition is not an object: ${JSON.stringify(exitCondition)}`,
     };
+  }
+
+  if (isContactCondition(exitCondition)) {
+    return contactCondition(exitCondition, eventChecker);
   }
 
   const ec = exitCondition as Record<string, unknown>;

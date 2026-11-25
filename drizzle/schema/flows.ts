@@ -5,7 +5,9 @@ import {
   timestamp,
   jsonb,
   integer,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { tenants } from "./tenants.js";
 import { topics } from "./topics.js";
 
@@ -35,6 +37,10 @@ export const flows = pgTable("flows", {
   compileError: text("compile_error"), // human-readable error when status = failed
   /** Topic of the flow's messages (G8a); null = no topic, behaves as before topics. */
   topicId: uuid("topic_id").references(() => topics.id),
+  /** Stable identifier for config as code (G2); null for flows created in the dashboard. */
+  slug: text("slug"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("uq_flows_tenant_slug").on(table.tenantId, table.slug).where(sql`slug IS NOT NULL`),
+]);

@@ -22,6 +22,7 @@ import {
   compiledPlanSchema,
   type CompiledStep,
   type AdvanceMembershipJobData,
+  cachedConditionContext,
 } from "@claros/core";
 import {
   evaluateStepCondition,
@@ -110,6 +111,7 @@ export async function handleAdvanceMembership(
       now,
       exitReason: "flow_archived",
       clearConditionError: false,
+      events: exitEvent(tenantId, membership, "flow_archived"),
     });
     result.exited = true;
     return result;
@@ -151,6 +153,13 @@ export async function handleAdvanceMembership(
         since,
       });
     },
+    contact: cachedConditionContext({
+      now,
+      traits: async () =>
+        (await storeFor(db).workerAdvanceMembership.getContactTraits({ tenantId, contactId: membership.contactId })) ?? {},
+      countSends: (f) =>
+        storeFor(db).workerAdvanceMembership.countSends({ tenantId, contactId: membership.contactId, ...f }),
+    }),
   };
 
   // Evaluate plan-level exit conditions
@@ -180,6 +189,7 @@ export async function handleAdvanceMembership(
         now,
         exitReason: "condition_met",
         clearConditionError: membership.conditionError !== null,
+        events: exitEvent(tenantId, membership, "condition_met"),
       });
       result.exited = true;
       return result;
@@ -263,6 +273,7 @@ export async function handleAdvanceMembership(
         now,
         exitReason: "condition_met",
         clearConditionError: membership.conditionError !== null,
+        events: exitEvent(tenantId, membership, "condition_met"),
       });
       result.exited = true;
       return result;
@@ -358,4 +369,12 @@ export async function handleAdvanceMembership(
   }
 
   return result;
+}
+
+/** Outbox entry (G5) for a membership exit. */
+function exitEvent(tenantId: string, membership: { id: string; contactId: string; flowId: string }, reason: string) {
+  return {
+    tenantId,
+    outbox: [{ event: "flow.exited", payload: { membership_id: membership.id, contact_id: membership.contactId, flow_id: membership.flowId, reason } }],
+  };
 }

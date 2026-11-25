@@ -201,6 +201,7 @@ async function resolveAndSuppress(
       statuses,
       source: TOPIC_SOURCE_PAGE,
       now,
+      outbox: topicEvents(topics, statuses, messageRow.contactId, messageId, normalizedEmail),
     });
     return { ok: true, email: normalizedEmail, scope: "topics" };
   }
@@ -217,6 +218,7 @@ async function resolveAndSuppress(
         statuses: [{ topicId, status: "unsubscribed" }],
         source,
         now,
+        outbox: topicEvents(topics, [{ topicId, status: "unsubscribed" }], messageRow.contactId, messageId, normalizedEmail),
       });
       return { ok: true, email: normalizedEmail, scope: "topic" };
     }
@@ -228,6 +230,13 @@ async function resolveAndSuppress(
     email: normalizedEmail,
     reason: UNSUBSCRIBE_REASON,
     source,
+    now,
+    outbox: [
+      {
+        event: "contact.unsubscribed",
+        payload: { contact_id: messageRow.contactId, email: normalizedEmail, scope: "product", message_id: messageId },
+      },
+    ],
   });
 
   return { ok: true, email: normalizedEmail, scope: "product" };
@@ -629,4 +638,30 @@ export default function unsubscribeRoutes() {
   });
 
   return app;
+}
+
+/**
+ * contact.unsubscribed / contact.resubscribed outbox entries (G5) for the
+ * topics whose effective status changes (from the statuses read before the
+ * write; unset counts as the topic default).
+ */
+function topicEvents(
+  before: Array<{ topicId: string; slug?: string; kind: string; status: string | null; defaultSubscribed?: boolean }>,
+  after: Array<{ topicId: string; status: "subscribed" | "unsubscribed" }>,
+  contactId: string,
+  messageId: string,
+  email: string,
+) {
+  const out: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  for (const next of after) {
+    const prev = before.find((t) => t.topicId === next.topicId);
+    if (!prev) continue;
+    const was = prev.status ?? (prev.defaultSubscribed === false ? "unsubscribed" : "subscribed");
+    if (was === next.status) continue;
+    out.push({
+      event: next.status === "unsubscribed" ? "contact.unsubscribed" : "contact.resubscribed",
+      payload: { contact_id: contactId, email, scope: "topic", topic: prev.slug ?? null, topic_id: next.topicId, message_id: messageId },
+    });
+  }
+  return out;
 }

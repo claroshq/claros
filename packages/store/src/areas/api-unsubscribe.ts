@@ -8,6 +8,8 @@
  */
 import type { ContactTopicStatusRow } from "./shared-topics.js";
 
+import type { OutboxEntry } from "./shared-outbox.js";
+
 export interface ApiUnsubscribeQueries {
   /** Recipient address and status of a tenant's message, or null when the message does not exist. */
   getMessageRecipient(input: { tenantId: string; messageId: string }): Promise<{
@@ -17,7 +19,15 @@ export interface ApiUnsubscribeQueries {
     topicId: string | null;
   } | null>;
   /** Write a suppression; idempotent (no-op when the address is already suppressed, case-insensitive). */
-  suppressAddress(input: { tenantId: string; email: string; reason: string; source: string }): Promise<void>;
+  suppressAddress(input: {
+    tenantId: string;
+    email: string;
+    reason: string;
+    source: string;
+    /** Outbox entries (G5) written in the same atomic unit when the suppression is new. */
+    outbox?: OutboxEntry[];
+    now?: Date;
+  }): Promise<void>;
   /** Id of the product whose public_host is this host (lowercase), or null. */
   findTenantIdByPublicHost(host: string): Promise<string | null>;
   /** Every topic of the tenant with the contact's explicit status for it. */
@@ -32,5 +42,7 @@ export interface ApiUnsubscribeQueries {
     statuses: Array<{ topicId: string; status: "subscribed" | "unsubscribed" }>;
     source: string;
     now: Date;
+    /** Outbox entries (G5) written in the same atomic unit. */
+    outbox?: OutboxEntry[];
   }): Promise<void>;
 }

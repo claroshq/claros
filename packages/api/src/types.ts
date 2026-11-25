@@ -40,4 +40,9 @@ export interface TenantContext {
   instanceRole: InstanceRole | null;
   /** True when the product is archived (reads allowed, writes answer 409). */
   archived: boolean;
+  /**
+   * Set when the request is authenticated by a product admin key (G1)
+   * instead of a session; userId is then empty.
+   */
+  apiKeyId?: string | null;
 }

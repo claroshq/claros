@@ -28,6 +28,8 @@ import {
   type PriorMembership,
 } from "@claros/core";
 import type { PgDb } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type { WorkerEnrollQueries, WorkerEnrollResult } from "../areas/worker-enroll.js";
 
 interface EnrollmentCandidate {
@@ -263,6 +265,20 @@ export function pgWorkerEnroll(db: PgDb): WorkerEnrollQueries {
             break;
           }
         }
+
+        // G5: flow.enrolled per enrollment and flow.exited per eviction, in
+        // this transaction. results[i] belongs to [...critical, ...nurture][i].
+        const ordered = [...criticalFlows, ...nurtureFlows];
+        const outbox: OutboxEntry[] = [];
+        results.forEach((r, i) => {
+          if (!r.enrolled) return;
+          const flow = ordered[i];
+          outbox.push({ event: "flow.enrolled", payload: { membership_id: r.membershipId, contact_id: contactId, flow_id: flow?.id ?? null } });
+          if (r.evictedMembershipId) {
+            outbox.push({ event: "flow.exited", payload: { membership_id: r.evictedMembershipId, contact_id: contactId, reason: "priority_override" } });
+          }
+        });
+        await pgWriteOutbox(tx, tenantId, outbox, now);
 
         return results;
       });

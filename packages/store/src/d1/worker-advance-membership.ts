@@ -10,11 +10,14 @@ import {
   flowMemberships,
   lifecycleMessages,
 } from "@claros/db/schema-sqlite";
+import { d1ContactConditions } from "./contact-conditions.js";
 import type { D1Db } from "./db.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 import type { WorkerAdvanceMembershipQueries } from "../areas/worker-advance-membership.js";
 
 export function d1WorkerAdvanceMembership(db: D1Db): WorkerAdvanceMembershipQueries {
   return {
+    ...d1ContactConditions(db),
     async getMembership({ tenantId, membershipId }) {
       const membershipRows = await db
         .select({
@@ -80,8 +83,8 @@ export function d1WorkerAdvanceMembership(db: D1Db): WorkerAdvanceMembershipQuer
         .where(eq(flowMemberships.id, membershipId));
     },
 
-    async exitMembership({ membershipId, now, exitReason, clearConditionError }) {
-      await db
+    async exitMembership({ membershipId, now, exitReason, clearConditionError, events }) {
+      const update = db
         .update(flowMemberships)
         .set({
           status: "exited",
@@ -94,7 +97,14 @@ export function d1WorkerAdvanceMembership(db: D1Db): WorkerAdvanceMembershipQuer
             eq(flowMemberships.id, membershipId),
             eq(flowMemberships.status, "active"),
           ),
-        );
+        )
+        .returning({ id: flowMemberships.id });
+      if (!events || events.outbox.length === 0) {
+        await update;
+        return;
+      }
+      const endpoints = await d1OutboxEndpoints(db, events.tenantId, events.outbox);
+      await db.batch([update, ...d1OutboxInserts(db, events.tenantId, endpoints, events.outbox, now, { afterChange: true })] as never);
     },
 
     async completeMembership({ membershipId, now, clearConditionError }) {

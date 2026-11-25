@@ -58,6 +58,9 @@ import type { ApiProductsQueries } from "./areas/api-products.js";
 import type { ApiInstanceQueries } from "./areas/api-instance.js";
 import type { ApiTopicsQueries } from "./areas/api-topics.js";
 import type { OpsQueries } from "./areas/ops.js";
+import type { ApiAdminAuthQueries } from "./areas/api-admin-auth.js";
+import type { WorkerWebhooksQueries } from "./areas/worker-webhooks.js";
+import type { ApiConfigQueries } from "./areas/api-config.js";
 
 export interface Store {
   readonly dialect: "pg" | "sqlite";
@@ -116,6 +119,9 @@ export interface Store {
   readonly apiInstance: ApiInstanceQueries;
   readonly apiTopics: ApiTopicsQueries;
   readonly ops: OpsQueries;
+  readonly apiAdminAuth: ApiAdminAuthQueries;
+  readonly workerWebhooks: WorkerWebhooksQueries;
+  readonly apiConfig: ApiConfigQueries;
 }
 
 export type * from "./areas/api-settings.js";
@@ -174,3 +180,8 @@ export type * from "./areas/api-instance.js";
 export type * from "./areas/api-topics.js";
 export type * from "./areas/shared-topics.js";
 export type * from "./areas/ops.js";
+export type * from "./areas/api-admin-auth.js";
+export type * from "./areas/worker-webhooks.js";
+export type * from "./areas/api-config.js";
+export type * from "./areas/shared-outbox.js";
+export type * from "./areas/shared-conditions.js";

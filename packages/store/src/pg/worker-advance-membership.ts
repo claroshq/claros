@@ -9,11 +9,14 @@ import {
   flowMemberships,
   lifecycleMessages,
 } from "@claros/db/schema";
+import { pgContactConditions } from "./contact-conditions.js";
 import type { PgDb } from "./db.js";
+import { pgWriteOutbox } from "./outbox.js";
 import type { WorkerAdvanceMembershipQueries } from "../areas/worker-advance-membership.js";
 
 export function pgWorkerAdvanceMembership(db: PgDb): WorkerAdvanceMembershipQueries {
   return {
+    ...pgContactConditions(db),
     async getMembership({ tenantId, membershipId }) {
       const membershipRows = await db
         .select({
@@ -79,8 +82,8 @@ export function pgWorkerAdvanceMembership(db: PgDb): WorkerAdvanceMembershipQuer
         .where(eq(flowMemberships.id, membershipId));
     },
 
-    async exitMembership({ membershipId, now, exitReason, clearConditionError }) {
-      await db
+    async exitMembership({ membershipId, now, exitReason, clearConditionError, events }) {
+      const update = db
         .update(flowMemberships)
         .set({
           status: "exited",
@@ -94,6 +97,18 @@ export function pgWorkerAdvanceMembership(db: PgDb): WorkerAdvanceMembershipQuer
             eq(flowMemberships.status, "active"),
           ),
         );
+      if (!events || events.outbox.length === 0) {
+        await update;
+        return;
+      }
+      await db.transaction(async (tx) => {
+        const exited = await (tx as unknown as PgDb)
+          .update(flowMemberships)
+          .set({ status: "exited", exitedAt: now, exitReason, ...(clearConditionError ? { conditionError: null } : {}) })
+          .where(and(eq(flowMemberships.id, membershipId), eq(flowMemberships.status, "active")))
+          .returning({ id: flowMemberships.id });
+        if (exited.length > 0) await pgWriteOutbox(tx as unknown as PgDb, events.tenantId, events.outbox, now);
+      });
     },
 
     async completeMembership({ membershipId, now, clearConditionError }) {

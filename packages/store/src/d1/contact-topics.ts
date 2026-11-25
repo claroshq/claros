@@ -5,6 +5,8 @@
 import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import { contactTopics, topics } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
+import type { OutboxEntry } from "../areas/shared-outbox.js";
+import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 import { rawBatch } from "./raw-batch.js";
 import type { ContactTopicStatusRow } from "../areas/shared-topics.js";
 
@@ -63,12 +65,15 @@ export async function setContactTopicStatuses(
     statuses: Array<{ topicId: string; status: "subscribed" | "unsubscribed" }>;
     source: string;
     now: Date;
+    /** Outbox entries (G5) written in the same batch. */
+    outbox?: OutboxEntry[];
   },
 ): Promise<void> {
   if (input.statuses.length === 0) return;
-  await rawBatch(
-    db,
-    input.statuses.map((s) =>
+  const endpoints = await d1OutboxEndpoints(db, input.tenantId, input.outbox);
+  const outbox = d1OutboxInserts(db, input.tenantId, endpoints, input.outbox, input.now).map((s) => s.getSQL());
+  await rawBatch(db, [
+    ...input.statuses.map((s) =>
       upsertContactTopicSql({
         tenantId: input.tenantId,
         topicCondition: sql`t.id = ${s.topicId}`,
@@ -78,5 +83,6 @@ export async function setContactTopicStatuses(
         now: input.now,
       }),
     ),
-  );
+    ...outbox,
+  ]);
 }

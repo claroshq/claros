@@ -2,7 +2,9 @@ import {
   integer,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 import { tenants } from "./tenants.js";
 import { topics } from "./topics.js";
 
@@ -32,6 +34,10 @@ export const flows = sqliteTable("flows", {
   compileError: text("compile_error"), // human-readable error when status = failed
   /** Topic of the flow's messages (G8a); null = no topic. */
   topicId: text("topic_id").references(() => topics.id),
+  /** Stable identifier for config as code (G2); null for flows created in the dashboard. */
+  slug: text("slug"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("uq_flows_tenant_slug").on(table.tenantId, table.slug).where(sql`slug IS NOT NULL`),
+]);

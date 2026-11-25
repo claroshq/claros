@@ -44,6 +44,7 @@ import { handleAdvanceMembership } from "./advance-membership.js";
 import { handleProcessMessage } from "./process-message.js";
 import { handleDrainMessage } from "./drain-message.js";
 import { processGridSnapshotTick } from "./snapshot-retention-grid.js";
+import { processWebhookTick, type FetchFn } from "./webhooks.js";
 import {
   checkSendErrors,
   recordDrainFaults,
@@ -113,6 +114,8 @@ export type { ProcessMessageResult } from "./process-message.js";
 export { handleDrainMessage } from "./drain-message.js";
 export type { DrainMessageResult } from "./drain-message.js";
 export { processGridSnapshotTick } from "./snapshot-retention-grid.js";
+export { processWebhookTick, webhookBody, analyticsEvent, statsravenIngestUrl } from "./webhooks.js";
+export type { WebhookTickDeps, WebhookTickResult, FetchFn } from "./webhooks.js";
 export type { GridSnapshotResult } from "./snapshot-retention-grid.js";
 export {
   renderTemplate,
@@ -159,6 +162,8 @@ export interface JobDeps {
    * (buildTenantTransportResolver), which reads transport_configs per call.
    */
   resolveTransport?: TransportResolver;
+  /** HTTP client for webhook delivery (tests pass a fake). Default: global fetch. */
+  fetch?: FetchFn;
 }
 
 /** Follow-up job options, as pg-boss reads them (Workers: see apps/worker). */
@@ -324,6 +329,18 @@ async function runJobInner(name: string, data: unknown, deps: JobDeps): Promise<
       }
       await runAlertTick(db, { resolveTransport: deps.resolveTransport });
       if (failure) throw failure.err;
+      return;
+    }
+
+    case QUEUE.WEBHOOK_DELIVERY: {
+      // Outbound webhooks and the analytics sink (G5, G30).
+      const result = await processWebhookTick(db, new Date(), { fetch: deps.fetch });
+      if (result.claimed > 0) {
+        console.log(
+          `[webhook-delivery] tick: ${result.claimed} claimed, ${result.delivered} delivered, ` +
+            `${result.retried} retried, ${result.dead} dead`,
+        );
+      }
       return;
     }
 

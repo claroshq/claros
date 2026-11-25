@@ -11,6 +11,7 @@
  * exit shapes. The execution engine (task 12d) evaluates these deterministically.
  */
 import { z } from "zod";
+import { traitConditionSchema, historyConditionSchema, firstContactConditionSchema } from "../conditions.js";
 
 // ---------------------------------------------------------------------------
 // Condition schemas (step-level)
@@ -25,11 +26,17 @@ import { z } from "zod";
  *   1. { lifecycle_state: "<state>" } - contact is currently in this state
  *   2. { lifecycle_state_not: "<state>" } - contact is NOT in this state
  *   3. { event_since_step: "<event_name>" } - event occurred since reaching step
+ *
+ * Plus the contact conditions (../conditions.ts): trait (G4), history and
+ * first_contact (G28).
  */
 export const stepConditionSchema = z.union([
   z.object({ lifecycle_state: z.string().min(1) }).strict(),
   z.object({ lifecycle_state_not: z.string().min(1) }).strict(),
   z.object({ event_since_step: z.string().min(1) }).strict(),
+  traitConditionSchema,
+  historyConditionSchema,
+  firstContactConditionSchema,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -78,8 +85,13 @@ export const compiledStepSchema = z.object({
  *   1. { event: "<name>" } - exit when event occurs during the membership
  *   2. { lifecycle_state_change: { to: "<state>" } } - exit on state transition
  *   3. Both keys present - exit when BOTH are true (AND)
+ *   4. A contact condition: trait (exit when the trait matches, e.g. "exit
+ *      when icp_configured becomes true"), history or first_contact.
  */
 export const planExitConditionSchema = z.union([
+  traitConditionSchema,
+  historyConditionSchema,
+  firstContactConditionSchema,
   z.object({ event: z.string().min(1) }).strict(),
   z.object({ lifecycle_state_change: z.object({ to: z.string().min(1) }).strict() }).strict(),
   z.object({

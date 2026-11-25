@@ -63,4 +63,8 @@ export async function startScheduler(boss: PgBoss): Promise<void> {
   // alerts-digest: daily at 07:00 UTC. Mails the operational digest (when
   // there is something to report) and deletes ops events older than 30 days.
   await boss.schedule(QUEUE.ALERTS_DIGEST, "0 7 * * *", {});
+
+  // webhook-delivery: every minute. Sends due outbound webhook and analytics
+  // outbox rows (G5, G30); a cheap no-op when nothing is due.
+  await boss.schedule(QUEUE.WEBHOOK_DELIVERY, "* * * * *", {});
 }

@@ -12,6 +12,7 @@
  *   reap                 hourly at :00          ("0 * * * *")
  *   grid-snapshot        daily on the 00:15 UTC tick (pg-boss: 00:17 UTC)
  *   alerts-digest        daily on the 07:00 UTC tick
+ *   webhook-delivery     every 5 minutes        (pg-boss: every minute)
  *
  * Partition maintenance is not returned: it manages Postgres partitions of
  * `events`, which D1 does not have.
@@ -25,7 +26,7 @@ export function dueTicks(now: Date): QueueName[] {
   const minute = now.getUTCMinutes() - (now.getUTCMinutes() % 5);
   const hour = now.getUTCHours();
 
-  const due: QueueName[] = [QUEUE.CONTENT_GENERATION];
+  const due: QueueName[] = [QUEUE.CONTENT_GENERATION, QUEUE.WEBHOOK_DELIVERY];
   if (minute % 15 === 0) {
     due.push(QUEUE.SCAN, QUEUE.DRAIN, QUEUE.COUNTER_ROLLOVER);
   }
@@ -55,6 +56,7 @@ export const TICK_INTERVAL_MINUTES: Readonly<Record<string, number>> = {
   [QUEUE.REAP]: 60,
   [QUEUE.GRID_SNAPSHOT]: 24 * 60,
   [QUEUE.ALERTS_DIGEST]: 24 * 60,
+  [QUEUE.WEBHOOK_DELIVERY]: 5,
 };
 
 /** A tick is late when its last run is older than this many intervals. */
