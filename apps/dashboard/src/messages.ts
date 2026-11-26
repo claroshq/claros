@@ -28,6 +28,7 @@ import {
   excludeContact,
   type MessagesPage,
 } from "./api.js";
+import { HOME_PENDING_QUERY_KEY } from "./home.js";
 
 export const MESSAGES_QUERY_KEY = ["messages"] as const;
 export const FAILED_MESSAGES_QUERY_KEY = ["messages", "failed"] as const;
@@ -48,6 +49,7 @@ function removeFromQueue(
   qc: ReturnType<typeof useQueryClient>,
   id: string,
 ) {
+  void qc.invalidateQueries({ queryKey: HOME_PENDING_QUERY_KEY });
   qc.setQueryData<InfiniteData<MessagesPage>>(MESSAGES_QUERY_KEY, (data) => {
     if (!data) return data;
     return {
@@ -81,6 +83,7 @@ function removeManyFromQueue(
   qc: ReturnType<typeof useQueryClient>,
   ids: string[],
 ) {
+  void qc.invalidateQueries({ queryKey: HOME_PENDING_QUERY_KEY });
   const idSet = new Set(ids);
   qc.setQueryData<InfiniteData<MessagesPage>>(MESSAGES_QUERY_KEY, (data) => {
     if (!data) return data;
@@ -195,6 +198,7 @@ export function useUnapproveMessage() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: APPROVED_MESSAGES_QUERY_KEY });
       void qc.invalidateQueries({ queryKey: MESSAGES_QUERY_KEY, exact: true });
+      void qc.invalidateQueries({ queryKey: HOME_PENDING_QUERY_KEY });
     },
   });
 }
