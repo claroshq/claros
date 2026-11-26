@@ -1641,7 +1641,7 @@ export async function fetchRetentionGridCellTrend(
 export type ApiKeyKind = "publishable" | "secret" | "admin";
 
 /** Management scopes of an admin key (G1). */
-export const ADMIN_KEY_SCOPES = ["config", "suppressions", "messages", "contacts:read", "contacts:delete", "broadcasts", "kb"] as const;
+export const ADMIN_KEY_SCOPES = ["config", "suppressions", "messages", "contacts:read", "contacts:delete", "broadcasts", "kb", "events"] as const;
 
 export interface IngestKey {
   id: string;

@@ -1,9 +1,9 @@
-/** `claros kb import` (G15) and `claros import messages` (G21) against a fake Claros API. */
+/** `claros kb import` (G15), `claros import messages|events|lifecycle` (G21) against a fake Claros API. */
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { kbImport, importMessages, readItems, IMPORT_CHUNK } from "../src/import.js";
+import { kbImport, importEvents, importLifecycle, importMessages, readItems, IMPORT_CHUNK } from "../src/import.js";
 import { testEnv } from "./support/context.js";
 
 function file(text: string): string {
@@ -42,5 +42,50 @@ describe("claros kb import / import messages", () => {
     const code = await importMessages(env.ctx, { file: file('{"a":1}\n{"a":2}'), url: "https://c.example" }, { CLAROS_ADMIN_KEY: "k" });
     expect(code).toBe(1);
     expect(await importMessages(env.ctx, { file: file("{}"), url: "https://c.example" }, {})).toBe(2);
+  });
+
+  it("posts events to /v1/import/events and sums contacts_created", async () => {
+    const env = testEnv();
+    const urls: string[] = [];
+    env.ctx.fetch = async (url, init) => {
+      urls.push(url);
+      const body = JSON.parse(init!.body as string) as unknown[];
+      return new Response(JSON.stringify({ imported: body.length, duplicates: 0, contacts_created: 1, errors: [] }), { status: 200 });
+    };
+    const code = await importEvents(env.ctx, { file: file('{"a":1}\n{"a":2}'), url: "https://c.example", dryRun: true }, { CLAROS_ADMIN_KEY: "k" });
+    expect(code).toBe(0);
+    expect(urls).toEqual(["https://c.example/v1/import/events?dry_run=1"]);
+    expect(env.logs.at(-1)).toBe("Dry run: imported 2, duplicates 0, contacts_created 1, errors 0");
+  });
+
+  it("pages the lifecycle recompute and prints the totals", async () => {
+    const env = testEnv();
+    const urls: string[] = [];
+    const page = (next: string | null, n: number) => ({
+      contacts: n, changed: n, applied: 0, skipped: 0, transitions: 2 * n,
+      states_before: { signed_up: n }, states: { churned: n - 1, engaged: 1 },
+      upcoming: { days: 14, to: { churned: 1 } }, grid: { "loyal/dormant": n },
+      segment_flows: [{ slug: "nurture", name: "Nurture", status: "paused", matching: n - 1 }],
+      next_cursor: next,
+    });
+    env.ctx.fetch = async (url, init) => {
+      urls.push(url);
+      expect(init!.body).toBeUndefined();
+      return new Response(JSON.stringify(url.includes("cursor=") ? page(null, 3) : page("c-200", 200)), { status: 200 });
+    };
+    const code = await importLifecycle(env.ctx, { url: "https://c.example", dryRun: true }, { CLAROS_ADMIN_KEY: "k" });
+    expect(code).toBe(0);
+    expect(urls).toEqual([
+      "https://c.example/v1/import/lifecycle?limit=200&dry_run=1",
+      "https://c.example/v1/import/lifecycle?limit=200&dry_run=1&cursor=c-200",
+    ]);
+    expect(env.logs).toEqual([
+      "Dry run: contacts 203, to change 203, applied 0, skipped 0, transitions 406",
+      "States before: signed_up 203",
+      "States after:  churned 201, engaged 2",
+      "Next 14 days without new activity: churned 2",
+      "Retention grid (tenure/recency): loyal/dormant 203",
+      "Segment flow nurture (paused): 201 contacts match (before its where)",
+    ]);
   });
 });

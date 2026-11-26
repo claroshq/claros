@@ -660,6 +660,90 @@ describe("Workers runtime: management API (admin key, config, webhooks)", () => 
   });
 });
 
+describe("Workers runtime: history import sends nothing", () => {
+  it("imported events and the lifecycle recompute enroll, queue and send nothing, and the next scan finds no transition", async () => {
+    const start = Date.now();
+    const logsAtStart = logs.length;
+    const ago = (d: number) => new Date(start - d * 86_400_000).toISOString();
+    // The product's welcome flow (auto-approved, sends on EVENT) is active.
+    // Add an auto-approved winback on -> churned and a paused segment flow.
+    await db.update(schema.tenants).set({
+      settings: { postal_address: POSTAL_ADDRESS, lifecycle: { activation_events: ["activated"], engagement_events: ["active_day", "activated"] } },
+    }).where(eq(schema.tenants.id, tenantId));
+    const step = { order: 1, action_type: "winback", delay: "0m", window_policy: "immediate", template_ref: `flow-${flowId}-step-1` };
+    await db.insert(schema.flows).values({
+      id: randomUUID(), tenantId, name: "Winback", slug: "winback", triggerType: "lifecycle_transition", triggerConfig: { type: "lifecycle_transition", to: "churned" },
+      steps: [step], contentMode: "fixed_content", approvalMode: "auto", status: "active", compileStatus: "ready", compiledAt: new Date(),
+      compiledPlan: { trigger: { type: "lifecycle_transition", condition: { to: "churned" } }, steps: [step] },
+    });
+    await db.insert(schema.flows).values({
+      id: randomUUID(), tenantId, name: "Nurture", slug: "nurture", triggerType: "segment", triggerConfig: { type: "segment", lifecycle_states: ["churned", "dormant"] },
+      steps: [step], contentMode: "fixed_content", approvalMode: "auto", status: "paused", compileStatus: "ready", compiledAt: new Date(),
+      compiledPlan: { trigger: { type: "segment" }, steps: [step] },
+    });
+    // A contact with an email and no enrollment: a trigger check on EVENT would mail it.
+    const grace = randomUUID();
+    await db.insert(schema.contacts).values({ id: grace, tenantId, externalId: "history_grace", email: "grace@example.com", lifecycleState: "signed_up", firstSeenAt: new Date(), lastSeenAt: new Date() });
+    const adminKey = `clr_ak_${randomBytes(32).toString("base64url")}`;
+    await db.insert(schema.apiKeys).values({ tenantId, keyHash: createHash("sha256").update(adminKey).digest("hex"), prefix: adminKey.slice(0, 8), kind: "admin", scopes: ["events"] });
+    const auth = { authorization: `Bearer ${adminKey}` };
+
+    const sendsBefore = outbound.filter((c) => c.url === "https://api.resend.com/emails").length;
+    const count = async (table: any) => (await db.select().from(table).where(eq(table.tenantId, tenantId))).length;
+    const before = { memberships: await count(schema.flowMemberships), messages: await count(schema.lifecycleMessages), outbox: await count(schema.webhookOutbox) };
+
+    const lastActive = ago(100);
+    const history = [
+      { external_id: "history_grace", event: "signed_up", timestamp: ago(130), id: "signed_up:grace" },
+      { external_id: "history_grace", event: "activated", timestamp: ago(120), id: "activated:grace" },
+      { external_id: "history_grace", event: EVENT, timestamp: ago(119) },
+      { external_id: "history_grace", event: "payment_failed", timestamp: ago(118) },
+      ...Array.from({ length: 19 }, (_, i) => ({ external_id: "history_grace", event: "active_day", timestamp: ago(119 - i), id: `active_day:grace:${i}` })),
+      { external_id: "history_grace", event: "active_day", timestamp: lastActive, id: "active_day:grace:last" },
+      { external_id: "history_new", event: "active_day", timestamp: ago(3), id: "active_day:new:1" },
+    ];
+    const jsonl = history.map((h) => JSON.stringify(h)).join("\n");
+    const imported = await mf.dispatchFetch("http://localhost/v1/import/events", { method: "POST", headers: { ...auth, "content-type": "application/x-ndjson" }, body: jsonl });
+    expect(imported.status).toBe(200);
+    expect(await imported.json()).toEqual({ dry_run: false, imported: 25, duplicates: 0, contacts_created: 1, errors: [] });
+
+    const dry = await mf.dispatchFetch("http://localhost/v1/import/lifecycle?dry_run=1", { method: "POST", headers: auth });
+    expect(dry.status).toBe(200);
+    const dryBody = (await dry.json()) as { applied: number; states: Record<string, number>; segment_flows: Array<{ slug: string; matching: number }> };
+    expect(dryBody.applied).toBe(0);
+    expect(dryBody.states.churned).toBeGreaterThanOrEqual(1);
+    expect(dryBody.segment_flows.find((f) => f.slug === "nurture")!.matching).toBeGreaterThanOrEqual(1);
+    expect((await db.select().from(schema.contacts).where(eq(schema.contacts.id, grace)))[0].lifecycleState).toBe("signed_up");
+
+    const applied = await mf.dispatchFetch("http://localhost/v1/import/lifecycle", { method: "POST", headers: auth });
+    expect(applied.status).toBe(200);
+    const appliedBody = (await applied.json()) as { applied: number; skipped: number };
+    expect(appliedBody.applied).toBeGreaterThanOrEqual(2);
+    expect(appliedBody.skipped).toBe(0);
+    const g = (await db.select().from(schema.contacts).where(eq(schema.contacts.id, grace)))[0];
+    expect(g.lifecycleState).toBe("churned");
+    expect(new Date(g.lastSeenAt).toISOString()).toBe(lastActive);
+    const fresh = (await db.select().from(schema.contacts).where(eq(schema.contacts.externalId, "history_new")))[0];
+    expect(fresh).toMatchObject({ lifecycleState: "signed_up", email: null });
+
+    // A scan tick (time transitions, transition and segment enrollment) and the queue drain.
+    const worker = await mf.getWorker();
+    const tick = new Date(Math.floor(Date.now() / (15 * 60_000)) * 15 * 60_000);
+    const seen = logs.length;
+    await worker.scheduled({ cron: "*/5 * * * *", scheduledTime: tick });
+    await waitFor("the scan to run", async () => logs.slice(seen).some((l) => l.includes("[scan] step-advancement")));
+    await new Promise((r) => setTimeout(r, 1500));
+
+    expect(outbound.filter((c) => c.url === "https://api.resend.com/emails").length).toBe(sendsBefore);
+    expect({ memberships: await count(schema.flowMemberships), messages: await count(schema.lifecycleMessages), outbox: await count(schema.webhookOutbox) }).toEqual(before);
+    const liveTransitions = (await db.select().from(schema.lifecycleTransitions).where(eq(schema.lifecycleTransitions.contactId, grace)))
+      .filter((t: { metadata: { source?: string } | null }) => t.metadata?.source !== "import");
+    expect(liveTransitions).toEqual([]);
+    expect((await db.select().from(schema.contacts).where(eq(schema.contacts.id, grace)))[0].lifecycleState).toBe("churned");
+    expect(logs.slice(logsAtStart).filter((l) => l.includes("[queue]"))).toEqual([]);
+  }, 60_000);
+});
+
 describe("Workers bundle", () => {
   it("is under 3 MB uncompressed", () => {
     const size = statSync(join(tmp, "out", "index.js")).size;

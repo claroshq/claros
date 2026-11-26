@@ -38,10 +38,11 @@ curl https://claros.example.com/v1/suppressions?since=2026-11-01T00:00:00Z \
 |---|---|
 | `config` | `GET /v1/config`, `PUT /v1/config` ([config as code](CONFIG.md)), `GET /v1/flows`, `POST /v1/flows/:ref/pause`, `POST /v1/flows/:ref/resume` (`:ref` is the flow id or slug), `GET/POST/DELETE /v1/settings/brand/logo` ([brand logo](INSTALLATION.md#brand-logo), v0.8.5) |
 | `suppressions` | `GET/POST /v1/suppressions`, `POST /v1/suppressions/import`, `DELETE /v1/suppressions/:email` |
-| `messages` | `GET /v1/messages`, approve, reject, bulk approve and reject, retry, `PATCH /v1/messages/:id`, regenerate, cancel, unapprove, `POST /v1/contacts/:id/exclude` ([approvals](APPROVALS.md)) |
+| `messages` | `GET /v1/messages`, approve, reject, bulk approve and reject, retry, `PATCH /v1/messages/:id`, regenerate, cancel, unapprove, `POST /v1/contacts/:id/exclude` ([approvals](APPROVALS.md)), `POST /v1/import/messages` ([history import](IMPORT.md)) |
 | `contacts:read` | `GET /v1/contacts`, `GET /v1/contacts/:id`, `GET /v1/contacts/:id/timeline` |
 | `contacts:delete` | `DELETE /v1/contacts/:external_id` |
 | `kb` | `GET/POST /v1/kb`, `GET/PATCH/DELETE /v1/kb/:id`, `POST /v1/kb/re-embed` |
+| `events` | `POST /v1/import/events`, `POST /v1/import/lifecycle` ([history import](IMPORT.md), v0.8.11) |
 | `broadcasts` | Reserved for broadcasts (not released yet) |
 
 A route the key's scopes do not cover answers `403`. Routes without a scope (other flow routes, settings, team, keys) accept dashboard sessions only.

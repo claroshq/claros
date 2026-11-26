@@ -132,6 +132,27 @@ export function evaluateEventTransition(
 // ---------------------------------------------------------------------------
 
 /**
+ * Days since last_seen_at after which a state moves on through inactivity
+ * (the time transitions below), or null for states without one: signed_up
+ * and churned never decay, and resurrected is promoted by the next scan
+ * while it is still recent (see evaluateTimeTransition).
+ */
+export function inactivityThresholdDays(state: LifecycleState, config: LifecycleConfig): number | null {
+  switch (state) {
+    case "engaged":
+      return config.at_risk_missed_intervals * config.natural_frequency_days;
+    case "at_risk":
+      return config.dormant_days;
+    case "dormant":
+      return config.churned_days;
+    case "activated":
+      return config.natural_frequency_days;
+    default:
+      return null;
+  }
+}
+
+/**
  * Evaluate whether a contact should transition due to inactivity.
  *
  * Returns the transition to apply, or null if no transition occurs.
@@ -145,9 +166,7 @@ export function evaluateTimeTransition(
 
   switch (currentState) {
     case "engaged": {
-      const atRiskThreshold =
-        config.at_risk_missed_intervals * config.natural_frequency_days;
-      if (daysSinceLastSeen >= atRiskThreshold) {
+      if (daysSinceLastSeen >= inactivityThresholdDays("engaged", config)!) {
         assertValidTransition("engaged", "at_risk", "time");
         return { from: "engaged", to: "at_risk", setActivatedAt: false };
       }
@@ -155,7 +174,7 @@ export function evaluateTimeTransition(
     }
 
     case "at_risk": {
-      if (daysSinceLastSeen >= config.dormant_days) {
+      if (daysSinceLastSeen >= inactivityThresholdDays("at_risk", config)!) {
         assertValidTransition("at_risk", "dormant", "time");
         return { from: "at_risk", to: "dormant", setActivatedAt: false };
       }
@@ -163,7 +182,7 @@ export function evaluateTimeTransition(
     }
 
     case "dormant": {
-      if (daysSinceLastSeen >= config.churned_days) {
+      if (daysSinceLastSeen >= inactivityThresholdDays("dormant", config)!) {
         assertValidTransition("dormant", "churned", "time");
         return { from: "dormant", to: "churned", setActivatedAt: false };
       }
@@ -186,7 +205,7 @@ export function evaluateTimeTransition(
       // the normal decay path (engaged -> at_risk -> dormant -> churned).
       // Without this, a contact that activates then goes silent sits in
       // activated forever. Uses natural_frequency_days as the staleness threshold.
-      if (daysSinceLastSeen >= config.natural_frequency_days) {
+      if (daysSinceLastSeen >= inactivityThresholdDays("activated", config)!) {
         assertValidTransition("activated", "engaged", "time");
         return { from: "activated", to: "engaged", setActivatedAt: false };
       }

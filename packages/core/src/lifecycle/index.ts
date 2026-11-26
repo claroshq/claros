@@ -18,10 +18,21 @@ export {
   checkActivationSatisfied,
   isActivationRelevantEvent,
   isEngagementEvent,
+  inactivityThresholdDays,
   type Transition,
   type EventTransitionInput,
   type TimeTransitionInput,
 } from "./evaluate.js";
+
+export {
+  replayLifecycle,
+  engagementCounters,
+  upcomingTimeTransitions,
+  ENGAGEMENT_COUNTER_BUCKET_DAYS,
+  type ReplayEvent,
+  type ReplayTransition,
+  type ReplayResult,
+} from "./replay.js";
 
 export {
   LIFECYCLE_DEFAULTS,
