@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Fixed
+
+- CLI: `claros deploy` and `claros upgrade` run from a repository checkout always ship the current build (`npm run build`), never an `assets/` folder left over from an earlier `npm pack`, which could deploy an older Worker and dashboard under the new version number. A published package refuses assets stamped for another version.
+
 ## [0.8.13] - 2026-11-27
 
 ### Added

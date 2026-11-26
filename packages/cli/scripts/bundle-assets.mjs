@@ -2,7 +2,7 @@
 // the built Worker (apps/worker/dist), the dashboard build and the SQLite
 // migrations. `npm pack` / `npm publish` run the repository build first
 // (prepack), so the package never ships an earlier build.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,4 +35,6 @@ for (const [from, to] of sources) {
   mkdirSync(dirname(to), { recursive: true });
   cpSync(from, to, { recursive: true });
 }
+// The CLI refuses assets whose stamp is not its own version (src/assets.ts).
+writeFileSync(join(out, "VERSION"), `${cliVersion}\n`);
 console.log(`assets/ ready for claros ${cliVersion}`);
