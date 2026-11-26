@@ -26,7 +26,7 @@ const T0 = Date.UTC(2026, 5, 1);
 const at = (days: number) => new Date(T0 + days * DAY);
 const track = (name: string, days: number): ReplayEvent => ({ type: "track", eventName: name, timestamp: at(days) });
 
-const fundup: LifecycleConfig = resolveLifecycleConfig({
+const productConfig: LifecycleConfig = resolveLifecycleConfig({
   activation_events: ["activated"],
   engagement_events: ["active_day", "activated"],
   natural_frequency_days: 7,
@@ -38,18 +38,18 @@ const fundup: LifecycleConfig = resolveLifecycleConfig({
 describe("inactivityThresholdDays", () => {
   it("is the threshold evaluateTimeTransition uses", () => {
     for (const state of LIFECYCLE_STATES) {
-      const days = inactivityThresholdDays(state, fundup);
+      const days = inactivityThresholdDays(state, productConfig);
       if (days === null) continue;
       const lastSeenAt = at(0);
-      expect(evaluateTimeTransition({ currentState: state, lastSeenAt, now: new Date(lastSeenAt.getTime() + days * DAY - 1), config: fundup })).toBeNull();
-      expect(evaluateTimeTransition({ currentState: state, lastSeenAt, now: new Date(lastSeenAt.getTime() + days * DAY), config: fundup })).not.toBeNull();
+      expect(evaluateTimeTransition({ currentState: state, lastSeenAt, now: new Date(lastSeenAt.getTime() + days * DAY - 1), config: productConfig })).toBeNull();
+      expect(evaluateTimeTransition({ currentState: state, lastSeenAt, now: new Date(lastSeenAt.getTime() + days * DAY), config: productConfig })).not.toBeNull();
     }
   });
 });
 
 describe("replayLifecycle", () => {
   it("returns null without events", () => {
-    expect(replayLifecycle([], fundup, at(10))).toBeNull();
+    expect(replayLifecycle([], productConfig, at(10))).toBeNull();
   });
 
   it("walks signup, activation, use and decay at the moments they happen", () => {
@@ -59,7 +59,7 @@ describe("replayLifecycle", () => {
       track("active_day", 1),
       ...Array.from({ length: 19 }, (_, i) => track("active_day", i + 2)),
     ];
-    const r = replayLifecycle(events, fundup, at(100))!;
+    const r = replayLifecycle(events, productConfig, at(100))!;
     expect(r.state).toBe("churned");
     expect(r.firstSeenAt).toEqual(at(0));
     expect(r.lastSeenAt).toEqual(at(20));
@@ -75,7 +75,7 @@ describe("replayLifecycle", () => {
 
   it("orders events by timestamp whatever the input order", () => {
     const events = [track("active_day", 5), track("activated", 2), track("signed_up", 0)];
-    const r = replayLifecycle(events, fundup, at(6))!;
+    const r = replayLifecycle(events, productConfig, at(6))!;
     expect(r.firstSeenAt).toEqual(at(0));
     expect(r.activatedAt).toEqual(at(2));
     expect(r.state).toBe("engaged");
@@ -83,7 +83,7 @@ describe("replayLifecycle", () => {
 
   it("brings a churned contact back as resurrected, promoted to engaged at once", () => {
     const events = [track("activated", 0), track("active_day", 1), track("active_day", 80)];
-    const r = replayLifecycle(events, fundup, at(81))!;
+    const r = replayLifecycle(events, productConfig, at(81))!;
     expect(r.state).toBe("engaged");
     const tail = r.transitions.slice(-2).map((t) => [t.from, t.to, t.at.getTime()]);
     expect(tail).toEqual([
@@ -101,7 +101,7 @@ describe("replayLifecycle", () => {
   });
 
   it("identify never counts as activity when engagement_events is set", () => {
-    const r = replayLifecycle([{ type: "identify", eventName: null, timestamp: at(0) }, { type: "identify", eventName: null, timestamp: at(50) }], fundup, at(60))!;
+    const r = replayLifecycle([{ type: "identify", eventName: null, timestamp: at(0) }, { type: "identify", eventName: null, timestamp: at(50) }], productConfig, at(60))!;
     expect(r.lastSeenAt).toEqual(at(0));
     expect(r.state).toBe("signed_up");
   });
@@ -111,8 +111,8 @@ describe("replayLifecycle", () => {
     for (let n = 0; n < 300; n++) {
       const events = randomHistory(rnd);
       const now = at(130);
-      const r = replayLifecycle(events, fundup, now)!;
-      expect(evaluateTimeTransition({ currentState: r.state, lastSeenAt: r.lastSeenAt, now, config: fundup })).toBeNull();
+      const r = replayLifecycle(events, productConfig, now)!;
+      expect(evaluateTimeTransition({ currentState: r.state, lastSeenAt: r.lastSeenAt, now, config: productConfig })).toBeNull();
     }
   });
 
@@ -121,8 +121,8 @@ describe("replayLifecycle", () => {
     for (let n = 0; n < 40; n++) {
       const events = randomHistory(rnd);
       const now = at(130);
-      const live = simulateLive(events, fundup, now);
-      const r = replayLifecycle(events, fundup, now)!;
+      const live = simulateLive(events, productConfig, now);
+      const r = replayLifecycle(events, productConfig, now)!;
       expect({ state: r.state, lastSeenAt: r.lastSeenAt, activatedAt: r.activatedAt }).toEqual(live);
     }
   });
@@ -141,9 +141,9 @@ describe("engagementCounters", () => {
 
 describe("upcomingTimeTransitions", () => {
   it("lists the decay a quiet contact will go through", () => {
-    const t = upcomingTimeTransitions("dormant", at(0), fundup, at(40), at(54));
+    const t = upcomingTimeTransitions("dormant", at(0), productConfig, at(40), at(54));
     expect(t.map((x) => [x.from, x.to, x.at.getTime()])).toEqual([["dormant", "churned", at(45).getTime()]]);
-    expect(upcomingTimeTransitions("dormant", at(0), fundup, at(40), at(44))).toEqual([]);
+    expect(upcomingTimeTransitions("dormant", at(0), productConfig, at(40), at(44))).toEqual([]);
   });
 });
 
