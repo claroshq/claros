@@ -15,7 +15,7 @@
  * On mobile (<lg) the sidebar becomes an overlay triggered by a hamburger
  * button in a slim top bar. Tapping a nav link or the backdrop closes it.
  *
- * Navigation is driven by the NAV_ITEMS array. Activating a future
+ * Navigation is driven by the NAV_GROUPS array. Activating a future
  * destination is a one-line change (set enabled: true and add the route).
  */
 import React, { useCallback, useEffect, useState } from "react";
@@ -40,6 +40,7 @@ import { BrandLockup } from "../components/brand-lockup.js";
 import { ThemeToggle } from "../components/theme-toggle.js";
 import { ProductSwitcher } from "../components/product-switcher.js";
 import { useSignOut } from "../components/use-sign-out.js";
+import { useHomePendingMessages } from "../home.js";
 import type { MeResponse } from "../api.js";
 
 // ---------------------------------------------------------------------------
@@ -55,31 +56,49 @@ interface NavItem {
 }
 
 /**
- * Derived from docs/CLAROS_HANDOFF_V2.md Phase 5 tasks 35-43:
- *   35 - Flows list + detail
- *   37 - Lifecycle Overview
- *   38 - People (CRM)
- *   40 - Approvals
- *   41 - Knowledge Base UI
- *   42 - Analytics
- *   43 - Settings
- *
- * Task 36 (Flow editor) and 39 (Person Detail) are sub-routes, not top-level
- * nav destinations.
+ * Grouped by how often an operator opens each destination once setup is
+ * done, not by the order setup happens in:
+ *   1. Daily work: Home and the approval queue (flows default to manual
+ *      review, so Approvals is the screen opened most).
+ *   2. Building: flows and the content they draw on.
+ *   3. Watching: audience, delivery and reporting.
+ *   4. Setup: integration and settings, visited rarely after day one.
+ * Before setup is complete, Home's setup checklist links to Integrate.
+ * Groups render with a thin divider and no headings.
  */
-const NAV_ITEMS: NavItem[] = [
-  { label: "Home", path: "/home", icon: Home, enabled: true },
-  { label: "Integrate", path: "/integrate", icon: Plug, enabled: true },
-  { label: "Flows", path: "/flows", icon: Workflow, enabled: true },
-  { label: "Templates", path: "/templates", icon: LayoutTemplate, enabled: true },
-  { label: "Lifecycle", path: "/lifecycle", icon: Activity, enabled: true },
-  { label: "People", path: "/people", icon: Users, enabled: true },
-  { label: "Approvals", path: "/approvals", icon: Inbox, enabled: true },
-  { label: "Sent Mail", path: "/sent", icon: Send, enabled: true },
-  { label: "Knowledge Base", path: "/kb", icon: BookOpen, enabled: true },
-  { label: "Analytics", path: "/analytics", icon: BarChart3, enabled: true },
-  { label: "Settings", path: "/settings", icon: Settings, enabled: true },
+const NAV_GROUPS: NavItem[][] = [
+  [
+    { label: "Home", path: "/home", icon: Home, enabled: true },
+    { label: "Approvals", path: "/approvals", icon: Inbox, enabled: true },
+  ],
+  [
+    { label: "Flows", path: "/flows", icon: Workflow, enabled: true },
+    { label: "Templates", path: "/templates", icon: LayoutTemplate, enabled: true },
+    { label: "Knowledge Base", path: "/kb", icon: BookOpen, enabled: true },
+  ],
+  [
+    { label: "People", path: "/people", icon: Users, enabled: true },
+    { label: "Lifecycle", path: "/lifecycle", icon: Activity, enabled: true },
+    { label: "Sent Mail", path: "/sent", icon: Send, enabled: true },
+    { label: "Analytics", path: "/analytics", icon: BarChart3, enabled: true },
+  ],
+  [
+    { label: "Integrate", path: "/integrate", icon: Plug, enabled: true },
+    { label: "Settings", path: "/settings", icon: Settings, enabled: true },
+  ],
 ];
+
+/**
+ * Pending-approval count for the Approvals nav badge. Shares Home's query
+ * (same key, 30s refetch), so it costs no extra request on Home. The list
+ * endpoint pages at 50; a further page shows as "50+".
+ */
+function usePendingBadge(): string | null {
+  const pending = useHomePendingMessages();
+  const count = pending.data?.messages.length ?? 0;
+  if (count === 0) return null;
+  return pending.data?.next_cursor ? `${count}+` : String(count);
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -92,6 +111,7 @@ interface ShellPageProps {
 export default function ShellPage({ me }: ShellPageProps) {
   const signOut = useSignOut();
   const location = useLocation();
+  const pendingBadge = usePendingBadge();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Close mobile sidebar on route change.
@@ -132,41 +152,58 @@ export default function ShellPage({ me }: ShellPageProps) {
       <ProductSwitcher currentProductId={me.user.tenantId} />
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
+      <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {NAV_GROUPS.map((group, gi) => (
+          <div
+            key={group[0]!.path}
+            className={gi > 0 ? "mt-2 space-y-0.5 border-t border-border pt-2" : "space-y-0.5"}
+          >
+            {group.map((item) => {
+              const Icon = item.icon;
 
-          if (!item.enabled) {
-            return (
-              <span
-                key={item.path}
-                aria-disabled="true"
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-[14px] text-subtle-foreground select-none"
-              >
-                <Icon size={16} strokeWidth={1.75} />
-                {item.label}
-              </span>
-            );
-          }
-
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  isActive
-                    ? "bg-selected font-semibold text-foreground"
-                    : "font-medium text-muted-foreground hover:bg-sunken hover:text-foreground",
-                ].join(" ")
+              if (!item.enabled) {
+                return (
+                  <span
+                    key={item.path}
+                    aria-disabled="true"
+                    className="flex items-center gap-3 rounded-md px-3 py-2 text-[14px] text-subtle-foreground select-none"
+                  >
+                    <Icon size={16} strokeWidth={1.75} />
+                    {item.label}
+                  </span>
+                );
               }
-            >
-              <Icon size={16} strokeWidth={1.75} />
-              {item.label}
-            </NavLink>
-          );
-        })}
+
+              const badge = item.path === "/approvals" ? pendingBadge : null;
+
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    [
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      isActive
+                        ? "bg-selected font-semibold text-foreground"
+                        : "font-medium text-muted-foreground hover:bg-sunken hover:text-foreground",
+                    ].join(" ")
+                  }
+                >
+                  <Icon size={16} strokeWidth={1.75} />
+                  {item.label}
+                  {badge && (
+                    <span
+                      aria-label={`${badge} waiting`}
+                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-[12px] font-semibold tabular-nums text-accent-text"
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Footer: appearance, identity, session */}

@@ -15,6 +15,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Changed
 
 - Knowledge base: the list is grouped by category, with a header and count per category and pinned entries first in each. Rows are quieter: the embedding badge shows only for entries that are embedding, failed or not embedded (never for the normal "embedded" state, and not at all when no embedding provider is set, since the page note says so once), the content type shows only when it is not markdown, tags are plain text capped at four with a +N, and the preview is narrower. Dashboard only; no API change, no migration.
+- Dashboard: the sidebar is ordered by daily use instead of setup order. Home and Approvals come first, then Flows, Templates and Knowledge Base, then People, Lifecycle, Sent Mail and Analytics, with Integrate and Settings at the bottom; thin dividers separate the groups. Approvals shows how many messages wait for review ("50+" past one page), refreshed every 30 seconds and right after approve, reject or unapprove. No API change.
 - Docs: the README covers what shipped in 0.8.4 to 0.8.11 (flow editor, templates per flow, branding and language, AI guardrails, the person page, history import) and the full dashboard navigation, with new screenshots of Home, the flow editor, Approvals and the retention grid. `scripts/seed-screenshots.mjs` reads `SEED_NOW` to date its history relative to another day.
 
 ### Fixed
