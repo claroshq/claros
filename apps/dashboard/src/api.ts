@@ -655,7 +655,7 @@ export interface KbEntryPreview {
   title: string;
   content_preview: string;
   content_type: "markdown" | "html" | "text";
-  source: "manual" | "crawl" | "upload";
+  source: "manual" | "crawl" | "upload" | "import";
   source_url: string | null;
   tags: string[];
   embedding_status: "pending" | "failed" | "skipped" | null;
@@ -773,6 +773,42 @@ export async function reembedKb(): Promise<ReembedResponse> {
     throw parseFlowError(res.status, body);
   }
   return body as ReembedResponse;
+}
+
+/** Response of POST /v1/kb/import. `errors[].index` counts within the request. */
+export interface KbImportResponse {
+  dry_run: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped_edited: number;
+  skipped_keys: string[];
+  errors: Array<{ index: number; external_key?: string; error: string }>;
+}
+
+/**
+ * POST /v1/kb/import - upsert entries by external_key. dryRun writes
+ * nothing and returns the same counts; force also overwrites entries
+ * edited in Claros since their last import. Throws FlowApiError.
+ */
+export async function importKb(
+  entries: unknown[],
+  opts: { dryRun: boolean; force: boolean },
+): Promise<KbImportResponse> {
+  const params = new URLSearchParams();
+  if (opts.dryRun) params.set("dry_run", "1");
+  if (opts.force) params.set("force", "1");
+  const qs = params.size > 0 ? `?${params.toString()}` : "";
+  const res = await apiFetch(`/v1/kb/import${qs}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entries),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body as KbImportResponse;
 }
 
 // ---------------------------------------------------------------------------

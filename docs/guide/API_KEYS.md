@@ -41,7 +41,7 @@ curl https://claros.example.com/v1/suppressions?since=2026-11-01T00:00:00Z \
 | `messages` | `GET /v1/messages`, approve, reject, bulk approve and reject, retry, `PATCH /v1/messages/:id`, regenerate, cancel, unapprove, `POST /v1/contacts/:id/exclude` ([approvals](APPROVALS.md)), `POST /v1/import/messages` ([history import](IMPORT.md)) |
 | `contacts:read` | `GET /v1/contacts`, `GET /v1/contacts/:id`, `GET /v1/contacts/:id/timeline` |
 | `contacts:delete` | `DELETE /v1/contacts/:external_id` |
-| `kb` | `GET/POST /v1/kb`, `GET/PATCH/DELETE /v1/kb/:id`, `POST /v1/kb/re-embed` |
+| `kb` | `GET/POST /v1/kb`, `GET/PATCH/DELETE /v1/kb/:id`, `POST /v1/kb/import` ([knowledge base import](KB.md#import)), `POST /v1/kb/re-embed` |
 | `events` | `POST /v1/import/events`, `POST /v1/import/lifecycle` ([history import](IMPORT.md), v0.8.11) |
 | `broadcasts` | Reserved for broadcasts (not released yet) |
 
