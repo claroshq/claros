@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.11] - 2026-11-26
+
 ### Added
 
 - History import of events and lifecycle state, for products that move to Claros with users who already have a history. `POST /v1/import/events` stores track events with their original timestamps (JSON array or JSONL, up to 2,000 per request, `?dry_run=1`); `id` is stored as the `messageId`, so an event that arrives both live and from the import is stored once. A contact missing by `external_id` is created. `POST /v1/import/lifecycle` then recomputes each contact's lifecycle state, `first_seen_at`, `last_seen_at`, `activated_at` and engagement counters by replaying its events under the product's lifecycle settings, the same rules live ingest and the scan apply (paged, `?dry_run=1` reports the states before and after, the retention grid, the time transitions due within `?forecast_days=` and how many contacts each segment-triggered flow would match). Neither sends mail, enrolls, queues a job or fires a webhook, and the recompute leaves no transition for the next scan to make, so a lifecycle-transition flow such as a win back does not fire for imported history. Replayed transitions are stored with `metadata` `{"source": "import"}`. CLI: `claros import events <file>` and `claros import lifecycle [--dry-run]`. New admin key scope `events`; `GET /v1/capabilities` lists `event_history_import`. Same behaviour on Postgres and D1; no migration. See [Importing history](docs/guide/IMPORT.md).
@@ -288,7 +290,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.10...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.11...HEAD
+[0.8.11]: https://github.com/claroshq/claros/compare/v0.8.10...v0.8.11
 [0.8.10]: https://github.com/claroshq/claros/compare/v0.8.9...v0.8.10
 [0.8.9]: https://github.com/claroshq/claros/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/claroshq/claros/compare/v0.8.7...v0.8.8
