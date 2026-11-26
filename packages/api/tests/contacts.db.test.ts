@@ -392,6 +392,10 @@ describe("GET /v1/contacts", () => {
     expect(page2.contacts.length).toBe(13);
     expect(page2.next_cursor).toBeNull();
 
+    // The first page carries the total across all pages; later pages do not.
+    expect(page1.total).toBe(63);
+    expect(page2.total).toBeUndefined();
+
     const ids1 = new Set(page1.contacts.map((c: { id: string }) => c.id));
     for (const c of page2.contacts) {
       expect(ids1.has(c.id)).toBe(false);
@@ -409,6 +413,32 @@ describe("GET /v1/contacts", () => {
     const body = res.json();
     expect(body.contacts).toEqual([]);
     expect(body.next_cursor).toBeNull();
+    expect(body.total).toBe(0);
+  });
+
+  it("counts the total with search and filters, not only the loaded page", async () => {
+    if (!dbAvailable) return;
+    const app = await buildApp({ db, logger: false });
+    const all = (
+      await app.inject({ method: "GET", url: "/v1/contacts?limit=200", headers: { cookie: cookieA } })
+    ).json();
+    const engaged = all.contacts.filter((c: { lifecycle_state: string }) => c.lifecycle_state === "engaged").length;
+    expect(engaged).toBeGreaterThan(1);
+
+    const page = (
+      await app.inject({
+        method: "GET",
+        url: "/v1/contacts?lifecycle_state=engaged&limit=1",
+        headers: { cookie: cookieA },
+      })
+    ).json();
+    expect(page.contacts.length).toBe(1);
+    expect(page.total).toBe(engaged);
+
+    const tenantB = (
+      await app.inject({ method: "GET", url: "/v1/contacts", headers: { cookie: cookieB } })
+    ).json();
+    expect(tenantB.total).toBe(1);
   });
 
   it("matches search against email, name and external_id case-insensitively", async () => {

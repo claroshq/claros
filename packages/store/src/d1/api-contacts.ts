@@ -14,7 +14,7 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { lifecycleMessages, suppressions } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
-import type { ApiContactsQueries, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
+import type { ApiContactsQueries, ContactListFilter, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { rawBatch } from "./raw-batch.js";
 import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
@@ -77,6 +77,38 @@ function convert<T>(row: Record<string, unknown>, dates: string[], json: string[
   return out as T;
 }
 
+/** The People list filter as WHERE conditions (without the cursor). */
+function listConditions(tenantId: string, filter: ContactListFilter): SQL[] {
+  const now = Date.now();
+  const ago = (days: number) => now - days * DAY_MS;
+  const conditions: SQL[] = [sql`tenant_id = ${tenantId}`];
+  if (filter.lifecycleState !== null) {
+    conditions.push(sql`lifecycle_state = ${filter.lifecycleState}`);
+  }
+  if (filter.engagementDepth !== null) {
+    conditions.push(sql`engagement_depth = ${filter.engagementDepth}`);
+  }
+  if (filter.searchPattern !== null) {
+    const p = filter.searchPattern;
+    conditions.push(sql`(email LIKE ${p} ESCAPE '\\'
+      OR name LIKE ${p} ESCAPE '\\'
+      OR external_id LIKE ${p} ESCAPE '\\')`);
+  }
+  if (filter.tenureMinDays !== null) {
+    conditions.push(sql`first_seen_at <= ${ago(filter.tenureMinDays)}`);
+  }
+  if (filter.tenureMaxDays !== null) {
+    conditions.push(sql`first_seen_at > ${ago(filter.tenureMaxDays)}`);
+  }
+  if (filter.recencyMinDays !== null) {
+    conditions.push(sql`last_seen_at <= ${ago(filter.recencyMinDays)}`);
+  }
+  if (filter.recencyMaxDays !== null) {
+    conditions.push(sql`last_seen_at > ${ago(filter.recencyMaxDays)}`);
+  }
+  return conditions;
+}
+
 export function d1ApiContacts(db: D1Db): ApiContactsQueries {
   return {
     async getTenantSettings({ tenantId }) {
@@ -87,33 +119,7 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
     },
 
     async listContacts({ tenantId, filter, limit }) {
-      const now = Date.now();
-      const ago = (days: number) => now - days * DAY_MS;
-      const conditions: SQL[] = [sql`tenant_id = ${tenantId}`];
-      if (filter.lifecycleState !== null) {
-        conditions.push(sql`lifecycle_state = ${filter.lifecycleState}`);
-      }
-      if (filter.engagementDepth !== null) {
-        conditions.push(sql`engagement_depth = ${filter.engagementDepth}`);
-      }
-      if (filter.searchPattern !== null) {
-        const p = filter.searchPattern;
-        conditions.push(sql`(email LIKE ${p} ESCAPE '\\'
-          OR name LIKE ${p} ESCAPE '\\'
-          OR external_id LIKE ${p} ESCAPE '\\')`);
-      }
-      if (filter.tenureMinDays !== null) {
-        conditions.push(sql`first_seen_at <= ${ago(filter.tenureMinDays)}`);
-      }
-      if (filter.tenureMaxDays !== null) {
-        conditions.push(sql`first_seen_at > ${ago(filter.tenureMaxDays)}`);
-      }
-      if (filter.recencyMinDays !== null) {
-        conditions.push(sql`last_seen_at <= ${ago(filter.recencyMinDays)}`);
-      }
-      if (filter.recencyMaxDays !== null) {
-        conditions.push(sql`last_seen_at > ${ago(filter.recencyMaxDays)}`);
-      }
+      const conditions = listConditions(tenantId, filter);
       if (filter.before) {
         conditions.push(
           sql`(created_at, id) < (${tsMs(filter.before.createdAt)}, ${filter.before.id.toLowerCase()})`,
@@ -130,6 +136,14 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
         LIMIT ${limit}
       `);
       return rows.map((r) => convert<ContactListRow>(r, ["last_seen_at", "created_at"]));
+    },
+
+    async countContacts({ tenantId, filter }) {
+      const rows = await db.all<{ n: number }>(sql`
+        SELECT count(*) AS n FROM contacts
+        WHERE ${sql.join(listConditions(tenantId, filter), sql` AND `)}
+      `);
+      return Number(rows[0]?.n ?? 0);
     },
 
     async getContact({ tenantId, contactId }) {

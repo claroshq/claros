@@ -208,6 +208,14 @@ export default function PeoplePage() {
     () => list.data?.pages.flatMap((p) => p.contacts) ?? [],
     [list.data],
   );
+  // The server counts every match on the first page. Older servers do not,
+  // so fall back to the loaded rows with "+" while more pages exist.
+  const total = list.data?.pages[0]?.total;
+  const countLabel =
+    total !== undefined
+      ? total.toLocaleString("en-US")
+      : `${contacts.length}${list.hasNextPage ? "+" : ""}`;
+  const count = total ?? contacts.length;
 
   function clearFilters() {
     setSearchInput("");
@@ -238,10 +246,10 @@ export default function PeoplePage() {
           list.isLoading
             ? "Every contact your events have created."
             : filtering
-              ? `${contacts.length} ${contacts.length === 1 ? "match" : "matches"}`
-              : contacts.length === 0
+              ? `${countLabel} ${count === 1 ? "match" : "matches"}`
+              : count === 0
                 ? "Every contact your events have created."
-                : `${contacts.length}${list.hasNextPage ? "+" : ""} ${contacts.length === 1 ? "contact" : "contacts"}`
+                : `${countLabel} ${count === 1 ? "contact" : "contacts"}`
         }
       />
 

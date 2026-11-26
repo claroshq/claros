@@ -56,6 +56,8 @@ export interface ApiContactsQueries {
   getTenantSettings(input: { tenantId: string }): Promise<unknown>;
   /** One page of the tenant's contacts, newest first (created_at DESC, id DESC). */
   listContacts(input: { tenantId: string; filter: ContactListFilter; limit: number }): Promise<ContactListRow[]>;
+  /** How many of the tenant's contacts match the filter (the cursor, `before`, is ignored). */
+  countContacts(input: { tenantId: string; filter: ContactListFilter }): Promise<number>;
   /** One contact of the tenant (raw row), or null. */
   getContact(input: { tenantId: string; contactId: string }): Promise<Record<string, unknown> | null>;
   /** The contact's flow memberships with flow names, newest entry first. */
