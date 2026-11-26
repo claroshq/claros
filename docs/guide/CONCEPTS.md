@@ -68,7 +68,7 @@ Pressing **Compile** sends the prompt to your configured LLM exactly once. The r
 
 From then on the plan, not the prompt, is what runs. The engine reads it with SQL. The same prompt compiled twice produces equivalent plans, and the plan is inspectable in the flow editor, so there are no surprises at send time.
 
-![A flow's compiled plan in the flow editor](assets/flow-editor.png)
+![A compiled flow in the flow editor: the prompt, then each email with its wait and condition](assets/flow-editor.png)
 
 Recompiling happens only when you ask (prompt changed, or a membership froze on an unrecognized condition). Editing a flow's prompt does nothing until you compile it again.
 
