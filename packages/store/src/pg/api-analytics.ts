@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
 import type { ApiAnalyticsQueries, SendingCounts } from "../areas/api-analytics.js";
+import { andAudience, andContactInAudience } from "../shared/audience.js";
 
 export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
   return {
@@ -14,7 +15,7 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
       return tenantRows.rows[0]?.settings ?? null;
     },
 
-    async lifecycleDistribution({ tenantId }) {
+    async lifecycleDistribution({ tenantId, audience }) {
       return (
         await db.execute<{
           state: string;
@@ -34,12 +35,13 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
                  count(*) FILTER (WHERE engagement_depth IS NULL)::int AS unset
           FROM contacts
           WHERE tenant_id = ${tenantId}
+            ${andAudience(audience)}
           GROUP BY lifecycle_state
         `)
       ).rows;
     },
 
-    async movementPerState({ tenantId, days }) {
+    async movementPerState({ tenantId, days, audience }) {
       return (
         await db.execute<{ state: string; entered: number; exited: number }>(sql`
           SELECT state, sum(entered)::int AS entered, sum(exited)::int AS exited
@@ -48,12 +50,14 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
             FROM lifecycle_transitions
             WHERE tenant_id = ${tenantId}
               AND transitioned_at >= now() - make_interval(days => ${days})
+              ${andContactInAudience(tenantId, audience)}
             GROUP BY to_state
             UNION ALL
             SELECT from_state AS state, 0 AS entered, count(*) AS exited
             FROM lifecycle_transitions
             WHERE tenant_id = ${tenantId}
               AND transitioned_at >= now() - make_interval(days => ${days})
+              ${andContactInAudience(tenantId, audience)}
             GROUP BY from_state
           ) io
           GROUP BY state
@@ -61,13 +65,14 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
       ).rows;
     },
 
-    async movementEdges({ tenantId, days }) {
+    async movementEdges({ tenantId, days, audience }) {
       return (
         await db.execute<{ from_state: string; to_state: string; count: number }>(sql`
           SELECT from_state, to_state, count(*)::int AS count
           FROM lifecycle_transitions
           WHERE tenant_id = ${tenantId}
             AND transitioned_at >= now() - make_interval(days => ${days})
+              ${andContactInAudience(tenantId, audience)}
           GROUP BY from_state, to_state
           ORDER BY count DESC
           LIMIT 20
@@ -75,7 +80,7 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
       ).rows;
     },
 
-    async movementDays({ tenantId, days }) {
+    async movementDays({ tenantId, days, audience }) {
       return (
         await db.execute<{
           day: string;
@@ -94,6 +99,7 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
           FROM lifecycle_transitions
           WHERE tenant_id = ${tenantId}
             AND transitioned_at >= now() - make_interval(days => ${days})
+              ${andContactInAudience(tenantId, audience)}
           GROUP BY 1
           ORDER BY 1
         `)
@@ -218,7 +224,7 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
       ).rows;
     },
 
-    async retentionCellContacts({ tenantId, tenure, recency, afterId, limit }) {
+    async retentionCellContacts({ tenantId, tenure, recency, afterId, limit, audience }) {
       return (
         await db.execute<{
           id: string;
@@ -239,6 +245,7 @@ export function pgApiAnalytics(db: PgDb): ApiAnalyticsQueries {
             AND last_seen_at <= now() - make_interval(days => ${recency.minDays})
             AND (${recency.maxDays}::int IS NULL OR last_seen_at > now() - make_interval(days => ${recency.maxDays}))
             AND (${afterId}::uuid IS NULL OR id > ${afterId}::uuid)
+            ${andAudience(audience)}
           ORDER BY id
           LIMIT ${limit}
         `)

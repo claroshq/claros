@@ -15,6 +15,7 @@
 import { sql } from "drizzle-orm";
 import type { D1Db } from "./db.js";
 import type { ApiAnalyticsQueries, SendingCounts } from "../areas/api-analytics.js";
+import { andAudience, andContactInAudience } from "../shared/audience.js";
 
 const DAY_MS = 86_400_000;
 
@@ -39,7 +40,7 @@ export function d1ApiAnalytics(db: D1Db): ApiAnalyticsQueries {
       return typeof s === "string" ? JSON.parse(s) : (s ?? null);
     },
 
-    async lifecycleDistribution({ tenantId }) {
+    async lifecycleDistribution({ tenantId, audience }) {
       return db.all(sql`
         SELECT lifecycle_state AS state,
                count(*) AS total,
@@ -50,11 +51,12 @@ export function d1ApiAnalytics(db: D1Db): ApiAnalyticsQueries {
                count(CASE WHEN engagement_depth IS NULL THEN 1 END) AS unset
         FROM contacts
         WHERE tenant_id = ${tenantId}
+          ${andAudience(audience)}
         GROUP BY lifecycle_state
       `);
     },
 
-    async movementPerState({ tenantId, days }) {
+    async movementPerState({ tenantId, days, audience }) {
       const since = daysAgo(days);
       return db.all(sql`
         SELECT state, sum(entered) AS entered, sum(exited) AS exited
@@ -62,28 +64,31 @@ export function d1ApiAnalytics(db: D1Db): ApiAnalyticsQueries {
           SELECT to_state AS state, 1 AS entered, 0 AS exited
           FROM lifecycle_transitions
           WHERE tenant_id = ${tenantId} AND transitioned_at >= ${since}
+            ${andContactInAudience(tenantId, audience)}
           UNION ALL
           SELECT from_state AS state, 0 AS entered, 1 AS exited
           FROM lifecycle_transitions
           WHERE tenant_id = ${tenantId} AND transitioned_at >= ${since}
+            ${andContactInAudience(tenantId, audience)}
         ) io
         GROUP BY state
       `);
     },
 
-    async movementEdges({ tenantId, days }) {
+    async movementEdges({ tenantId, days, audience }) {
       return db.all(sql`
         SELECT from_state, to_state, count(*) AS count
         FROM lifecycle_transitions
         WHERE tenant_id = ${tenantId}
           AND transitioned_at >= ${daysAgo(days)}
+          ${andContactInAudience(tenantId, audience)}
         GROUP BY from_state, to_state
         ORDER BY count DESC
         LIMIT 20
       `);
     },
 
-    async movementDays({ tenantId, days }) {
+    async movementDays({ tenantId, days, audience }) {
       return db.all(sql`
         SELECT ${DAY_OF("transitioned_at")} AS day,
                count(*) AS count,
@@ -92,6 +97,7 @@ export function d1ApiAnalytics(db: D1Db): ApiAnalyticsQueries {
         FROM lifecycle_transitions
         WHERE tenant_id = ${tenantId}
           AND transitioned_at >= ${daysAgo(days)}
+          ${andContactInAudience(tenantId, audience)}
         GROUP BY 1
         ORDER BY 1
       `);
@@ -195,7 +201,7 @@ export function d1ApiAnalytics(db: D1Db): ApiAnalyticsQueries {
       `);
     },
 
-    async retentionCellContacts({ tenantId, tenure, recency, afterId, limit }) {
+    async retentionCellContacts({ tenantId, tenure, recency, afterId, limit, audience }) {
       const now = Date.now();
       const ago = (days: number) => now - days * DAY_MS;
       const rows = await db.all<Record<string, unknown>>(sql`
@@ -208,6 +214,7 @@ export function d1ApiAnalytics(db: D1Db): ApiAnalyticsQueries {
           AND last_seen_at <= ${ago(recency.minDays)}
           ${recency.maxDays === null ? sql`` : sql`AND last_seen_at > ${ago(recency.maxDays)}`}
           ${afterId === null ? sql`` : sql`AND id > ${afterId.toLowerCase()}`}
+          ${andAudience(audience)}
         ORDER BY id
         LIMIT ${limit}
       `);

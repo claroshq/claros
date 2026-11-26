@@ -160,3 +160,29 @@ describe("filtering and clearing", () => {
     expect(cleared.toString()).toBe("sort=name&order=desc");
   });
 });
+
+describe("audience (from the Lifecycle page)", () => {
+  it("reads paid and free, ignores anything else", () => {
+    expect(q("audience=paid").audience).toBe("paid");
+    expect(q("audience=free").audience).toBe("free");
+    expect(q("audience=all").audience).toBeNull();
+    expect(q("audience=gold").audience).toBeNull();
+  });
+
+  it("filters the list, counts as filtering and is cleared with the cell", () => {
+    const r = q("tenure_bucket=loyal&recency_bucket=dormant&audience=free");
+    expect(toContactFilters(r, "", NOW)).toMatchObject({
+      tenure_bucket: "loyal",
+      recency_bucket: "dormant",
+      audience: "free",
+    });
+    expect(isFiltering(q("audience=paid"))).toBe(true);
+    const cleared = writePeopleQuery(new URLSearchParams("audience=paid&tenure_bucket=new&sort=name"), {
+      tenure: null,
+      recency: null,
+      audience: null,
+    });
+    expect(cleared.toString()).toBe("sort=name");
+    expect(clearedQuery(new URLSearchParams("audience=paid&sort=name")).toString()).toBe("sort=name");
+  });
+});

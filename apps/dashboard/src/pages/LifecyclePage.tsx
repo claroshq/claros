@@ -11,12 +11,18 @@
  * Movement tab: the exact movement data of the 7-state engine
  * (direction-split daily bars, entries/exits, top transitions).
  *
+ * Audience switch (All / Paid / Free, in the URL as ?audience=): both tabs
+ * show only the chosen group, split on the contact's CURRENT payment_status
+ * (paid = paid or past_due). The grid derives it from the counts it already
+ * has (count, paying); movement is filtered server-side. Flow actions stay
+ * on the whole cell: a segment flow has no payment filter.
+ *
  * The grid's bucket boundaries are computed by the same core functions that
  * drive segment enrollment, so a cell on this screen and the audience of
  * the resulting flow are provably the same set.
  */
 import React, { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   useLifecycleAnalytics,
   useRetentionGrid,
@@ -34,6 +40,7 @@ import { Skeleton } from "../components/ui/skeleton.js";
 import { Button } from "../components/ui/button.js";
 import { PageHeader } from "../components/page-header.js";
 import { cn } from "../lib/utils.js";
+import type { ContactAudience } from "../api.js";
 
 // ---------------------------------------------------------------------------
 // Grid vocabulary
@@ -97,16 +104,107 @@ function recencyRangeLabel(r: Recency, thresholds: { cooling: number; idle: numb
 const RECENCY_COLS: Recency[] = ["active", "cooling", "idle", "dormant"];
 
 // ---------------------------------------------------------------------------
+// Audience (paid / free split)
+// ---------------------------------------------------------------------------
+
+const AUDIENCES: Array<{ id: ContactAudience; label: string }> = [
+  { id: "all", label: "All users" },
+  { id: "paid", label: "Paid" },
+  { id: "free", label: "Free" },
+];
+
+function parseAudience(v: string | null): ContactAudience {
+  return v === "paid" || v === "free" ? v : "all";
+}
+
+/** A grid cell's (or snapshot's) population for the audience. */
+function audienceCount(
+  row: { count: number; paying: number } | undefined,
+  audience: ContactAudience,
+): number {
+  if (!row) return 0;
+  switch (audience) {
+    case "paid": return row.paying;
+    case "free": return row.count - row.paying;
+    default: return row.count;
+  }
+}
+
+/** "" for all, "paid " / "free " otherwise: reads as "46 paid contacts". */
+function audienceWord(audience: ContactAudience): string {
+  return audience === "all" ? "" : `${audience} `;
+}
+
+function AudienceSwitch({
+  value,
+  onChange,
+}: {
+  value: ContactAudience;
+  onChange: (a: ContactAudience) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Audience"
+      className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
+    >
+      {AUDIENCES.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          role="radio"
+          aria-checked={value === a.id}
+          onClick={() => onChange(a.id)}
+          className={cn(
+            "h-7 rounded-sm px-3 text-[13px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            value === a.id
+              ? "bg-secondary font-medium text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One line saying what "paid" and "free" mean; nothing for all. Movement
+ * adds that the split is by today's status, not the status at transition.
+ */
+function AudienceNote({
+  audience,
+  movement = false,
+}: {
+  audience: ContactAudience;
+  movement?: boolean;
+}) {
+  if (audience === "all") return null;
+  return (
+    <p className="text-[12px] leading-relaxed text-subtle-foreground">
+      {audience === "paid"
+        ? "Paid: payment status paid or past due."
+        : "Free: everyone not paying (free, trial, cancelled or no payment status)."}
+      {movement
+        ? " Transitions are grouped by each contact's payment status today, not at the time they moved."
+        : " By each contact's payment status today."}
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Grid
 // ---------------------------------------------------------------------------
 
 interface GridProps {
   grid: NonNullable<ReturnType<typeof useRetentionGrid>["data"]>;
+  audience: ContactAudience;
   selected: { tenure: Tenure; recency: Recency } | null;
   onSelect: (tenure: Tenure, recency: Recency) => void;
 }
 
-function RetentionGrid({ grid, selected, onSelect }: GridProps) {
+function RetentionGrid({ grid, audience, selected, onSelect }: GridProps) {
   const cellMap = useMemo(() => {
     const map = new Map<string, { count: number; paying: number }>();
     for (const c of grid.cells) {
@@ -144,15 +242,16 @@ function RetentionGrid({ grid, selected, onSelect }: GridProps) {
           </div>
           {RECENCY_COLS.map((recency) => {
             const cell = cellMap.get(`${row.id}:${recency}`);
-            const count = cell?.count ?? 0;
-            const paying = cell?.paying ?? 0;
+            const count = audienceCount(cell, audience);
+            // The paying sub-count only adds information when showing everyone.
+            const paying = audience === "all" ? (cell?.paying ?? 0) : 0;
             const isSelected = selected?.tenure === row.id && selected?.recency === recency;
             return (
               <button
                 key={recency}
                 type="button"
                 onClick={() => onSelect(row.id, recency)}
-                aria-label={`${row.label} ${recency}: ${count} contacts`}
+                aria-label={`${row.label} ${recency}: ${count} ${audienceWord(audience)}contacts`}
                 className={cn(
                   "rounded-md px-3 py-3 text-center transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   count === 0 ? "bg-sunken hover:bg-sunken-hover" : RECENCY_SURFACE[recency],
@@ -201,10 +300,13 @@ function useCellData(
   grid: NonNullable<ReturnType<typeof useRetentionGrid>["data"]>,
   tenure: Tenure,
   recency: Recency,
+  audience: ContactAudience,
 ) {
   const cell = grid.cells.find((c) => c.tenure === tenure && c.recency === recency);
-  const count = cell?.count ?? 0;
-  const paying = cell?.paying ?? 0;
+  const count = audienceCount(cell, audience);
+  const paying = audience === "all" ? (cell?.paying ?? 0) : 0;
+  // Flow actions target the whole cell whatever the audience.
+  const cellTotal = cell?.count ?? 0;
 
   const trendQuery = useRetentionGridCellTrend(tenure, recency, CELL_TREND_DAYS);
 
@@ -213,13 +315,13 @@ function useCellData(
   const trendRows = useMemo(() => {
     const rows = (trendQuery.data?.days ?? []).map((d) => ({
       day: d.day,
-      count: d.count,
+      count: audienceCount(d, audience),
     }));
     if (rows[rows.length - 1]?.day !== todayUtc) {
       rows.push({ day: todayUtc, count });
     }
     return rows;
-  }, [trendQuery.data, count, todayUtc]);
+  }, [trendQuery.data, count, todayUtc, audience]);
 
   // Delta over the recorded window. Growth in the active cell is good news;
   // growth in a quiet cell means more people drifting, so it reads as bad.
@@ -228,23 +330,25 @@ function useCellData(
     trendRows.length >= TREND_MIN_POINTS ? count - trendRows[0]!.count : null;
   const deltaGood = delta !== null && delta !== 0 && (recency === "active" ? delta > 0 : delta < 0);
 
-  return { count, paying, trendQuery, trendRows, delta, deltaGood };
+  return { count, paying, cellTotal, trendQuery, trendRows, delta, deltaGood };
 }
 
 function CellDetail({
   grid,
   tenure,
   recency,
+  audience,
 }: {
   grid: NonNullable<ReturnType<typeof useRetentionGrid>["data"]>;
   tenure: Tenure;
   recency: Recency;
+  audience: ContactAudience;
 }) {
   const flowsQuery = useFlows();
   const navigate = useNavigate();
   const tenureRow = TENURE_ROWS.find((t) => t.id === tenure)!;
-  const { count, paying, trendQuery, trendRows, delta, deltaGood } =
-    useCellData(grid, tenure, recency);
+  const { count, paying, cellTotal, trendQuery, trendRows, delta, deltaGood } =
+    useCellData(grid, tenure, recency, audience);
   const transition = RECENCY_TRANSITION[recency] ?? null;
 
   // Flows already covering this cell: a segment flow targeting it, or a
@@ -289,6 +393,7 @@ function CellDetail({
           <p className="font-display text-[28px] font-bold leading-none tracking-[-0.02em] text-foreground">
             {count}
             <span className="ml-2 text-[14px] font-normal text-muted-foreground">
+              {audienceWord(audience)}
               {count === 1 ? "contact" : "contacts"}
               {paying > 0 && ` · ${paying} paying`}
             </span>
@@ -324,7 +429,7 @@ function CellDetail({
               <TrendLine
                 rows={trendRows}
                 emptyNote="The trend appears after a week of daily snapshots."
-                ariaLabel={`Daily population of the ${tenureRow.label} ${recency} cell over the last ${CELL_TREND_DAYS} days`}
+                ariaLabel={`Daily ${audienceWord(audience)}population of the ${tenureRow.label} ${recency} cell over the last ${CELL_TREND_DAYS} days`}
               />
             )}
           </div>
@@ -335,7 +440,7 @@ function CellDetail({
           {!existingSegmentFlow && (
             <Button
               className="w-full"
-              disabled={count === 0}
+              disabled={cellTotal === 0}
               onClick={() => navigate(`/flows/new?segment=${tenure}:${recency}`)}
             >
               Create flow for this segment
@@ -346,7 +451,9 @@ function CellDetail({
             className="w-full"
             disabled={count === 0}
             onClick={() =>
-              navigate(`/people?tenure_bucket=${tenure}&recency_bucket=${recency}`)
+              navigate(
+                `/people?tenure_bucket=${tenure}&recency_bucket=${recency}${audience === "all" ? "" : `&audience=${audience}`}`,
+              )
             }
           >
             Show users
@@ -364,9 +471,10 @@ function CellDetail({
             </p>
           ) : (
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              {count === 0
+              {cellTotal === 0
                 ? "This cell is empty right now."
-                : `Reaches the ${count} ${count === 1 ? "contact" : "contacts"} already here, and everyone who enters this cell later.`}
+                : `Reaches the ${cellTotal} ${cellTotal === 1 ? "contact" : "contacts"} already here, and everyone who enters this cell later.`}
+              {cellTotal > 0 && audience !== "all" && " Flows target the whole cell, paid and free."}
             </p>
           )}
 
@@ -435,7 +543,7 @@ function TabBar({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
     <div
       role="tablist"
       aria-label="Lifecycle views"
-      className="mb-8 inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
+      className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
     >
       {TABS.map((t) => (
         <button
@@ -465,13 +573,30 @@ function TabBar({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
 export default function LifecyclePage() {
   const [tab, setTab] = useState<Tab>("grid");
   const [days, setDays] = useState<number>(30);
+  // In the URL so it survives reloads and "Back to Lifecycle" from People.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const audience = parseAudience(searchParams.get("audience"));
+  const setAudience = (a: ContactAudience) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (a === "all") next.delete("audience");
+        else next.set("audience", a);
+        return next;
+      },
+      { replace: true },
+    );
   const gridQuery = useRetentionGrid();
-  const movementQuery = useLifecycleAnalytics(days);
+  const movementQuery = useLifecycleAnalytics(days, audience);
   const [selected, setSelected] = useState<{ tenure: Tenure; recency: Recency } | null>(null);
 
   const activeQuery = tab === "grid" ? gridQuery : movementQuery;
   const isLoading = activeQuery.isLoading;
   const isError = activeQuery.isError;
+
+  const gridTotal = gridQuery.data
+    ? gridQuery.data.cells.reduce((acc, c) => acc + audienceCount(c, audience), 0)
+    : 0;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -480,12 +605,15 @@ export default function LifecyclePage() {
         title="Lifecycle"
         subtitle={
           gridQuery.data
-            ? `${gridQuery.data.contacts_total} ${gridQuery.data.contacts_total === 1 ? "contact" : "contacts"} on the grid, right now`
+            ? `${gridTotal} ${audienceWord(audience)}${gridTotal === 1 ? "contact" : "contacts"} on the grid, right now`
             : "Who your contacts are, how long they have been quiet, and where to act."
         }
       />
 
-      <TabBar tab={tab} onChange={setTab} />
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <TabBar tab={tab} onChange={setTab} />
+        <AudienceSwitch value={audience} onChange={setAudience} />
+      </div>
 
       {isLoading && <PageSkeleton />}
 
@@ -514,6 +642,7 @@ export default function LifecyclePage() {
         <section className="mb-10">
           <RetentionGrid
             grid={gridQuery.data}
+            audience={audience}
             selected={selected}
             onSelect={(tenure, recency) => {
               setSelected(
@@ -528,12 +657,16 @@ export default function LifecyclePage() {
             {gridQuery.data.natural_frequency_days} days. Cell populations
             are snapshotted daily - click a cell for its trend and actions.
           </p>
+          <div className="mt-1">
+            <AudienceNote audience={audience} />
+          </div>
 
           {selected ? (
             <CellDetail
               grid={gridQuery.data}
               tenure={selected.tenure}
               recency={selected.recency}
+              audience={audience}
             />
           ) : (
             <div className="mt-6 rounded-lg border border-dashed border-border-strong px-5 py-4">
@@ -572,6 +705,9 @@ export default function LifecyclePage() {
               Lifecycle transitions per day over the last {days} days, split
               by direction.
             </p>
+            <div className="-mt-2 mb-3">
+              <AudienceNote audience={audience} movement />
+            </div>
             <DailySplitBars
               rows={movementQuery.data.movement.days.map((d): SplitPoint => ({
                 day: d.day,
