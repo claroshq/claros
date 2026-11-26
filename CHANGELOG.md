@@ -18,6 +18,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Fixed
 
+- Integrate page: a key created from the API keys card (admin keys in particular) is shown in that card and scrolled into view. It appeared only at the top of the page, out of sight, and is shown just once.
+
 - Docs: the `kb` admin key scope lists `POST /v1/kb/import`, which it has covered since v0.8.
 - People: the header shows how many contacts there are (or how many match the search and filters) instead of the rows loaded so far, which read "50+ contacts" for any list longer than one page. `GET /v1/contacts` adds `total` to the first page (no `after`): the number of contacts matching the filters and search across all pages. Same on Postgres and D1; no migration.
 
