@@ -123,6 +123,8 @@ With the list set, only `track` events whose name is in it count as activity, an
 
 There is no general-purpose segment builder. "Segment" means exactly one cell of the retention grid: tenure (`new`, `growing`, `established`, `loyal`) crossed with recency (`active`, `cooling`, `idle`, `dormant`). The grid you see in Analytics is the same set a segment-triggered flow enrolls.
 
+The Lifecycle page has an **All users / Paid / Free** switch that applies to the grid and to Movement. Paid means `payment_status` is `paid` or `past_due`; free is every other value (`free`, `trial`, `cancelled`, or none). The split uses each contact's payment status today, so on Movement "Paid" shows the transitions of contacts who pay now, including ones they made before they started paying. The switch only changes what you see: a segment-triggered flow still enrolls the whole cell, paid and free. In the API the same split is `?audience=all|paid|free` on `GET /v1/analytics/lifecycle`, `GET /v1/analytics/retention-grid/:tenure/:recency/contacts` and `GET /v1/contacts`; grid cells and their trend already carry `count` and `paying`.
+
 **Classes.** Every flow is `nurture` or `critical`. A contact can be in at most one active nurture flow at a time; a higher-priority flow evicts the current one. Critical flows (dunning, limits) have no concurrency limit and bypass the frequency caps and send window. Nothing bypasses the suppression list.
 
 **Re-entry.** Per flow: `once`, `cooldown` (default 30 days), or `every_time`. Enforced by a uniqueness constraint on active memberships, so races cannot double-enroll.

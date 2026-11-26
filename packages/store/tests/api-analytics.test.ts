@@ -399,6 +399,108 @@ for (const factory of testBackends()) {
       expect(p2.map((r) => r.id)).toEqual(all.slice(3));
     });
 
+    it("audience splits distribution, movement and cell contacts by current payment status", async () => {
+      // Own tenant: one contact per payment status, each with its own transitions.
+      const s = b.schema as any;
+      const now = Date.now();
+      const tenantId = await b.newTenant("Audience");
+      const defs = [
+        { pay: "paid", state: "engaged", tx: [["signed_up", "activated"], ["activated", "engaged"]] },
+        { pay: "past_due", state: "at_risk", tx: [["engaged", "at_risk"]] },
+        { pay: "free", state: "engaged", tx: [["signed_up", "activated"]] },
+        { pay: "trial", state: "dormant", tx: [["at_risk", "dormant"], ["engaged", "at_risk"]] },
+        { pay: null, state: "churned", tx: [["dormant", "churned"]] },
+      ] as const;
+      const ids = defs.map(() => randomUUID());
+      await b.db.insert(s.contacts).values(
+        defs.map((c, i) => ({
+          id: ids[i],
+          tenantId,
+          externalId: `a${i}`,
+          lifecycleState: c.state,
+          paymentStatus: c.pay,
+          firstSeenAt: new Date(now - 3 * D),
+          lastSeenAt: new Date(now - H),
+        })),
+      );
+      await b.db.insert(s.lifecycleTransitions).values(
+        defs.flatMap((c, i) =>
+          c.tx.map(([from, to], j) => ({
+            id: randomUUID(),
+            tenantId,
+            contactId: ids[i],
+            fromState: from,
+            toState: to,
+            transitionedAt: new Date(now - (j + 1) * H),
+          })),
+        ),
+      );
+      // A paying contact in another tenant: its transitions never leak in.
+      const other = await b.newTenant("Audience other");
+      const otherId = randomUUID();
+      await b.db.insert(s.contacts).values({
+        id: otherId, tenantId: other, externalId: "o", lifecycleState: "engaged", paymentStatus: "paid",
+      });
+      await b.db.insert(s.lifecycleTransitions).values({
+        id: randomUUID(), tenantId: other, contactId: otherId, fromState: "signed_up", toState: "activated",
+        transitionedAt: new Date(now - H),
+      });
+
+      const a = b.store.apiAnalytics;
+      const total = (rows: Array<{ total: number }>) => rows.reduce((n, r) => n + r.total, 0);
+      expect(total(await a.lifecycleDistribution({ tenantId }))).toBe(5);
+      expect(total(await a.lifecycleDistribution({ tenantId, audience: "all" }))).toBe(5);
+      expect(
+        (await a.lifecycleDistribution({ tenantId, audience: "paid" }))
+          .map((r) => [r.state, r.total]).sort(),
+      ).toEqual([["at_risk", 1], ["engaged", 1]]);
+      expect(
+        (await a.lifecycleDistribution({ tenantId, audience: "free" }))
+          .map((r) => [r.state, r.total]).sort(),
+      ).toEqual([["churned", 1], ["dormant", 1], ["engaged", 1]]);
+
+      const edges = async (audience?: "all" | "paid" | "free") =>
+        (await a.movementEdges({ tenantId, days: 7, audience }))
+          .map((e) => `${e.from_state}>${e.to_state}:${e.count}`).sort();
+      expect(await edges("paid")).toEqual(["activated>engaged:1", "engaged>at_risk:1", "signed_up>activated:1"]);
+      expect(await edges("free")).toEqual(
+        ["at_risk>dormant:1", "dormant>churned:1", "engaged>at_risk:1", "signed_up>activated:1"],
+      );
+      expect(await edges()).toEqual(
+        ["activated>engaged:1", "at_risk>dormant:1", "dormant>churned:1", "engaged>at_risk:2", "signed_up>activated:2"],
+      );
+
+      const perState = async (audience: "paid" | "free") =>
+        Object.fromEntries(
+          (await a.movementPerState({ tenantId, days: 7, audience })).map((r) => [r.state, [r.entered, r.exited]]),
+        );
+      expect(await perState("paid")).toEqual({
+        signed_up: [0, 1], activated: [1, 1], engaged: [1, 1], at_risk: [1, 0],
+      });
+      expect(await perState("free")).toEqual({
+        signed_up: [0, 1], activated: [1, 0], engaged: [0, 1], at_risk: [1, 1], dormant: [1, 1], churned: [1, 0],
+      });
+
+      const dayTotals = async (audience: "all" | "paid" | "free") => {
+        const rows = await a.movementDays({ tenantId, days: 7, audience });
+        return rows.reduce(
+          (t, r) => ({ count: t.count + r.count, positive: t.positive + r.positive, negative: t.negative + r.negative }),
+          { count: 0, positive: 0, negative: 0 },
+        );
+      };
+      expect(await dayTotals("paid")).toEqual({ count: 3, positive: 2, negative: 1 });
+      expect(await dayTotals("free")).toEqual({ count: 4, positive: 1, negative: 3 });
+      expect(await dayTotals("all")).toEqual({ count: 7, positive: 3, negative: 4 });
+
+      const open = { minDays: 0, maxDays: null };
+      const cell = async (audience: "all" | "paid" | "free") =>
+        (await a.retentionCellContacts({ tenantId, tenure: open, recency: open, afterId: null, limit: 10, audience }))
+          .map((r) => r.payment_status).sort();
+      expect(await cell("paid")).toEqual(["paid", "past_due"]);
+      expect(await cell("free")).toEqual(["free", null, "trial"].sort());
+      expect(await cell("all")).toHaveLength(5);
+    });
+
     it("retentionCellTrend returns the cell's snapshots in the last N UTC days, oldest first", async () => {
       const todayUtc = Math.floor(Date.now() / D) * D;
       expect(

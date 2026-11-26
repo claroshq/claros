@@ -28,6 +28,10 @@ export const RECENCY_BUCKETS = ["active", "cooling", "idle", "dormant"] as const
 export type TenureBucket = (typeof TENURE_BUCKETS)[number];
 export type RecencyBucket = (typeof RECENCY_BUCKETS)[number];
 
+/** paid = payment status paid or past_due, free = any other (GET /v1/contacts?audience=). */
+export const AUDIENCES = ["paid", "free"] as const;
+export type Audience = (typeof AUDIENCES)[number];
+
 /** The A-Z bar: a..z, then "#" for names that start with anything else. */
 export const LETTERS: ReadonlyArray<string> = [..."abcdefghijklmnopqrstuvwxyz".split(""), "#"];
 
@@ -71,6 +75,8 @@ export interface PeopleQuery {
   dateTo: string | null;
   tenure: TenureBucket | null;
   recency: RecencyBucket | null;
+  /** The Lifecycle page's paid / free split, carried by "Show users". */
+  audience: Audience | null;
   /** The sort in the URL; null means the default (see effectiveSort). */
   sort: ContactSortKey | null;
   order: SortOrder | null;
@@ -101,6 +107,7 @@ export function readPeopleQuery(params: URLSearchParams): PeopleQuery {
     dateTo: ymd(params.get("to")),
     tenure: oneOf(TENURE_BUCKETS, params.get("tenure_bucket")),
     recency: oneOf(RECENCY_BUCKETS, params.get("recency_bucket")),
+    audience: oneOf(AUDIENCES, params.get("audience")),
     sort: oneOf(SORT_KEYS, params.get("sort")),
     order: oneOf(["asc", "desc"] as const, params.get("order")),
   };
@@ -119,6 +126,7 @@ const PARAM: Record<keyof PeopleQuery, string> = {
   dateTo: "to",
   tenure: "tenure_bucket",
   recency: "recency_bucket",
+  audience: "audience",
   sort: "sort",
   order: "order",
 };
@@ -205,6 +213,7 @@ export function toContactFilters(q: PeopleQuery, search: string, now: Date): Con
   if (q.letter) f.letter = q.letter;
   if (q.tenure) f.tenure_bucket = q.tenure;
   if (q.recency) f.recency_bucket = q.recency;
+  if (q.audience) f.audience = q.audience;
   const range = dateRange(q, now);
   if (q.dateField === "joined") {
     if (range.after) f.joined_after = range.after;
@@ -229,7 +238,8 @@ export function isFiltering(q: PeopleQuery): boolean {
     q.letter !== null ||
     q.datePreset !== null ||
     q.tenure !== null ||
-    q.recency !== null
+    q.recency !== null ||
+    q.audience !== null
   );
 }
 

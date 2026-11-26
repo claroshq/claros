@@ -1,18 +1,22 @@
 /**
  * Analytics hooks.
  */
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   fetchLifecycleAnalytics,
   fetchSendingAnalytics,
   fetchRetentionGrid,
   fetchRetentionGridCellTrend,
+  type ContactAudience,
 } from "./api.js";
 
-export function useLifecycleAnalytics(days: number) {
+export function useLifecycleAnalytics(days: number, audience: ContactAudience = "all") {
   return useQuery({
-    queryKey: ["analytics", "lifecycle", days],
-    queryFn: () => fetchLifecycleAnalytics(days),
+    queryKey: ["analytics", "lifecycle", days, audience],
+    queryFn: () => fetchLifecycleAnalytics(days, audience),
+    // Switching range or audience keeps the last result on screen while the
+    // next one loads, instead of flashing the skeleton.
+    placeholderData: keepPreviousData,
   });
 }
 

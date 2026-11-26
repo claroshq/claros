@@ -376,6 +376,42 @@ describe("GET /v1/analytics/lifecycle", () => {
     expect(perState.get("activated")).toBeUndefined();
   });
 
+  it("splits distribution and movement by audience on current payment status", async () => {
+    if (!dbAvailable) return;
+    const app = await buildApp({ db, logger: false });
+    const get = async (qs: string) =>
+      app.inject({ method: "GET", url: `/v1/analytics/lifecycle?days=30${qs}`, headers: { cookie: cookieA } });
+    const moved = (body: { movement: { days: Array<{ count: number }> } }) =>
+      body.movement.days.reduce((acc, d) => acc + d.count, 0);
+
+    const bad = await get("&audience=paying");
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().issues[0].path).toBe("audience");
+    expect((await get("")).json().audience).toBe("all");
+
+    // a3 (both engaged -> at_risk transitions) pays for the duration of this test.
+    await db.execute(sql`UPDATE contacts SET payment_status = 'past_due' WHERE tenant_id = ${tenantAId} AND external_id = 'a3'`);
+    try {
+      const paid = (await get("&audience=paid")).json();
+      expect(paid.audience).toBe("paid");
+      expect(paid.contacts_total).toBe(1);
+      expect(paid.distribution.map((r: { state: string }) => r.state)).toEqual(["at_risk"]);
+      expect(moved(paid)).toBe(2);
+      expect(paid.movement.edges).toEqual([{ from_state: "engaged", to_state: "at_risk", count: 2 }]);
+
+      const free = (await get("&audience=free")).json();
+      expect(free.contacts_total).toBe(4);
+      expect(moved(free)).toBe(2); // at_risk -> churned, signed_up -> activated
+      expect(free.movement.edges.some((e: { to_state: string }) => e.to_state === "at_risk")).toBe(false);
+
+      const all = (await get("&audience=all")).json();
+      expect(all.contacts_total).toBe(5);
+      expect(moved(all)).toBe(4);
+    } finally {
+      await db.execute(sql`UPDATE contacts SET payment_status = 'free' WHERE tenant_id = ${tenantAId} AND external_id = 'a3'`);
+    }
+  });
+
   it("isolates tenants", async () => {
     if (!dbAvailable) return;
     const app = await buildApp({ db, logger: false });

@@ -325,7 +325,7 @@ export default function PeoplePage() {
     setSearchInput((current) => (current.trim() === query.search.trim() ? current : query.search));
   }, [query.search]);
 
-  const cellFiltering = query.tenure !== null || query.recency !== null;
+  const cellFiltering = query.tenure !== null || query.recency !== null || query.audience !== null;
   const filtering = isFiltering(query);
   const sort = effectiveSort(query);
 
@@ -359,7 +359,7 @@ export default function PeoplePage() {
   }
 
   function clearCellFilter() {
-    update({ tenure: null, recency: null });
+    update({ tenure: null, recency: null, audience: null });
   }
 
   function onSort(key: ContactSortKey) {
@@ -400,7 +400,7 @@ export default function PeoplePage() {
               From the retention grid
             </p>
             <p className="mt-0.5 text-[14px] text-foreground">
-              Showing the cell{" "}
+              Showing {query.audience ? `${query.audience} contacts in ` : ""}the cell{" "}
               <span className="font-semibold">
                 {query.tenure ? TENURE_LABELS[query.tenure] : "Any tenure"} ·{" "}
                 <span className="capitalize">{query.recency ?? "any recency"}</span>
@@ -409,7 +409,7 @@ export default function PeoplePage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/lifecycle"
+              to={query.audience ? `/lifecycle?audience=${query.audience}` : "/lifecycle"}
               className="text-[13px] text-accent-text underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Back to Lifecycle

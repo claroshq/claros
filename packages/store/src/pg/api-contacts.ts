@@ -11,6 +11,7 @@ import type {
   ContactNoteRow,
 } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
+import { audienceCondition } from "../shared/audience.js";
 import { pgWriteOutbox } from "./outbox.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,6 +106,8 @@ function listConditions(tenantId: string, filter: ContactListFilter, withLetter 
   }
   if (filter.lastSeenAfter !== null) c.push(sql`last_seen_at >= ${filter.lastSeenAfter}::timestamptz`);
   if (filter.lastSeenBefore !== null) c.push(sql`last_seen_at < ${filter.lastSeenBefore}::timestamptz`);
+  const audience = audienceCondition(filter.audience);
+  if (audience !== null) c.push(audience);
   return c;
 }
 

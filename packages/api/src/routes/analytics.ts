@@ -12,8 +12,15 @@
  *   GET /v1/analytics/retention-grid/:tenure/:recency/contacts  contacts in a cell
  *   GET /v1/analytics/retention-grid/:tenure/:recency/trend     daily cell population
  *
- * Both take ?days=<1..90> (default 30). Aggregation happens in Postgres;
+ * Both take ?days=<1..90> (default 30). Aggregation happens in the database;
  * no rows are shipped to the client for counting.
+ *
+ * Audience: /lifecycle and the cell contacts list take
+ * ?audience=all|paid|free (default all). Paid is payment_status paid or
+ * past_due, free is every other value; the split uses the contact's CURRENT
+ * payment_status, so for movement it reads "transitions of contacts who are
+ * paid now". The grid and the cell trend need no parameter: every cell and
+ * snapshot already carries count and paying (free = count - paying).
  *
  * What the data supports, honestly:
  *   - Distribution is CURRENT state only (contacts.lifecycle_state). There
@@ -53,6 +60,7 @@ import {
   RETENTION_TENURE_BUCKETS,
   RETENTION_RECENCY_BUCKETS,
   RETENTION_TENURE_THRESHOLDS_DAYS,
+  CONTACT_AUDIENCES,
   type LifecycleConfig,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
@@ -63,6 +71,10 @@ const daysQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional(),
 });
 
+const lifecycleQuerySchema = daysQuerySchema.extend({
+  audience: z.enum(CONTACT_AUDIENCES).optional(),
+});
+
 const cellParamsSchema = z.object({
   tenure: z.enum(RETENTION_TENURE_BUCKETS),
   recency: z.enum(RETENTION_RECENCY_BUCKETS),
@@ -71,6 +83,7 @@ const cellParamsSchema = z.object({
 const cellContactsQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+  audience: z.enum(CONTACT_AUDIENCES).optional(),
 });
 
 /** Loads the tenant's lifecycle config (drives the grid's recency thresholds). */
@@ -100,11 +113,14 @@ function validationError(c: AppContext, issues: z.ZodIssue[]) {
 export default function analyticsRoutes() {
   const router = new RoleRouter();
   /**
-   * GET /v1/analytics/lifecycle?days=<1..90>
+   * GET /v1/analytics/lifecycle?days=<1..90>&audience=<all|paid|free>
+   *
+   * Distribution, contacts_total and movement all cover the audience only.
    *
    * Response:
    * {
    *   range_days: number,
+   *   audience: "all" | "paid" | "free",
    *   contacts_total: number,
    *   distribution: [{ state, total, power, regular, casual, minimal, unset }],
    *   movement: {
@@ -120,7 +136,7 @@ export default function analyticsRoutes() {
    * }
    */
   router.get("/lifecycle", "member", async (c) => {
-    const parsed = daysQuerySchema.safeParse(c.req.query());
+    const parsed = lifecycleQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
       return validationError(c, parsed.error.issues);
     }
@@ -128,17 +144,19 @@ export default function analyticsRoutes() {
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
     const days = parsed.data.days ?? 30;
+    const audience = parsed.data.audience ?? "all";
 
     const store = storeFor(db).apiAnalytics;
-    const distribution = await store.lifecycleDistribution({ tenantId });
-    const perState = await store.movementPerState({ tenantId, days });
-    const edges = await store.movementEdges({ tenantId, days });
-    const movementDays = await store.movementDays({ tenantId, days });
+    const distribution = await store.lifecycleDistribution({ tenantId, audience });
+    const perState = await store.movementPerState({ tenantId, days, audience });
+    const edges = await store.movementEdges({ tenantId, days, audience });
+    const movementDays = await store.movementDays({ tenantId, days, audience });
 
     const contactsTotal = distribution.reduce((acc, row) => acc + row.total, 0);
 
     return c.json({
       range_days: days,
+      audience,
       contacts_total: contactsTotal,
       distribution,
       movement: {
@@ -252,7 +270,7 @@ export default function analyticsRoutes() {
   });
 
   /**
-   * GET /v1/analytics/retention-grid/:tenure/:recency/contacts?cursor=<id>&limit=<1..100>
+   * GET /v1/analytics/retention-grid/:tenure/:recency/contacts?cursor=<id>&limit=<1..100>&audience=<all|paid|free>
    *
    * The contacts currently sitting in one grid cell. Uses the same core
    * bucket-range functions as the grid aggregate and segment enrollment, so
@@ -293,6 +311,7 @@ export default function analyticsRoutes() {
       recency,
       afterId: query.data.cursor ?? null,
       limit: limit + 1,
+      audience: query.data.audience ?? "all",
     });
 
     const hasMore = rows.length > limit;

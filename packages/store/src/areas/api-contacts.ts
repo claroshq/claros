@@ -6,6 +6,7 @@
  * ../d1/api-contacts.ts (SQLite / Cloudflare D1). Methods take and return plain
  * values (Date for timestamps), never Drizzle objects.
  */
+import type { ContactAudience } from "@claros/core";
 import type { ContactTopicStatusRow } from "./shared-topics.js";
 
 /** Sort keys of the People list. */
@@ -55,6 +56,11 @@ export interface ContactListFilter {
   lastSeenAfter: string | null;
   /** last_seen_at strictly before this instant (ISO 8601); never-seen contacts never match. */
   lastSeenBefore: string | null;
+  /**
+   * Paid / free split on current payment_status (../shared/audience.ts).
+   * Optional; absent or "all" means no filter.
+   */
+  audience?: ContactAudience;
 }
 
 /**

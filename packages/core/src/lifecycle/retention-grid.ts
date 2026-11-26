@@ -52,6 +52,26 @@ export const RETENTION_RECENCY_MULTIPLIERS = {
   dormant: 4,
 } as const;
 
+// ---------------------------------------------------------------------------
+// Audience (paid / free split)
+// ---------------------------------------------------------------------------
+
+/**
+ * payment_status values that count as paying. The grid's `paying` column,
+ * its daily snapshots and the Lifecycle page's audience filter all use
+ * this set, so "paid" means the same contacts everywhere.
+ */
+export const PAYING_PAYMENT_STATUSES = ["paid", "past_due"] as const;
+
+/**
+ * Who an analytics read covers, by the contact's CURRENT payment_status:
+ * all contacts, paying ones (PAYING_PAYMENT_STATUSES) or everyone else
+ * (free, trial, cancelled, unset). paid + free = all.
+ */
+export const CONTACT_AUDIENCES = ["all", "paid", "free"] as const;
+
+export type ContactAudience = (typeof CONTACT_AUDIENCES)[number];
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------

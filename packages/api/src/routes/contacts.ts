@@ -49,6 +49,7 @@ import {
   recencyBucketRange,
   RETENTION_TENURE_BUCKETS,
   RETENTION_RECENCY_BUCKETS,
+  CONTACT_AUDIENCES,
   type LifecycleConfig,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
@@ -189,6 +190,7 @@ const listQuerySchema = z.object({
   engagement_depth: z.enum(ENGAGEMENT_DEPTHS).optional(),
   tenure_bucket: z.enum(RETENTION_TENURE_BUCKETS).optional(),
   recency_bucket: z.enum(RETENTION_RECENCY_BUCKETS).optional(),
+  audience: z.enum(CONTACT_AUDIENCES).optional(),
   search: z.string().max(200).optional(),
   payment_status: z.enum(PAYMENT_STATUSES).optional(),
   letter: z
@@ -261,6 +263,8 @@ export default function contactsRoutes() {
    *   ?last_seen_before=<iso> last seen strictly before (never-seen contacts excluded)
    *   ?tenure_bucket=<t>      retention-grid tenure bucket (new|growing|established|loyal)
    *   ?recency_bucket=<r>     retention-grid recency bucket (active|cooling|idle|dormant)
+   *   ?audience=<a>           all|paid|free: paid = payment_status paid or past_due,
+   *                           free = every other value (the Lifecycle page split)
    *   ?search=<text>          case-insensitive substring on email, name, external_id
    *
    * The display name is the name, else the email, else the external id; the
@@ -343,6 +347,7 @@ export default function contactsRoutes() {
       joinedBefore: q.joined_before ?? null,
       lastSeenAfter: q.last_seen_after ?? null,
       lastSeenBefore: q.last_seen_before ?? null,
+      audience: q.audience ?? "all",
     };
     const store = storeFor(db).apiContacts;
     // Counts come with the first page only: later pages are "Load more" on

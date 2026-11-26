@@ -226,6 +226,31 @@ for (const factory of testBackends()) {
       );
     });
 
+    it("listContacts and countContactsByInitial split paid and free by audience", async () => {
+      const ids = async (filter: Record<string, unknown>) => (await list(filter)).map((r) => r.id).sort();
+      const idsOf = (...i: number[]) => i.map((n) => contacts[n]!.id).sort();
+      // The total is the sum of the per-initial counts.
+      const count = async (filter: Record<string, unknown>) =>
+        (await b.store.apiContacts.countContactsByInitial({ tenantId, filter: { ...emptyFilter, ...filter } }))
+          .reduce((n, r) => n + r.n, 0);
+      // payment: 1 paid, 2 trial, the rest free. For this test 3 is past_due and 4 has none.
+      await b.db.update(s.contacts).set({ paymentStatus: "past_due" }).where(eq(s.contacts.id, contacts[3]!.id));
+      await b.db.update(s.contacts).set({ paymentStatus: null }).where(eq(s.contacts.id, contacts[4]!.id));
+      try {
+        expect(await ids({ audience: "paid" })).toEqual(idsOf(1, 3));
+        expect(await ids({ audience: "free" })).toEqual(idsOf(0, 2, 4, 5, 6));
+        expect(await ids({ audience: "all" })).toEqual(idsOf(0, 1, 2, 3, 4, 5, 6));
+        expect(await ids({ audience: "paid", recencyMinDays: 3 })).toEqual(idsOf(1, 3));
+        expect(await ids({ audience: "free", searchPattern: "%acme%" })).toEqual(idsOf(0, 2));
+        expect(await ids({ audience: "free", paymentStatus: "paid" })).toEqual([]);
+        expect(await count({ audience: "paid" })).toBe(2);
+        expect(await count({ audience: "free" })).toBe(5);
+      } finally {
+        await b.db.update(s.contacts).set({ paymentStatus: "free" }).where(eq(s.contacts.id, contacts[3]!.id));
+        await b.db.update(s.contacts).set({ paymentStatus: "free" }).where(eq(s.contacts.id, contacts[4]!.id));
+      }
+    });
+
     it("listContacts filters by payment status, first letter and date ranges", async () => {
       const ids = async (filter: Record<string, unknown>) => (await list(filter)).map((r) => r.id).sort();
       const idsOf = (...i: number[]) => i.map((n) => contacts[n]!.id).sort();

@@ -9,7 +9,15 @@
  * Windows given as `days` are relative to the database clock: rows with the
  * timestamp >= now() - days. Day buckets are UTC calendar days as 'YYYY-MM-DD'
  * text, ordered ascending.
+ *
+ * `audience` (optional, default "all") restricts a read to paying or free
+ * contacts by their CURRENT payment_status (see ../shared/audience.ts). For
+ * transitions this means "transitions of contacts who are paid now", not
+ * "transitions made while paid": payment status is not recorded per
+ * transition.
  */
+
+import type { ContactAudience } from "@claros/core";
 
 /** Message counts by outcome. */
 export type SendingCounts = {
@@ -26,7 +34,7 @@ export interface ApiAnalyticsQueries {
   /** The tenant's settings JSON (null when unset or the tenant does not exist). */
   getTenantSettings(input: { tenantId: string }): Promise<unknown>;
   /** Current contact count per lifecycle state, split by engagement depth (unset = no depth). */
-  lifecycleDistribution(input: { tenantId: string }): Promise<Array<{
+  lifecycleDistribution(input: { tenantId: string; audience?: ContactAudience }): Promise<Array<{
     state: string;
     total: number;
     power: number;
@@ -36,14 +44,14 @@ export interface ApiAnalyticsQueries {
     unset: number;
   }>>;
   /** Transitions into and out of each state within the window. */
-  movementPerState(input: { tenantId: string; days: number }): Promise<Array<{ state: string; entered: number; exited: number }>>;
+  movementPerState(input: { tenantId: string; days: number; audience?: ContactAudience }): Promise<Array<{ state: string; entered: number; exited: number }>>;
   /** The 20 most frequent state-to-state transitions within the window, most frequent first. */
-  movementEdges(input: { tenantId: string; days: number }): Promise<Array<{ from_state: string; to_state: string; count: number }>>;
+  movementEdges(input: { tenantId: string; days: number; audience?: ContactAudience }): Promise<Array<{ from_state: string; to_state: string; count: number }>>;
   /**
    * Transitions per day within the window: positive = into activated/engaged/
    * resurrected, negative = into at_risk/dormant/churned.
    */
-  movementDays(input: { tenantId: string; days: number }): Promise<Array<{ day: string; count: number; positive: number; negative: number }>>;
+  movementDays(input: { tenantId: string; days: number; audience?: ContactAudience }): Promise<Array<{ day: string; count: number; positive: number; negative: number }>>;
   /** Messages sent per day (sent_at within the window). */
   sendDays(input: { tenantId: string; days: number }): Promise<Array<{ day: string; sent: number }>>;
   /**
@@ -77,6 +85,7 @@ export interface ApiAnalyticsQueries {
     recency: { minDays: number; maxDays: number | null };
     afterId: string | null;
     limit: number;
+    audience?: ContactAudience;
   }): Promise<Array<{
     id: string;
     external_id: string;

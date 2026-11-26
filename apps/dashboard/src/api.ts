@@ -1424,6 +1424,8 @@ export interface ContactFilters {
   payment_status?: PaymentStatus;
   tenure_bucket?: "new" | "growing" | "established" | "loyal";
   recency_bucket?: "active" | "cooling" | "idle" | "dormant";
+  /** Paid / free split from the Lifecycle page; absent = all. */
+  audience?: "paid" | "free";
   search?: string;
   /** "a".."z" or "#". */
   letter?: string;
@@ -1591,8 +1593,15 @@ export interface LifecycleMovement {
   days: Array<{ day: string; count: number; positive: number; negative: number }>;
 }
 
+/**
+ * Who a Lifecycle read covers, by the contact's current payment_status:
+ * paid = paid or past_due, free = every other value. paid + free = all.
+ */
+export type ContactAudience = "all" | "paid" | "free";
+
 export interface LifecycleAnalytics {
   range_days: number;
+  audience: ContactAudience;
   contacts_total: number;
   distribution: LifecycleDistributionRow[];
   movement: LifecycleMovement;
@@ -1623,9 +1632,12 @@ export interface SendingAnalytics {
   per_flow: SendingPerFlow[];
 }
 
-/** GET /v1/analytics/lifecycle?days=N - distribution + movement. */
-export async function fetchLifecycleAnalytics(days: number): Promise<LifecycleAnalytics> {
-  const res = await apiFetch(`/v1/analytics/lifecycle?days=${days}`);
+/** GET /v1/analytics/lifecycle?days=N&audience=A - distribution + movement. */
+export async function fetchLifecycleAnalytics(
+  days: number,
+  audience: ContactAudience = "all",
+): Promise<LifecycleAnalytics> {
+  const res = await apiFetch(`/v1/analytics/lifecycle?days=${days}&audience=${audience}`);
   if (!res.ok) {
     throw new Error(`/v1/analytics/lifecycle returned ${res.status}`);
   }

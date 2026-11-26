@@ -25,6 +25,7 @@ import type {
 } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { rawBatch } from "./raw-batch.js";
+import { audienceCondition } from "../shared/audience.js";
 import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -163,6 +164,10 @@ function listConditions(tenantId: string, filter: ContactListFilter, withLetter 
   }
   if (filter.lastSeenBefore !== null) {
     conditions.push(sql`last_seen_at < ${tsMs(filter.lastSeenBefore)}`);
+  }
+  const audience = audienceCondition(filter.audience);
+  if (audience !== null) {
+    conditions.push(audience);
   }
   return conditions;
 }
