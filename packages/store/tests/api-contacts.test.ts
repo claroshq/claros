@@ -200,6 +200,21 @@ for (const factory of testBackends()) {
       expect(await ids({ tenureMinDays: 30, recencyMinDays: 3 })).toEqual(idsOf(3));
     });
 
+    it("countContacts counts every match with the list filters and ignores the cursor", async () => {
+      const count = (filter: Record<string, unknown>) =>
+        b.store.apiContacts.countContacts({ tenantId, filter: { ...emptyFilter, ...filter } });
+      expect(await count({})).toBe(ordered.length);
+      expect(await count({ searchPattern: "%acme%" })).toBe(3);
+      expect(await count({ lifecycleState: "engaged", searchPattern: "%acme%", engagementDepth: "regular" })).toBe(2);
+      expect(await count({ tenureMinDays: 30, recencyMinDays: 3 })).toBe(1);
+      expect(await count({ searchPattern: "%nobody%" })).toBe(0);
+      const last = ordered[ordered.length - 1]!;
+      expect(await count({ before: { createdAt: new Date(now - last.createdAgo).toISOString(), id: last.id } })).toBe(
+        ordered.length,
+      );
+      expect(await b.store.apiContacts.countContacts({ tenantId: randomUUID(), filter: emptyFilter })).toBe(0);
+    });
+
     it("getContact returns the full row with parsed properties, null when absent", async () => {
       const c = contacts[0]!;
       const row = await b.store.apiContacts.getContact({ tenantId, contactId: c.id });

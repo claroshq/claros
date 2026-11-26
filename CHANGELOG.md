@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Fixed
+
+- People: the header shows how many contacts there are (or how many match the search and filters) instead of the rows loaded so far, which read "50+ contacts" for any list longer than one page. `GET /v1/contacts` adds `total` to the first page (no `after`): the number of contacts matching the filters and search across all pages. Same on Postgres and D1; no migration.
+
 ## [0.8.11] - 2026-11-26
 
 ### Added

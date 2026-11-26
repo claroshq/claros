@@ -177,7 +177,10 @@ export default function contactsRoutes() {
    * retention-grid read model, so /people?tenure_bucket=X&recency_bucket=Y
    * lists exactly the contacts sitting in that grid cell.
    *
-   * Response: { contacts: [...], next_cursor: string | null }
+   * Response: { contacts: [...], next_cursor: string | null, total?: number }
+   *
+   * `total` is how many contacts match the filters and search across all
+   * pages. It is present on the first page only (no `after`).
    */
   router.get("/", "member", allowAdminKey("contacts:read"), async (c) => {
     const parsed = listQuerySchema.safeParse(c.req.query());
@@ -224,21 +227,24 @@ export default function contactsRoutes() {
       }
     }
 
-    const rows = await storeFor(db).apiContacts.listContacts({
-      tenantId,
-      filter: {
-        lifecycleState: state,
-        engagementDepth: depth,
-        searchPattern: search,
-        tenureMinDays: tenureMin,
-        tenureMaxDays: tenureMax,
-        recencyMinDays: recencyMin,
-        recencyMaxDays: recencyMax,
-        // DESC keyset: newest contacts first. Rows strictly older than the cursor.
-        before: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
-      },
-      limit: fetchLimit,
-    });
+    const filter = {
+      lifecycleState: state,
+      engagementDepth: depth,
+      searchPattern: search,
+      tenureMinDays: tenureMin,
+      tenureMaxDays: tenureMax,
+      recencyMinDays: recencyMin,
+      recencyMaxDays: recencyMax,
+      // DESC keyset: newest contacts first. Rows strictly older than the cursor.
+      before: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+    };
+    const store = storeFor(db).apiContacts;
+    // The total is counted on the first page only: later pages are "Load
+    // more" on a list whose header already has it.
+    const [rows, total] = await Promise.all([
+      store.listContacts({ tenantId, filter, limit: fetchLimit }),
+      parsed.data.after ? Promise.resolve(undefined) : store.countContacts({ tenantId, filter }),
+    ]);
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
@@ -247,7 +253,11 @@ export default function contactsRoutes() {
       ? encodeCursor(lastRow.created_at, lastRow.id)
       : null;
 
-    return c.json({ contacts: pageRows, next_cursor: nextCursor });
+    return c.json(
+      total === undefined
+        ? { contacts: pageRows, next_cursor: nextCursor }
+        : { contacts: pageRows, next_cursor: nextCursor, total },
+    );
   });
 
   /**

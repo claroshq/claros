@@ -3,7 +3,7 @@
  */
 import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
-import type { ApiContactsQueries, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
+import type { ApiContactsQueries, ContactListFilter, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { pgWriteOutbox } from "./outbox.js";
 
@@ -32,6 +32,28 @@ function toNote(r: NoteRaw): ContactNoteRow {
   };
 }
 
+/** The People list filter as a WHERE condition (without the cursor). */
+function listWhere(tenantId: string, filter: ContactListFilter) {
+  const state = filter.lifecycleState;
+  const depth = filter.engagementDepth;
+  const search = filter.searchPattern;
+  const tenureMin = filter.tenureMinDays;
+  const tenureMax = filter.tenureMaxDays;
+  const recencyMin = filter.recencyMinDays;
+  const recencyMax = filter.recencyMaxDays;
+  return sql`tenant_id = ${tenantId}
+    AND (${state}::text IS NULL OR lifecycle_state = ${state})
+    AND (${depth}::text IS NULL OR engagement_depth = ${depth})
+    AND (${search}::text IS NULL OR
+         email ILIKE ${search} OR
+         name ILIKE ${search} OR
+         external_id ILIKE ${search})
+    AND (${tenureMin}::int IS NULL OR first_seen_at <= now() - make_interval(days => ${tenureMin}))
+    AND (${tenureMax}::int IS NULL OR first_seen_at > now() - make_interval(days => ${tenureMax}))
+    AND (${recencyMin}::int IS NULL OR last_seen_at <= now() - make_interval(days => ${recencyMin}))
+    AND (${recencyMax}::int IS NULL OR last_seen_at > now() - make_interval(days => ${recencyMax}))`;
+}
+
 export function pgApiContacts(db: PgDb): ApiContactsQueries {
   return {
     async getTenantSettings({ tenantId }) {
@@ -42,13 +64,6 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
     },
 
     async listContacts({ tenantId, filter, limit }) {
-      const state = filter.lifecycleState;
-      const depth = filter.engagementDepth;
-      const search = filter.searchPattern;
-      const tenureMin = filter.tenureMinDays;
-      const tenureMax = filter.tenureMaxDays;
-      const recencyMin = filter.recencyMinDays;
-      const recencyMax = filter.recencyMaxDays;
       // DESC keyset: newest contacts first. Rows strictly older than the cursor.
       const cursorClause = filter.before
         ? sql`AND ROW(created_at, id) < ROW(${filter.before.createdAt}::timestamptz, ${filter.before.id}::uuid)`
@@ -60,22 +75,21 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
                  lifecycle_state, engagement_depth, payment_status,
                  last_seen_at, created_at
           FROM contacts
-          WHERE tenant_id = ${tenantId}
-            AND (${state}::text IS NULL OR lifecycle_state = ${state})
-            AND (${depth}::text IS NULL OR engagement_depth = ${depth})
-            AND (${search}::text IS NULL OR
-                 email ILIKE ${search} OR
-                 name ILIKE ${search} OR
-                 external_id ILIKE ${search})
-            AND (${tenureMin}::int IS NULL OR first_seen_at <= now() - make_interval(days => ${tenureMin}))
-            AND (${tenureMax}::int IS NULL OR first_seen_at > now() - make_interval(days => ${tenureMax}))
-            AND (${recencyMin}::int IS NULL OR last_seen_at <= now() - make_interval(days => ${recencyMin}))
-            AND (${recencyMax}::int IS NULL OR last_seen_at > now() - make_interval(days => ${recencyMax}))
+          WHERE ${listWhere(tenantId, filter)}
             ${cursorClause}
           ORDER BY created_at DESC, id DESC
           LIMIT ${limit}
         `)
       ).rows;
+    },
+
+    async countContacts({ tenantId, filter }) {
+      const rows = (
+        await db.execute<{ n: string | number }>(sql`
+          SELECT count(*) AS n FROM contacts WHERE ${listWhere(tenantId, filter)}
+        `)
+      ).rows;
+      return Number(rows[0]?.n ?? 0);
     },
 
     async getContact({ tenantId, contactId }) {

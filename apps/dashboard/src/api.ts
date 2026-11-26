@@ -1371,6 +1371,8 @@ export interface ContactResponse {
 export interface ContactsPage {
   contacts: Contact[];
   next_cursor: string | null;
+  /** Contacts matching the filters across all pages. First page only; absent from older servers. */
+  total?: number;
 }
 
 export interface ContactFilters {
