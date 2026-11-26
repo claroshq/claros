@@ -35,6 +35,7 @@ export const ADMIN_SCOPES = [
   "contacts:delete",
   "broadcasts",
   "kb",
+  "events",
 ] as const;
 export type AdminScope = (typeof ADMIN_SCOPES)[number];
 
