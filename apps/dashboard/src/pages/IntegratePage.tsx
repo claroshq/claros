@@ -16,7 +16,7 @@
  *      (owners only).
  *      The raw key is shown exactly once, in the creation banner.
  */
-import { Fragment, useMemo, useState, type ElementType } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { Check, Copy, Plus, X, Zap, Code2, KeyRound, Send } from "lucide-react";
 import {
   useIngestKeys,
@@ -232,8 +232,13 @@ function SnippetCard({ publishableKey, rawKey, onCreateKey, creating }: {
 
 function CreatedKeyBanner({ created, onDismiss }: { created: CreatedIngestKey; onDismiss: () => void }) {
   const { copied, copy } = useCopy();
+  // The key is shown once: bring it into view wherever it was created from.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [created.key]);
   return (
-    <div className="rounded-md border border-success bg-success-soft p-4">
+    <div ref={ref} role="status" className="rounded-md border border-success bg-success-soft p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[14px] font-medium text-foreground">
@@ -331,7 +336,18 @@ function OriginsEditor({ apiKey }: { apiKey: IngestKey }) {
 // Keys table
 // ---------------------------------------------------------------------------
 
-function KeysCard({ keys, onCreated }: { keys: IngestKey[]; onCreated: (k: CreatedIngestKey) => void }) {
+function KeysCard({
+  keys,
+  created,
+  onCreated,
+  onDismissCreated,
+}: {
+  keys: IngestKey[];
+  /** A key created from this card, shown here once. */
+  created: CreatedIngestKey | null;
+  onCreated: (k: CreatedIngestKey) => void;
+  onDismissCreated: () => void;
+}) {
   const create = useCreateIngestKey();
   const revoke = useRevokeIngestKey();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -399,6 +415,12 @@ function KeysCard({ keys, onCreated }: { keys: IngestKey[]; onCreated: (k: Creat
           </Button>
         </div>
       </div>
+
+      {created && (
+        <div className="mt-4">
+          <CreatedKeyBanner created={created} onDismiss={onDismissCreated} />
+        </div>
+      )}
 
       {adminOpen && (
         <div className="mt-4 rounded-md border border-border bg-secondary p-4">
@@ -654,6 +676,8 @@ export default function IntegratePage() {
   const { data, isLoading } = useIngestKeys();
   const create = useCreateIngestKey();
   const [createdKey, setCreatedKey] = useState<CreatedIngestKey | null>(null);
+  // Where the new key is shown: at the top (snippet and test-event buttons) or in the API keys card.
+  const [createdIn, setCreatedIn] = useState<"top" | "keys">("top");
 
   const keys = data?.keys ?? [];
   const activePublishable = keys.find((k) => k.kind === "publishable" && !k.revoked_at) ?? null;
@@ -664,13 +688,13 @@ export default function IntegratePage() {
     createdKey && createdKey.kind === "secret" ? createdKey.key : null;
 
   function createPublishable() {
-    create.mutate({ kind: "publishable" }, { onSuccess: (k) => setCreatedKey(k) });
+    create.mutate({ kind: "publishable" }, { onSuccess: (k) => { setCreatedKey(k); setCreatedIn("top"); } });
   }
 
   // Create a secret key for the test-event panel if none exists
   const activeSecret = keys.find((k) => k.kind === "secret" && !k.revoked_at) ?? null;
   function createSecretForTest() {
-    create.mutate({ kind: "secret", label: "Test event key" }, { onSuccess: (k) => setCreatedKey(k) });
+    create.mutate({ kind: "secret", label: "Test event key" }, { onSuccess: (k) => { setCreatedKey(k); setCreatedIn("top"); } });
   }
 
   return (
@@ -684,7 +708,7 @@ export default function IntegratePage() {
       <div className="space-y-6">
         <FirstEventCard />
 
-        {createdKey && (
+        {createdKey && createdIn === "top" && (
           <CreatedKeyBanner created={createdKey} onDismiss={() => setCreatedKey(null)} />
         )}
 
@@ -726,7 +750,15 @@ export default function IntegratePage() {
               onCreateKey={createPublishable}
               creating={create.isPending}
             />
-            <KeysCard keys={keys} onCreated={setCreatedKey} />
+            <KeysCard
+              keys={keys}
+              created={createdKey && createdIn === "keys" ? createdKey : null}
+              onCreated={(k) => {
+                setCreatedKey(k);
+                setCreatedIn("keys");
+              }}
+              onDismissCreated={() => setCreatedKey(null)}
+            />
           </>
         )}
       </div>
