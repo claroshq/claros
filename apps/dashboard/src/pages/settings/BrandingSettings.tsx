@@ -14,10 +14,16 @@ import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { Section, FormError, errorMessage } from "./shared.js";
+import { decodeLogo, transparentLogo, type DecodedLogo } from "../../lib/logo-image.js";
+import type { Rgb } from "../../lib/logo-background.js";
 
 /** Same limits as the upload route (packages/core/src/brand-logo.ts). */
 const LOGO_TYPES = ["image/png", "image/jpeg"];
 const LOGO_MAX_BYTES = 256 * 1024;
+/** Body color of the built-in layouts in dark mode (packages/core/src/email-shell.ts). */
+const DARK_PREVIEW_BG = "#1a1a1a";
+/** Share of low-contrast pixels on the dark body above which the review panel says so. */
+const LOW_CONTRAST_NOTE_SHARE = 0.2;
 
 function formatBytes(n: number): string {
   return n < 1024 ? `${n} B` : `${Math.round(n / 1024)} KB`;
@@ -270,6 +276,7 @@ function LogoUpload({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingLogo | null>(null);
   const busy = mutations.upload.isPending || mutations.remove.isPending;
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -285,11 +292,29 @@ function LogoUpload({
       setError(`The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(file.size)}).`);
       return;
     }
+    // A logo on a solid light background shows as a light box in dark
+    // mode: offer a transparent version before uploading.
+    const decoded = await decodeLogo(file);
+    if (decoded && decoded.analysis.kind === "light-background") {
+      setPending({ file, decoded, background: decoded.analysis.background });
+      return;
+    }
+    await upload(file);
+  }
+
+  async function upload(file: File): Promise<boolean> {
+    setError(null);
+    if (file.size > LOGO_MAX_BYTES) {
+      setError(`The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(file.size)}).`);
+      return false;
+    }
     try {
       await mutations.upload.mutateAsync(file);
       onUploaded();
+      return true;
     } catch (err) {
       setError(errorMessage(err));
+      return false;
     }
   }
 
@@ -323,17 +348,9 @@ function LogoUpload({
         aria-label="Logo file"
       />
       <div className="flex flex-wrap items-center gap-4">
-        {logo && (
-          <div className="flex h-20 min-w-32 items-center justify-center rounded-md border border-border bg-white px-4">
-            <img
-              src={logo.url}
-              alt="Uploaded logo"
-              style={{ height: `${Math.min(64, height ?? 32)}px`, width: "auto" }}
-            />
-          </div>
-        )}
+        {logo && <LogoSwatches src={logo.url} alt="Uploaded logo" height={height} />}
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => input.current?.click()}>
+          <Button type="button" variant="outline" size="sm" disabled={busy || !!pending} onClick={() => input.current?.click()}>
             {mutations.upload.isPending ? "Uploading..." : logo ? "Replace" : "Upload logo"}
           </Button>
           {logo && !logo.in_use && (
@@ -353,7 +370,155 @@ function LogoUpload({
         {logo && ` Current: ${logo.content_type === "image/png" ? "PNG" : "JPEG"}, ${logo.width} x ${logo.height} px, ${formatBytes(logo.size)}.`}
         {logo && !logo.in_use && " Not used in mail: the external logo URL below replaces it."}
       </p>
+      {pending && (
+        <LogoBackgroundReview
+          pending={pending}
+          height={height}
+          uploading={mutations.upload.isPending}
+          onCancel={() => setPending(null)}
+          onUpload={async (file) => {
+            if (await upload(file)) setPending(null);
+          }}
+          onError={setError}
+        />
+      )}
       <FormError message={error} />
+    </div>
+  );
+}
+
+interface PendingLogo {
+  file: File;
+  decoded: DecodedLogo;
+  background: Rgb;
+}
+
+/** A logo shown on a light and a dark mail background, the two ways readers see it. */
+function LogoSwatches({ src, alt, height }: { src: string; alt: string; height: number | null }) {
+  const style = { height: `${Math.min(64, height ?? 32)}px`, width: "auto" };
+  return (
+    <div className="flex gap-2">
+      <div className="flex h-20 min-w-32 items-center justify-center rounded-md border border-border bg-white px-4" title="Light mode">
+        <img src={src} alt={alt} style={style} />
+      </div>
+      <div
+        className="flex h-20 min-w-32 items-center justify-center rounded-md border border-border px-4"
+        style={{ backgroundColor: DARK_PREVIEW_BG }}
+        title="Dark mode"
+      >
+        <img src={src} alt="" style={style} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown when a chosen logo sits on a solid light background: previews the
+ * transparent version (lib/logo-background.ts) on light and dark, and
+ * uploads it, or the original if the user turns removal off.
+ */
+function LogoBackgroundReview({
+  pending,
+  height,
+  uploading,
+  onCancel,
+  onUpload,
+  onError,
+}: {
+  pending: PendingLogo;
+  height: number | null;
+  uploading: boolean;
+  onCancel: () => void;
+  onUpload: (file: File) => Promise<void>;
+  onError: (message: string | null) => void;
+}) {
+  const [removeBg, setRemoveBg] = useState(true);
+  const [clearEnclosed, setClearEnclosed] = useState(true);
+  const [candidate, setCandidate] = useState<File | null>(null);
+  const [lowContrast, setLowContrast] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCandidate(null);
+    const make = removeBg
+      ? transparentLogo(pending.file, pending.decoded, pending.background, { clearEnclosed }, LOGO_MAX_BYTES)
+      : Promise.resolve({ file: pending.file, lowContrast: 0 });
+    make.then(
+      (result) => {
+        if (cancelled) return;
+        setCandidate(result.file);
+        setLowContrast(result.lowContrast);
+      },
+      (err) => {
+        if (!cancelled) onError(errorMessage(err));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [pending, removeBg, clearEnclosed, onError]);
+
+  useEffect(() => {
+    if (!candidate) return;
+    const url = URL.createObjectURL(candidate);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [candidate]);
+
+  const { r, g, b } = pending.background;
+  const bgName = r >= 250 && g >= 250 && b >= 250 ? "white" : "light";
+
+  return (
+    <div className="mt-3 rounded-md border border-border p-4">
+      <p className="text-[14px] font-medium text-foreground">This logo has a solid {bgName} background</p>
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        In dark mode, mail apps darken the email but not images, so the background shows as a {bgName} box around the
+        logo. Claros can make it transparent before uploading. Check both previews.
+      </p>
+      <div className="mt-3">{previewUrl && <LogoSwatches src={previewUrl} alt="Logo to upload" height={height} />}</div>
+      {removeBg && lowContrast >= LOW_CONTRAST_NOTE_SHARE && (
+        <p className="mt-2 text-[13px] text-muted-foreground">
+          Parts of this logo are dark, so they stay hard to read on a dark background even without the box. A logo
+          version in lighter or mid-tone colors reads in both modes.
+        </p>
+      )}
+      <div className="mt-3 space-y-1.5 text-[13px] text-foreground">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={removeBg} onChange={(e) => setRemoveBg(e.target.checked)} />
+          Make the background transparent
+        </label>
+        <label className={`flex items-center gap-2 ${removeBg ? "" : "opacity-50"}`}>
+          <input
+            type="checkbox"
+            checked={clearEnclosed}
+            disabled={!removeBg}
+            onChange={(e) => setClearEnclosed(e.target.checked)}
+          />
+          Also clear the background color inside the logo, such as the holes in letters
+        </label>
+        <p className="pl-6 text-[12px] text-muted-foreground">
+          Turn this off if the logo has white parts of its own that should stay.
+        </p>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={!candidate || uploading}
+          onClick={() => candidate && onUpload(candidate)}
+        >
+          {uploading ? "Uploading..." : "Upload"}
+        </Button>
+        <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={onCancel}>
+          Cancel
+        </Button>
+        {candidate && (
+          <span className="text-[12px] text-muted-foreground">
+            {candidate.type === "image/png" ? "PNG" : "JPEG"}, {formatBytes(candidate.size)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
