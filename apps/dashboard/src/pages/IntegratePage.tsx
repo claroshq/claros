@@ -40,21 +40,11 @@ import {
   TableCell,
 } from "../components/ui/table.js";
 import { useMe } from "../auth.js";
+import { CodeBlock, useCopy } from "../components/code-block.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function useCopy(): { copied: string | null; copy: (id: string, text: string) => void } {
-  const [copied, setCopied] = useState<string | null>(null);
-  function copy(id: string, text: string) {
-    void navigator.clipboard?.writeText(text).then(() => {
-      setCopied(id);
-      window.setTimeout(() => setCopied((c) => (c === id ? null : c)), 1500);
-    });
-  }
-  return { copied, copy };
-}
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return "never";
@@ -175,30 +165,6 @@ function buildCurl(origin: string): string {
     '  -H "Content-Type: application/json" \\',
     `  -d '{"userId": "user_123", "event": "signed_up"}'`,
   ].join("\n");
-}
-
-function CodeBlock({ id, code }: { id: string; code: string }) {
-  const { copied, copy } = useCopy();
-  return (
-    <div className="relative">
-      <pre className="overflow-x-auto rounded-md bg-sunken p-4 font-mono text-[13px] leading-5 text-foreground">
-        {code}
-      </pre>
-      <Button
-        variant="secondary"
-        size="sm"
-        className="absolute right-3 top-3"
-        onClick={() => copy(id, code)}
-      >
-        {copied === id ? (
-          <Check size={16} strokeWidth={1.5} />
-        ) : (
-          <Copy size={16} strokeWidth={1.5} />
-        )}
-        {copied === id ? "Copied" : "Copy"}
-      </Button>
-    </div>
-  );
 }
 
 function SnippetCard({ publishableKey, rawKey, onCreateKey, creating }: {

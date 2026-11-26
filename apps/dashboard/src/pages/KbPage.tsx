@@ -14,7 +14,7 @@
  */
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, BookOpen } from "lucide-react";
+import { Plus, BookOpen, Upload } from "lucide-react";
 import { useKbEntries, useReembedKb } from "../kb.js";
 import { useEmbeddings } from "../settings.js";
 import type { KbEntryPreview, FlowApiError } from "../api.js";
@@ -60,14 +60,22 @@ function KbEmptyState({ includeInactive }: { includeInactive: boolean }) {
     <EmptyState
       icon={BookOpen}
       title={includeInactive ? "No entries at all" : "No active entries"}
-      description="The knowledge base is the corpus the AI writes from: your product facts, your playbooks, your voice. Add the first entry so drafts have something true to say."
+      description="The knowledge base is the corpus the AI writes from: your product facts, your playbooks, your voice. Import what you already have (Markdown, CSV, JSONL) or write the first entry, so drafts have something true to say."
       action={
-        <Link to="/kb/new">
-          <Button size="sm">
-            <Plus size={16} strokeWidth={1.5} />
-            New entry
-          </Button>
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Link to="/kb/import">
+            <Button size="sm">
+              <Upload size={16} strokeWidth={1.5} />
+              Import entries
+            </Button>
+          </Link>
+          <Link to="/kb/new">
+            <Button size="sm" variant="outline">
+              <Plus size={16} strokeWidth={1.5} />
+              New entry
+            </Button>
+          </Link>
+        </div>
       }
     />
   );
@@ -134,6 +142,12 @@ export default function KbPage() {
             >
               {reembed.isPending ? "Retrying..." : "Retry failed embeddings"}
             </Button>
+            <Link to="/kb/import">
+              <Button variant="outline" size="sm">
+                <Upload size={16} strokeWidth={1.5} />
+                Import
+              </Button>
+            </Link>
             <Link to="/kb/new">
               <Button size="sm">
                 <Plus size={16} strokeWidth={1.5} />

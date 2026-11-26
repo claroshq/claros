@@ -82,7 +82,7 @@ Postgres installs upgrade in place; Workers installs run `npx @claroshq/claros u
 - **Compliance built in** - RFC 8058 one-click unsubscribe built in for lifecycle and marketing mail, a CAN-SPAM postal footer on every outgoing email, suppression list enforced before everything, a suppression API, and erasing a person (with their events and messages) in one product or across the instance
 - **Throttle and send windows** - per-contact frequency caps, quiet hours, per-flow critical bypass; `scheduled` flows run beside the nurture flow and still respect caps and windows
 - **Link tracking** - UTM parameters and a message id added to links on the product's domains at send time (never on unsubscribe or footer links)
-- **Knowledge base** - entries with categories, pinning and per-contact deduplication, injected into compile and draft prompts; semantic search with an optional embedding provider (pgvector on Postgres), word matching without one; import from a file. See [Knowledge base](docs/guide/KB.md)
+- **Knowledge base** - entries with categories, pinning and per-contact deduplication, injected into compile and draft prompts; semantic search with an optional embedding provider (pgvector on Postgres), word matching without one; a guided import in the dashboard (Markdown, text, CSV, JSONL or JSON files, with a dry run before anything is written) and a bulk API (`POST /v1/kb/import`, admin key scope `kb`) to keep it in sync from your own system. See [Knowledge base](docs/guide/KB.md)
 - **Config as code and admin keys** - one JSON file of flows, templates, topics, routing, settings and webhooks, applied with `claros apply`; scoped admin keys for the management API. See [Config as code](docs/guide/CONFIG.md) and [API keys](docs/guide/API_KEYS.md)
 - **Webhooks and analytics sink** - signed outbound webhooks (Standard Webhooks) and flow and email events to StatsRaven or your own endpoint. See [Webhooks](docs/guide/WEBHOOKS.md)
 - **Alerts and health** - dead jobs, send and webhook errors and missing configuration mailed to an instance admin, plus a Health page. See [Alerts](docs/guide/ALERTS.md)
@@ -94,7 +94,7 @@ Postgres installs upgrade in place; Workers installs run `npx @claroshq/claros u
 
 - Calendar triggers not tied to a contact date (flows enroll on events, lifecycle transitions, segments, contact dates and manual enrollment today)
 - SES API-mode transport and non-Resend feedback webhooks (SES works today through its SMTP endpoint)
-- Knowledge base file upload and site crawl
+- Knowledge base import from PDF or Word documents, and site crawl
 - Anonymous identity stitching (contacts key on `userId` today)
 - Moving an existing Postgres install to D1 (Postgres installs stay on Postgres and upgrade in place)
 

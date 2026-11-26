@@ -34,6 +34,7 @@ import LifecyclePage from "./pages/LifecyclePage.js";
 import AnalyticsPage from "./pages/AnalyticsPage.js";
 import KbPage from "./pages/KbPage.js";
 import KbNewPage from "./pages/KbNewPage.js";
+import KbImportPage from "./pages/KbImportPage.js";
 import KbDetailPage from "./pages/KbDetailPage.js";
 import SettingsLayout from "./pages/settings/SettingsLayout.js";
 import ProfileSettings from "./pages/settings/ProfileSettings.js";
@@ -119,6 +120,7 @@ export default function App() {
         <Route path="sent/suppressions" element={<SuppressionsPage />} />
         <Route path="kb" element={<KbPage />} />
         <Route path="kb/new" element={<KbNewPage />} />
+        <Route path="kb/import" element={<KbImportPage />} />
         <Route path="kb/:id" element={<KbDetailPage />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<Navigate to="/settings/profile" replace />} />
