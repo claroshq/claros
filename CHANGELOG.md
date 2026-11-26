@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Changed
+
+- Docs: the README covers what shipped in 0.8.4 to 0.8.11 (flow editor, templates per flow, branding and language, AI guardrails, the person page, history import) and the full dashboard navigation, with new screenshots of Home, the flow editor, Approvals and the retention grid. `scripts/seed-screenshots.mjs` reads `SEED_NOW` to date its history relative to another day.
+
 ### Fixed
 
 - People: the header shows how many contacts there are (or how many match the search and filters) instead of the rows loaded so far, which read "50+ contacts" for any list longer than one page. `GET /v1/contacts` adds `total` to the first page (no `after`): the number of contacts matching the filters and search across all pages. Same on Postgres and D1; no migration.

@@ -9,6 +9,7 @@
  *
  * Usage:
  *   node scripts/seed-screenshots.mjs [--tenant-slug <slug>]
+ *   SEED_NOW=2026-11-26T10:00:00Z node scripts/seed-screenshots.mjs   (date the history relative to another day)
  *
  * Undo:
  *   node scripts/seed-screenshots.mjs --purge
@@ -93,7 +94,13 @@ function shuffle(arr) {
 // ---------------------------------------------------------------------------
 // Time helpers
 // ---------------------------------------------------------------------------
-const NOW = new Date("2026-08-07T10:00:00Z"); // pinned "now" for determinism
+// Pinned "now" for determinism. SEED_NOW (an ISO date) moves it, so the
+// retention grid and recency look right when screenshots are taken later.
+const NOW = new Date(process.env.SEED_NOW ?? "2026-08-07T10:00:00Z");
+if (Number.isNaN(NOW.getTime())) {
+  console.error(`Error: SEED_NOW is not a valid date: ${process.env.SEED_NOW}`);
+  process.exit(1);
+}
 const DAY_MS = 86400_000;
 const HOUR_MS = 3600_000;
 

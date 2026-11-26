@@ -13,9 +13,15 @@ An AI-native alternative to Customer.io, Loops, and Mautic. Flows are written in
 
 **Flows are prompts, compiled once.** There is no drag-and-drop builder. You describe the flow ("welcome them, nudge them if they have not activated in 2 days, stop when they do"), the LLM compiles it into an inspectable plan, and the engine executes that plan deterministically. The AI never touches timing, targeting, or the send path.
 
-**Everything AI-written waits for a human.** Generated emails queue in an approval inbox. You approve, reject, or let a trusted flow auto-send. The AI drafts; you publish.
+The dashboard shows the compiled flow as a timeline: what starts it, each email with its wait, what ends it early. Open an email to write fixed copy in a code editor with a live preview, or to give the AI its instruction, examples and the links and knowledge base entries it may use. New flows start from an example (welcome, onboarding, trial ending, payment failed, win back, at-risk check-in), from a description, or blank.
+
+![Flow editor](docs/guide/assets/flow-editor.png)
+
+**Everything AI-written waits for a human.** Generated emails queue in an approval inbox. You approve, reject, edit or regenerate, or let a trusted flow auto-send. The preview shows the mail as the recipient will see it, in the product's template. The AI drafts; you publish.
 
 ![Approval queue](docs/guide/assets/approvals.png)
+
+**Guardrails on what the AI writes.** Drafts may only use the product's named links (any other URL fails the draft), follow find/replace and forbidden-phrase rules, and stay under a daily token budget. An assess step drops messages that are not worth sending. A step can limit itself to one call to action.
 
 **Templates you edit by talking to them.** Pick one of seven built-in email templates (narrow or wide), open it in the template studio and say what you want: "center the logo", "make the header band dark navy", "16px body text". The preview updates as each change lands. The assistant only works on that template and knows how Outlook, Gmail, Apple Mail and Yahoo render email: ask for something that would break in one of them (a CSS background photo, a flexbox row) and it tells you what would happen where and offers a version that works everywhere. Every template keeps the unsubscribe footer, and deterministic client checks run on every change.
 
@@ -53,26 +59,35 @@ Either way, open the claim URL printed at the end, enter your email, and you are
 
 ### What's new in 0.8
 
-The Cloudflare Workers + D1 install option, multi-product instances, topics and consent, several transports per product, operational alerts, admin keys and config as code, signed webhooks and an analytics sink, date triggers, context sources, knowledge base v2, the `choose` step and send-history import. Postgres installs upgrade in place. See the [CHANGELOG](CHANGELOG.md) for the full list and the upgrade notes.
+- **0.8.0**: the Cloudflare Workers + D1 install option, multi-product instances, topics and consent, several transports per product, operational alerts, admin keys and config as code, signed webhooks and an analytics sink, date triggers, context sources, knowledge base v2, the `choose` step and send-history import
+- **0.8.4 to 0.8.7**: `engagement_events` (which events count as activity), brand logo upload, the dashboard product picker, an embedding provider separate from the LLM provider, knowledge base search without embeddings
+- **0.8.8 to 0.8.10**: email templates and the template studio, the flow editor redesign, an email template per flow, notes, topic switches and delete / exclude actions on a person's page
+- **0.8.11**: importing event history and recomputing lifecycle state from it, for products that move to Claros with existing users
+
+Postgres installs upgrade in place; Workers installs run `npx @claroshq/claros upgrade`. See the [CHANGELOG](CHANGELOG.md) for the full list and the upgrade notes.
 
 ## What it does
 
-- **Lifecycle state machine** - 7 contact states (`signed_up` through `resurrected`) with engagement depth scoring and a payment overlay. Event-driven and time-driven transitions
-- **Prompt-defined flows** - compiled to deterministic plans. Triggers: events, lifecycle transitions, retention-grid and lifecycle segments, contact dates (`date_property`, `date_schedule`) and manual enrollment. Steps with delays, conditions (`all` / `any` / `not`, traits, send history), send windows, exit conditions, context sources and the `choose` step. See [Flows](docs/guide/FLOWS.md)
+- **Lifecycle state machine** - 7 contact states (`signed_up` through `resurrected`) with engagement depth scoring and a payment overlay. Event-driven and time-driven transitions; `engagement_events` chooses which events count as activity
+- **Prompt-defined flows** - compiled to deterministic plans. Triggers: events, lifecycle transitions, retention-grid and lifecycle segments, contact dates (`date_property`, `date_schedule`) and manual enrollment. Steps with delays, conditions (`all` / `any` / `not`, traits, send history), send windows, exit conditions, context sources and the `choose` step. Each email is fixed copy or AI-drafted per contact. Edited as a timeline in the dashboard or as JSON in a config file. See [Flows](docs/guide/FLOWS.md)
 - **Brain** - compile, decide, draft, assess, choose. Real LLM calls to any OpenAI-compatible endpoint, only at compile time, content time and in the template studio, never in timing, targeting or the send path
-- **Email templates and the template studio** - seven built-in templates (`classic`, `letter`, `banner`, `compact` narrow; `wide`, `broadsheet`, `canvas` wide), custom copies, and a chat that edits a template with mail client knowledge built in; client checks for Outlook, Gmail, Apple Mail and Yahoo without the LLM. See [Email templates](docs/guide/TEMPLATES.md)
-- **Approval queue** - AI-drafted messages are held for human review by default; edit, regenerate, cancel or exclude a person; per-flow auto-approve when you trust it
+- **Email templates and the template studio** - seven built-in templates (`classic`, `letter`, `banner`, `compact` narrow; `wide`, `broadsheet`, `canvas` wide), custom copies, and a chat that edits a template with mail client knowledge built in; client checks for Outlook, Gmail, Apple Mail and Yahoo without the LLM. One template per product, and a flow can send in its own. See [Email templates](docs/guide/TEMPLATES.md)
+- **Branding and language** - logo (uploaded and served by Claros, or an external URL), accent color, Reply-To, postal address; the product `locale` sets the drafting language and the language of the mail footer and unsubscribe pages (English and Spanish)
+- **Approval queue** - AI-drafted messages are held for human review by default; edit, regenerate, cancel or exclude a person; per-flow auto-approve when you trust it; keyboard shortcuts; an optional daily digest of waiting approvals to the product's owners. See [Approvals](docs/guide/APPROVALS.md)
+- **AI guardrails** - named links and a link allowlist, `text_rules` (find/replace and forbidden phrases), product guidelines, `single_cta`, a daily LLM token budget and the assess value gate
 - **Event ingestion** - Segment-compatible `/v1/track`, `/v1/identify`, `/v1/batch`. Publishable and secret API keys, rate limits, browser snippet at `/claros.js`
 - **Multi-product instances** - one install serves several products, each with its own contacts, flows, topics, transports, brand, keys and team; per-product memberships, instance admins, instance keys (`clr_ik_`) and the `X-Claros-Product` header; a product picker in the dashboard; archive and unarchive. See [Products](docs/guide/PRODUCTS.md)
 - **Transports** - Resend (with open/click/bounce webhooks), generic SMTP (including the Amazon SES SMTP endpoint) and Cloudflare Email Service (transactional mail only). Several transports per product, routed by topic kind. See [Transports](docs/guide/TRANSPORTS.md)
 - **Topics and consent** - marketing, lifecycle and transactional topics with per-topic unsubscribe. See [Topics](docs/guide/TOPICS.md)
-- **Compliance built in** - RFC 8058 one-click unsubscribe built in for lifecycle and marketing mail, a CAN-SPAM postal footer on every outgoing email, suppression list enforced before everything
-- **Throttle and send windows** - per-contact frequency caps, quiet hours, per-flow critical bypass
+- **Compliance built in** - RFC 8058 one-click unsubscribe built in for lifecycle and marketing mail, a CAN-SPAM postal footer on every outgoing email, suppression list enforced before everything, a suppression API, and erasing a person (with their events and messages) in one product or across the instance
+- **Throttle and send windows** - per-contact frequency caps, quiet hours, per-flow critical bypass; `scheduled` flows run beside the nurture flow and still respect caps and windows
+- **Link tracking** - UTM parameters and a message id added to links on the product's domains at send time (never on unsubscribe or footer links)
 - **Knowledge base** - entries with categories, pinning and per-contact deduplication, injected into compile and draft prompts; semantic search with an optional embedding provider (pgvector on Postgres), word matching without one; import from a file. See [Knowledge base](docs/guide/KB.md)
 - **Config as code and admin keys** - one JSON file of flows, templates, topics, routing, settings and webhooks, applied with `claros apply`; scoped admin keys for the management API. See [Config as code](docs/guide/CONFIG.md) and [API keys](docs/guide/API_KEYS.md)
 - **Webhooks and analytics sink** - signed outbound webhooks (Standard Webhooks) and flow and email events to StatsRaven or your own endpoint. See [Webhooks](docs/guide/WEBHOOKS.md)
 - **Alerts and health** - dead jobs, send and webhook errors and missing configuration mailed to an instance admin, plus a Health page. See [Alerts](docs/guide/ALERTS.md)
-- **Dashboard** - React SPA: Flows, Approvals, People, Lifecycle, Analytics, Knowledge Base, Settings, Integrate. Light and dark themes
+- **Dashboard** - React SPA: Home, Integrate, Flows, Templates, Lifecycle, People, Approvals, Sent Mail, Knowledge Base, Analytics, Settings (including Health for instance admins). A person's page shows the timeline, topic switches, team notes and delete / exclude actions. Light and dark themes
+- **History import** - bring a product's earlier sends (counted for caps, re-entry and history conditions) and its event history, then recompute each contact's lifecycle state from those events without sending anything or firing flows. See [Importing history](docs/guide/IMPORT.md)
 - **Operator CLIs** - in the Docker image: guided setup, login links, transport/LLM configuration, user recovery, deployment diagnostics. `npx @claroshq/claros`: deploy, upgrade and diagnose a Cloudflare install, apply config, import knowledge base entries, send history and event history (with a lifecycle recompute)
 
 ### Not yet built
