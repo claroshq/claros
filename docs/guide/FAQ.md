@@ -87,6 +87,16 @@ Look at the message status on the contact or in Sent: `skipped` (the brain's dec
 
 ## People
 
+### How do I find, filter and sort people?
+
+The People list searches email, name and user id. Next to the search: lifecycle state, engagement depth, payment status (`free`, `trial`, `paid`, `past_due`, `cancelled`) and a date range on **Joined** or **Last seen** (last 7, 30 or 90 days, last 12 months, more than 30 or 90 days ago, or a custom range; whole days in your browser's time zone). Joined is when the person was first seen, or when they were added when that is unknown. Someone who has never been seen falls outside every Last seen range.
+
+The A-Z bar above the table keeps the names that start with one letter. A person without a name is filed under their email, or their user id without one. **#** holds names that start with anything other than a to z: digits, symbols and accented letters such as É or Ç. Letters with nobody under the other filters are greyed out. Picking a letter sorts A to Z unless you chose another sort.
+
+Click **Name**, **Joined** or **Last seen** in the table header to sort; click again to reverse. The list starts with the latest joined. Search, filters, letter and sort are kept in the page address, so a filtered view can be bookmarked or shared with your team.
+
+Over the API, `GET /v1/contacts` (member session or an admin key with `contacts:read`) takes the same filters: `search`, `lifecycle_state`, `engagement_depth`, `payment_status`, `letter` (`a` to `z`, or `%23` for #), `joined_after`, `joined_before`, `last_seen_after`, `last_seen_before` (an ISO 8601 date or date-time; `after` includes the instant, `before` does not), plus `sort` (`created`, `name`, `joined` or `last_seen`) and `order` (`asc` or `desc`). Without `sort` the order is the newest added first, as before. Page with `limit` (up to 200) and the `next_cursor` of the previous answer as `after`; a cursor only continues the sort it came from. The first page also has `total` (everyone matching) and `letters` (how many match per initial, ignoring `letter`).
+
 ### How do I delete a person (for example a GDPR erasure request)?
 
 On the person's page (People, then the person), an owner uses **Actions**, **Delete person** and types the person's email (or user id when there is no email) to confirm. This erases the person from the product: events, lifecycle transitions, flow memberships, messages and their delivery events, topic statuses, notes and pending webhook deliveries about them. The suppression of the address stays, so it is not mailed again. It cannot be undone, and if your app sends the person again, they come back as a new contact.

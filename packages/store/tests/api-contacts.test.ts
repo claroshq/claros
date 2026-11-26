@@ -38,6 +38,7 @@ interface ContactDef {
   firstAgo: number | null;
   lastAgo: number | null;
   createdAgo: number;
+  payment?: string;
 }
 
 for (const factory of testBackends()) {
@@ -81,9 +82,15 @@ for (const factory of testBackends()) {
         def(2, { createdAgo: 3 * H, name: "Bob Acme", firstAgo: 100 * D }),
         def(3, { createdAgo: 3 * H, externalId: "acme-ext", depth: null, firstAgo: 100 * D, lastAgo: 5 * D }),
         def(4, { createdAgo: 4 * H, email: null, name: null, state: "churned", depth: "minimal", firstAgo: null, lastAgo: null }),
+        // a blank name falls back to the email; a non-ASCII initial files under "#"
+        def(5, { createdAgo: 5 * H, email: "Zed@example.com", name: "  ", depth: "power", firstAgo: null, lastAgo: null }),
+        def(6, { createdAgo: 6 * H, name: "\u00c9mile", depth: "power", firstAgo: null, lastAgo: null }),
       ];
-      await b.db.insert(s.contacts).values(
-        contacts.map((c) => ({
+      contacts[1]!.payment = "paid";
+      contacts[2]!.payment = "trial";
+      // One row per insert: D1 binds at most 100 parameters per statement.
+      for (const c of contacts) {
+        await b.db.insert(s.contacts).values({
           id: c.id,
           tenantId,
           externalId: c.externalId,
@@ -93,12 +100,12 @@ for (const factory of testBackends()) {
           properties: { plan: "pro", tags: ["a", "b"], n: 1 },
           lifecycleState: c.state,
           engagementDepth: c.depth,
-          paymentStatus: "free",
+          paymentStatus: c.payment ?? "free",
           firstSeenAt: c.firstAgo === null ? null : new Date(now - c.firstAgo),
           lastSeenAt: c.lastAgo === null ? null : new Date(now - c.lastAgo),
           createdAt: new Date(now - c.createdAgo),
-        })),
-      );
+        });
+      }
       ordered = [...contacts].sort((a, c) =>
         a.createdAgo !== c.createdAgo ? a.createdAgo - c.createdAgo : c.id.localeCompare(a.id),
       );
@@ -110,13 +117,27 @@ for (const factory of testBackends()) {
     const emptyFilter = {
       lifecycleState: null,
       engagementDepth: null,
+      paymentStatus: null,
       searchPattern: null,
+      letter: null,
       tenureMinDays: null,
       tenureMaxDays: null,
       recencyMinDays: null,
       recencyMaxDays: null,
-      before: null,
+      joinedAfter: null,
+      joinedBefore: null,
+      lastSeenAfter: null,
+      lastSeenBefore: null,
     };
+    const newest = { key: "created", order: "desc" } as const;
+    const list = (filter: Record<string, unknown>, limit = 50, sort: { key: string; order: string } = newest, after: unknown = null) =>
+      b.store.apiContacts.listContacts({
+        tenantId,
+        filter: { ...emptyFilter, ...filter },
+        sort: sort as never,
+        after: after as never,
+        limit,
+      });
 
     it("getTenantSettings returns settings JSON or null", async () => {
       expect(await b.store.apiContacts.getTenantSettings({ tenantId })).toEqual({
@@ -127,10 +148,11 @@ for (const factory of testBackends()) {
     });
 
     it("listContacts returns the newest first with the list columns", async () => {
-      const rows = await b.store.apiContacts.listContacts({ tenantId, filter: emptyFilter, limit: 50 });
+      const rows = await list({});
       expect(rows.map((r) => r.id)).toEqual(ordered.map((c) => c.id));
       const first = contacts[0]!;
-      expect(norm(rows[0]!, ["last_seen_at", "created_at"])).toEqual({
+      const { sort_key: _key, ...row } = rows[0]!;
+      expect(norm(row, ["first_seen_at", "last_seen_at", "created_at"])).toEqual({
         id: first.id,
         tenant_id: tenantId,
         external_id: first.externalId,
@@ -140,6 +162,7 @@ for (const factory of testBackends()) {
         lifecycle_state: "engaged",
         engagement_depth: "regular",
         payment_status: "free",
+        first_seen_at: now - first.firstAgo!,
         last_seen_at: now - first.lastAgo!,
         created_at: now - first.createdAgo,
       });
@@ -148,28 +171,92 @@ for (const factory of testBackends()) {
       expect(nullSeen.last_seen_at).toBeNull();
     });
 
-    it("listContacts walks pages with the (created_at, id) cursor", async () => {
+    it("listContacts walks pages with an ISO created_at cursor (cursors from before sorting)", async () => {
       const seen: string[] = [];
-      let before: { createdAt: string; id: string } | null = null;
-      for (let page = 0; page < 5; page++) {
-        const rows = await b.store.apiContacts.listContacts({
-          tenantId,
-          filter: { ...emptyFilter, before },
-          limit: 2,
-        });
+      let after: { key: string; id: string } | null = null;
+      for (let page = 0; page < 10; page++) {
+        const rows = await list({}, 2, newest, after);
         seen.push(...rows.map((r) => r.id));
         if (rows.length < 2) break;
         const last = rows[rows.length - 1]!;
-        before = { createdAt: iso(last.created_at), id: last.id };
+        after = { key: iso(last.created_at), id: last.id };
       }
       expect(seen).toEqual(ordered.map((c) => c.id));
     });
 
+    it("listContacts sorts by created, name, joined and last seen, both ways, and pages each with sort_key", async () => {
+      const byId = (a: ContactDef, c: ContactDef) => (a.id < c.id ? 1 : a.id > c.id ? -1 : 0);
+      // Descending orders, ties broken by id DESC.
+      const joinedDesc = [...contacts]
+        .sort((a, c) => (a.firstAgo ?? a.createdAgo) - (c.firstAgo ?? c.createdAgo) || byId(a, c))
+        .map((c) => c.id);
+      const lastSeenDesc = [...contacts]
+        .sort((a, c) => (a.lastAgo ?? Infinity) - (c.lastAgo ?? Infinity) || byId(a, c))
+        .map((c) => c.id);
+      // alice, bob acme, ext-4, person 1, person 3, zed@example.com, Emile (non-ASCII last in byte order)
+      const nameAsc = [0, 2, 4, 1, 3, 5, 6].map((i) => contacts[i]!.id);
+      const expected: Record<string, string[]> = {
+        "created desc": ordered.map((c) => c.id),
+        "created asc": ordered.map((c) => c.id).reverse(),
+        "name asc": nameAsc,
+        "name desc": [...nameAsc].reverse(),
+        "joined desc": joinedDesc,
+        "joined asc": [...joinedDesc].reverse(),
+        "last_seen desc": lastSeenDesc,
+        "last_seen asc": [...lastSeenDesc].reverse(),
+      };
+      for (const [label, ids] of Object.entries(expected)) {
+        const [key, order] = label.split(" ") as [string, string];
+        const sort = { key, order };
+        expect((await list({}, 50, sort)).map((r) => r.id), label).toEqual(ids);
+        const seen: string[] = [];
+        let after: { key: string | number; id: string } | null = null;
+        for (let page = 0; page < 10; page++) {
+          const rows = await list({}, 2, sort, after);
+          seen.push(...rows.map((r) => r.id));
+          if (rows.length < 2) break;
+          const last = rows[rows.length - 1]!;
+          after = { key: last.sort_key, id: last.id };
+        }
+        expect(seen, `${label} paged`).toEqual(ids);
+      }
+      // A sort combines with filters.
+      expect((await list({ lifecycleState: "engaged" }, 50, { key: "name", order: "asc" })).map((r) => r.id)).toEqual(
+        nameAsc.filter((id) => id !== contacts[1]!.id && id !== contacts[4]!.id),
+      );
+    });
+
+    it("listContacts filters by payment status, first letter and date ranges", async () => {
+      const ids = async (filter: Record<string, unknown>) => (await list(filter)).map((r) => r.id).sort();
+      const idsOf = (...i: number[]) => i.map((n) => contacts[n]!.id).sort();
+      expect(await ids({ paymentStatus: "paid" })).toEqual(idsOf(1));
+      expect(await ids({ paymentStatus: "free" })).toEqual(idsOf(0, 3, 4, 5, 6));
+      expect(await ids({ paymentStatus: "cancelled" })).toEqual([]);
+      // display names: alice, person 1, bob acme, person 3, ext-4, zed@example.com (blank name), Emile
+      expect(await ids({ letter: "p" })).toEqual(idsOf(1, 3));
+      expect(await ids({ letter: "a" })).toEqual(idsOf(0));
+      expect(await ids({ letter: "e" })).toEqual(idsOf(4));
+      expect(await ids({ letter: "z" })).toEqual(idsOf(5));
+      expect(await ids({ letter: "#" })).toEqual(idsOf(6));
+      expect(await ids({ letter: "x" })).toEqual([]);
+      expect(await ids({ letter: "p", paymentStatus: "paid" })).toEqual(idsOf(1));
+      const at = (agoMs: number) => new Date(now - agoMs).toISOString();
+      // joined = first seen, else created: 0, 1 at 10d; 2, 3 at 100d; 4, 5, 6 hours ago
+      expect(await ids({ joinedAfter: at(50 * D) })).toEqual(idsOf(0, 1, 4, 5, 6));
+      expect(await ids({ joinedBefore: at(50 * D) })).toEqual(idsOf(2, 3));
+      expect(await ids({ joinedAfter: at(50 * D), joinedBefore: at(1 * D) })).toEqual(idsOf(0, 1));
+      // after is inclusive, before exclusive
+      expect(await ids({ joinedAfter: at(100 * D), joinedBefore: at(100 * D) })).toEqual([]);
+      expect(await ids({ joinedAfter: at(100 * D), joinedBefore: at(99 * D) })).toEqual(idsOf(2, 3));
+      // last seen: 0, 2 at 1d; 3 at 5d; 1 at 40d; 4, 5, 6 never (excluded by any range)
+      expect(await ids({ lastSeenAfter: at(3 * D) })).toEqual(idsOf(0, 2));
+      expect(await ids({ lastSeenBefore: at(3 * D) })).toEqual(idsOf(1, 3));
+      expect(await ids({ lastSeenAfter: at(10 * D), lastSeenBefore: at(3 * D) })).toEqual(idsOf(3));
+    });
+
     it("listContacts filters by state, depth and case-insensitive search", async () => {
       const ids = async (filter: Partial<typeof emptyFilter> & Record<string, unknown>) =>
-        (await b.store.apiContacts.listContacts({ tenantId, filter: { ...emptyFilter, ...filter }, limit: 50 }))
-          .map((r) => r.id)
-          .sort();
+        (await list(filter)).map((r) => r.id).sort();
       const idsOf = (...i: number[]) => i.map((n) => contacts[n]!.id).sort();
 
       expect(await ids({ lifecycleState: "at_risk" })).toEqual(idsOf(1));
@@ -184,10 +271,7 @@ for (const factory of testBackends()) {
     });
 
     it("listContacts filters by tenure and recency day ranges", async () => {
-      const ids = async (filter: Record<string, unknown>) =>
-        (await b.store.apiContacts.listContacts({ tenantId, filter: { ...emptyFilter, ...filter }, limit: 50 }))
-          .map((r) => r.id)
-          .sort();
+      const ids = async (filter: Record<string, unknown>) => (await list(filter)).map((r) => r.id).sort();
       const idsOf = (...i: number[]) => i.map((n) => contacts[n]!.id).sort();
       // first_seen 10d ago: 0, 1; 100d ago: 2, 3; null: 4
       expect(await ids({ tenureMinDays: 30 })).toEqual(idsOf(2, 3));
@@ -200,19 +284,28 @@ for (const factory of testBackends()) {
       expect(await ids({ tenureMinDays: 30, recencyMinDays: 3 })).toEqual(idsOf(3));
     });
 
-    it("countContacts counts every match with the list filters and ignores the cursor", async () => {
-      const count = (filter: Record<string, unknown>) =>
-        b.store.apiContacts.countContacts({ tenantId, filter: { ...emptyFilter, ...filter } });
-      expect(await count({})).toBe(ordered.length);
-      expect(await count({ searchPattern: "%acme%" })).toBe(3);
-      expect(await count({ lifecycleState: "engaged", searchPattern: "%acme%", engagementDepth: "regular" })).toBe(2);
-      expect(await count({ tenureMinDays: 30, recencyMinDays: 3 })).toBe(1);
-      expect(await count({ searchPattern: "%nobody%" })).toBe(0);
-      const last = ordered[ordered.length - 1]!;
-      expect(await count({ before: { createdAt: new Date(now - last.createdAgo).toISOString(), id: last.id } })).toBe(
-        ordered.length,
-      );
-      expect(await b.store.apiContacts.countContacts({ tenantId: randomUUID(), filter: emptyFilter })).toBe(0);
+    it("countContactsByInitial counts matches per initial with every filter but the letter", async () => {
+      const counts = async (filter: Record<string, unknown>) => {
+        const out: Record<string, number> = {};
+        const rows = await b.store.apiContacts.countContactsByInitial({ tenantId, filter: { ...emptyFilter, ...filter } });
+        // Non-ASCII initials come back as the backend lowercases them; the API files them under "#".
+        for (const { initial, n } of rows) {
+          const l = /^[a-z]$/.test(initial) ? initial : "#";
+          out[l] = (out[l] ?? 0) + n;
+        }
+        return out;
+      };
+      expect(await counts({})).toEqual({ a: 1, b: 1, e: 1, p: 2, z: 1, "#": 1 });
+      // the letter filter is ignored, the others apply
+      expect(await counts({ letter: "p" })).toEqual({ a: 1, b: 1, e: 1, p: 2, z: 1, "#": 1 });
+      expect(await counts({ searchPattern: "%acme%" })).toEqual({ a: 1, b: 1, p: 1 });
+      expect(await counts({ lifecycleState: "engaged", engagementDepth: "regular" })).toEqual({ a: 1, b: 1 });
+      expect(await counts({ tenureMinDays: 30, recencyMinDays: 3 })).toEqual({ p: 1 });
+      expect(await counts({ paymentStatus: "trial" })).toEqual({ b: 1 });
+      expect(await counts({ searchPattern: "%nobody%" })).toEqual({});
+      expect(
+        await b.store.apiContacts.countContactsByInitial({ tenantId: randomUUID(), filter: emptyFilter }),
+      ).toEqual([]);
     });
 
     it("getContact returns the full row with parsed properties, null when absent", async () => {
