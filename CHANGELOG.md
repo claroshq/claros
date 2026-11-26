@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- People: an A-Z bar, sortable columns, a payment status filter and a date filter. The A-Z bar keeps the names starting with one letter (`#` for anything else) and greys out letters with nobody under the other filters. **Name**, **Joined** and **Last seen** sort from the table header, both ways; the list starts with the latest joined. The date filter works on Joined (first seen, else added) or Last seen, with presets and a custom range. A new **Joined** column shows the date. Search, filters, letter and sort live in the page address, so a view can be bookmarked and shared. `GET /v1/contacts` adds `sort` (`created`, `name`, `joined`, `last_seen`) and `order`, `payment_status`, `letter`, `joined_after`/`joined_before` and `last_seen_after`/`last_seen_before`; each row adds `first_seen_at`, and the first page adds `letters` (matches per initial). Without the new parameters the answer is unchanged, and cursors issued before this release still page the default order. Same on Postgres and D1; no migration. See [How do I find, filter and sort people?](docs/guide/FAQ.md#how-do-i-find-filter-and-sort-people).
+
 ### Changed
 
 - Docs: the README covers what shipped in 0.8.4 to 0.8.11 (flow editor, templates per flow, branding and language, AI guardrails, the person page, history import) and the full dashboard navigation, with new screenshots of Home, the flow editor, Approvals and the retention grid. `scripts/seed-screenshots.mjs` reads `SEED_NOW` to date its history relative to another day.

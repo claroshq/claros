@@ -10,11 +10,19 @@
  * - The timeline's parenthesised UNION ALL branches (each with its own ORDER BY
  *   and LIMIT) become subqueries in FROM, which SQLite allows.
  * - Integer ms timestamps are returned as Date, JSON text columns parsed.
+ * - The name sort key uses lower() (ASCII only in SQLite, Unicode in
+ *   Postgres) and byte order (BINARY here, COLLATE "C" there).
  */
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { lifecycleMessages, suppressions } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
-import type { ApiContactsQueries, ContactListFilter, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
+import type {
+  ApiContactsQueries,
+  ContactListFilter,
+  ContactListRow,
+  ContactListSort,
+  ContactNoteRow,
+} from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { rawBatch } from "./raw-batch.js";
 import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
@@ -77,8 +85,36 @@ function convert<T>(row: Record<string, unknown>, dates: string[], json: string[
   return out as T;
 }
 
+/** The name the People list shows and sorts by: name, else email, else external id. */
+const DISPLAY_NAME = sql`coalesce(nullif(trim(name), ''), email, external_id)`;
+
+/** Lowercased first character of the display name (see ContactListFilter.letter). */
+const INITIAL = sql`lower(substr(${DISPLAY_NAME}, 1, 1))`;
+
+const LETTERS = "abcdefghijklmnopqrstuvwxyz".split("");
+
+/** The sort key expressions (ContactListSort); never null. Timestamps are ms. */
+function sortExpr(key: ContactListSort["key"]): SQL {
+  switch (key) {
+    case "created":
+      return sql`created_at`;
+    case "name":
+      return sql`lower(${DISPLAY_NAME})`;
+    case "joined":
+      return sql`coalesce(first_seen_at, created_at)`;
+    case "last_seen":
+      return sql`coalesce(last_seen_at, 0)`;
+  }
+}
+
+/** A cursor key as a bound value of the sort key's type (timestamps as ms). */
+function cursorValue(key: ContactListSort["key"], value: string | number): string | number {
+  if (key === "name") return String(value);
+  return typeof value === "number" ? value : tsMs(value);
+}
+
 /** The People list filter as WHERE conditions (without the cursor). */
-function listConditions(tenantId: string, filter: ContactListFilter): SQL[] {
+function listConditions(tenantId: string, filter: ContactListFilter, withLetter = true): SQL[] {
   const now = Date.now();
   const ago = (days: number) => now - days * DAY_MS;
   const conditions: SQL[] = [sql`tenant_id = ${tenantId}`];
@@ -88,11 +124,21 @@ function listConditions(tenantId: string, filter: ContactListFilter): SQL[] {
   if (filter.engagementDepth !== null) {
     conditions.push(sql`engagement_depth = ${filter.engagementDepth}`);
   }
+  if (filter.paymentStatus !== null) {
+    conditions.push(sql`payment_status = ${filter.paymentStatus}`);
+  }
   if (filter.searchPattern !== null) {
     const p = filter.searchPattern;
     conditions.push(sql`(email LIKE ${p} ESCAPE '\\'
       OR name LIKE ${p} ESCAPE '\\'
       OR external_id LIKE ${p} ESCAPE '\\')`);
+  }
+  if (withLetter && filter.letter !== null) {
+    conditions.push(
+      filter.letter === "#"
+        ? sql`${INITIAL} NOT IN (${sql.join(LETTERS.map((l) => sql`${l}`), sql`, `)})`
+        : sql`${INITIAL} = ${filter.letter}`,
+    );
   }
   if (filter.tenureMinDays !== null) {
     conditions.push(sql`first_seen_at <= ${ago(filter.tenureMinDays)}`);
@@ -106,6 +152,18 @@ function listConditions(tenantId: string, filter: ContactListFilter): SQL[] {
   if (filter.recencyMaxDays !== null) {
     conditions.push(sql`last_seen_at > ${ago(filter.recencyMaxDays)}`);
   }
+  if (filter.joinedAfter !== null) {
+    conditions.push(sql`coalesce(first_seen_at, created_at) >= ${tsMs(filter.joinedAfter)}`);
+  }
+  if (filter.joinedBefore !== null) {
+    conditions.push(sql`coalesce(first_seen_at, created_at) < ${tsMs(filter.joinedBefore)}`);
+  }
+  if (filter.lastSeenAfter !== null) {
+    conditions.push(sql`last_seen_at >= ${tsMs(filter.lastSeenAfter)}`);
+  }
+  if (filter.lastSeenBefore !== null) {
+    conditions.push(sql`last_seen_at < ${tsMs(filter.lastSeenBefore)}`);
+  }
   return conditions;
 }
 
@@ -118,32 +176,37 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
       return parseJson(rows[0]?.settings);
     },
 
-    async listContacts({ tenantId, filter, limit }) {
+    async listContacts({ tenantId, filter, sort, after, limit }) {
+      const key = sortExpr(sort.key);
       const conditions = listConditions(tenantId, filter);
-      if (filter.before) {
+      if (after) {
+        const cmp = sort.order === "desc" ? sql`<` : sql`>`;
         conditions.push(
-          sql`(created_at, id) < (${tsMs(filter.before.createdAt)}, ${filter.before.id.toLowerCase()})`,
+          sql`(${key}, id) ${cmp} (${cursorValue(sort.key, after.key)}, ${after.id.toLowerCase()})`,
         );
       }
-
+      const dir = sort.order === "desc" ? sql`DESC` : sql`ASC`;
       const rows = await db.all<Record<string, unknown>>(sql`
         SELECT id, tenant_id, external_id, email, name, company,
                lifecycle_state, engagement_depth, payment_status,
-               last_seen_at, created_at
+               first_seen_at, last_seen_at, created_at,
+               ${key} AS sort_key
         FROM contacts
         WHERE ${sql.join(conditions, sql` AND `)}
-        ORDER BY created_at DESC, id DESC
+        ORDER BY ${key} ${dir}, id ${dir}
         LIMIT ${limit}
       `);
-      return rows.map((r) => convert<ContactListRow>(r, ["last_seen_at", "created_at"]));
+      return rows.map((r) => convert<ContactListRow>(r, ["first_seen_at", "last_seen_at", "created_at"]));
     },
 
-    async countContacts({ tenantId, filter }) {
-      const rows = await db.all<{ n: number }>(sql`
-        SELECT count(*) AS n FROM contacts
-        WHERE ${sql.join(listConditions(tenantId, filter), sql` AND `)}
+    async countContactsByInitial({ tenantId, filter }) {
+      const rows = await db.all<{ initial: string; n: number }>(sql`
+        SELECT ${INITIAL} AS initial, count(*) AS n
+        FROM contacts
+        WHERE ${sql.join(listConditions(tenantId, filter, false), sql` AND `)}
+        GROUP BY 1
       `);
-      return Number(rows[0]?.n ?? 0);
+      return rows.map((r) => ({ initial: String(r.initial), n: Number(r.n) }));
     },
 
     async getContact({ tenantId, contactId }) {

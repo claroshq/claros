@@ -8,12 +8,37 @@
  */
 import type { ContactTopicStatusRow } from "./shared-topics.js";
 
+/** Sort keys of the People list. */
+export type ContactSortKey = "created" | "name" | "joined" | "last_seen";
+
+/**
+ * How the People list is ordered. Every key is non-null by construction, so
+ * one keyset cursor (key, id) pages through any of them:
+ * - created:   created_at (when the contact landed in this product).
+ * - name:      lower(coalesce(nullif(trim(name), ''), email, external_id)),
+ *              byte order (the same on Postgres and SQLite).
+ * - joined:    coalesce(first_seen_at, created_at).
+ * - last_seen: coalesce(last_seen_at, epoch), so never-seen contacts sort as
+ *              the least recently seen.
+ * The id breaks ties in the same direction.
+ */
+export interface ContactListSort {
+  key: ContactSortKey;
+  order: "asc" | "desc";
+}
+
 /** Filters for the People list. Null means "no filter". */
 export interface ContactListFilter {
   lifecycleState: string | null;
   engagementDepth: string | null;
+  paymentStatus: string | null;
   /** ILIKE pattern (with % wildcards) on email, name or external_id. */
   searchPattern: string | null;
+  /**
+   * Initial of the name sort key: "a".."z", or "#" for anything else
+   * (digits, symbols, non-ASCII letters, empty).
+   */
+  letter: string | null;
   /** first_seen_at at least this many days ago. */
   tenureMinDays: number | null;
   /** first_seen_at less than this many days ago. */
@@ -22,8 +47,24 @@ export interface ContactListFilter {
   recencyMinDays: number | null;
   /** last_seen_at less than this many days ago. */
   recencyMaxDays: number | null;
-  /** Keyset cursor: rows strictly older than (created_at, id). */
-  before: { createdAt: string; id: string } | null;
+  /** coalesce(first_seen_at, created_at) at or after this instant (ISO 8601). */
+  joinedAfter: string | null;
+  /** coalesce(first_seen_at, created_at) strictly before this instant (ISO 8601). */
+  joinedBefore: string | null;
+  /** last_seen_at at or after this instant (ISO 8601); never-seen contacts never match. */
+  lastSeenAfter: string | null;
+  /** last_seen_at strictly before this instant (ISO 8601); never-seen contacts never match. */
+  lastSeenBefore: string | null;
+}
+
+/**
+ * Keyset cursor: rows strictly after (key, id) in the list order. `key` is
+ * the row's `sort_key` as the same backend returned it; a timestamp key may
+ * also be an ISO 8601 string (cursors issued before sorting existed).
+ */
+export interface ContactListCursor {
+  key: string | number;
+  id: string;
 }
 
 /** One row of the People list (timestamps as returned by the driver for raw SQL). */
@@ -37,9 +78,15 @@ export type ContactListRow = {
   lifecycle_state: string;
   engagement_depth: string | null;
   payment_status: string | null;
+  first_seen_at: string | null;
   last_seen_at: string | null;
   created_at: string;
+  /** The row's value of the sort key, for the next cursor. Opaque to callers. */
+  sort_key: string | number;
 };
+
+/** How many contacts start with one initial (lowercased first character of the name sort key). */
+export type ContactInitialCount = { initial: string; n: number };
 
 /** A note a team member wrote about a contact, with the author when the user row exists. */
 export type ContactNoteRow = {
@@ -54,10 +101,20 @@ export type ContactNoteRow = {
 export interface ApiContactsQueries {
   /** The tenant's settings JSON (null when unset or the tenant does not exist). */
   getTenantSettings(input: { tenantId: string }): Promise<unknown>;
-  /** One page of the tenant's contacts, newest first (created_at DESC, id DESC). */
-  listContacts(input: { tenantId: string; filter: ContactListFilter; limit: number }): Promise<ContactListRow[]>;
-  /** How many of the tenant's contacts match the filter (the cursor, `before`, is ignored). */
-  countContacts(input: { tenantId: string; filter: ContactListFilter }): Promise<number>;
+  /** One page of the tenant's contacts in the sort order, after the cursor when given. */
+  listContacts(input: {
+    tenantId: string;
+    filter: ContactListFilter;
+    sort: ContactListSort;
+    after: ContactListCursor | null;
+    limit: number;
+  }): Promise<ContactListRow[]>;
+  /**
+   * Matching contacts counted per initial (see ContactListFilter.letter),
+   * with every filter applied except `letter`. The sum is the total without
+   * the letter filter; the rows also tell which letters have anyone.
+   */
+  countContactsByInitial(input: { tenantId: string; filter: ContactListFilter }): Promise<ContactInitialCount[]>;
   /** One contact of the tenant (raw row), or null. */
   getContact(input: { tenantId: string; contactId: string }): Promise<Record<string, unknown> | null>;
   /** The contact's flow memberships with flow names, newest entry first. */

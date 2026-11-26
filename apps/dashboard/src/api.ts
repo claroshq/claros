@@ -1319,6 +1319,8 @@ export interface Contact {
     | "resurrected";
   engagement_depth: "power" | "regular" | "casual" | "minimal" | null;
   payment_status: string | null;
+  /** In the list since sorting; always in the detail. */
+  first_seen_at?: string | null;
   last_seen_at: string | null;
   created_at: string;
 }
@@ -1373,14 +1375,29 @@ export interface ContactsPage {
   next_cursor: string | null;
   /** Contacts matching the filters across all pages. First page only; absent from older servers. */
   total?: number;
+  /** Matches per initial ("a".."z", "#") ignoring the letter filter. First page only; absent from older servers. */
+  letters?: Record<string, number>;
 }
+
+export type PaymentStatus = "free" | "trial" | "paid" | "past_due" | "cancelled";
+export type ContactSortKey = "created" | "name" | "joined" | "last_seen";
 
 export interface ContactFilters {
   lifecycle_state?: Contact["lifecycle_state"];
   engagement_depth?: "power" | "regular" | "casual" | "minimal";
+  payment_status?: PaymentStatus;
   tenure_bucket?: "new" | "growing" | "established" | "loyal";
   recency_bucket?: "active" | "cooling" | "idle" | "dormant";
   search?: string;
+  /** "a".."z" or "#". */
+  letter?: string;
+  /** ISO instants; after is inclusive, before exclusive. */
+  joined_after?: string;
+  joined_before?: string;
+  last_seen_after?: string;
+  last_seen_before?: string;
+  sort?: ContactSortKey;
+  order?: "asc" | "desc";
 }
 
 /** GET /v1/contacts - cursor-paginated list with search and filters. */
@@ -1390,11 +1407,9 @@ export async function fetchContacts(
 ): Promise<ContactsPage> {
   const params = new URLSearchParams();
   if (after) params.set("after", after);
-  if (filters.lifecycle_state) params.set("lifecycle_state", filters.lifecycle_state);
-  if (filters.engagement_depth) params.set("engagement_depth", filters.engagement_depth);
-  if (filters.tenure_bucket) params.set("tenure_bucket", filters.tenure_bucket);
-  if (filters.recency_bucket) params.set("recency_bucket", filters.recency_bucket);
-  if (filters.search) params.set("search", filters.search);
+  for (const [k, v] of Object.entries(filters)) {
+    if (typeof v === "string" && v !== "") params.set(k, v);
+  }
   const qs = params.size > 0 ? `?${params.toString()}` : "";
   const res = await apiFetch(`/v1/contacts${qs}`);
   if (!res.ok) {

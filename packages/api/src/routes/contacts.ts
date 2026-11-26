@@ -21,9 +21,10 @@
  *
  * Pagination: cursor convention shared with GET /v1/kb, GET /v1/messages and
  * GET /v1/suppressions: opaque base64url JSON cursor, response shape
- * { <items>, next_cursor: string | null }, keyset on (created_at, id).
- * Both the list and the timeline order DESC (newest first). The cursor
- * payload and response shapes are identical to the ASC routes.
+ * { <items>, next_cursor: string | null }. The timeline keysets on
+ * (occurred_at, id) DESC. The list keysets on (sort key, id) for the sort
+ * asked for (created_at DESC by default); its cursor carries the sort, and a
+ * { created_at, id } cursor from before sorting still pages the default.
  *
  * Timeline as one endpoint: the person screen needs one ordered sequence
  * across events, lifecycle_transitions and lifecycle_messages. Merging in
@@ -33,8 +34,10 @@
  * over-fetching every source. One endpoint, one cursor.
  *
  * Index notes (added in migration 0018):
- *   - list cursor keyset is served by idx_contacts_tenant_created
- *     (tenant_id, created_at, id).
+ *   - the default list order is served by idx_contacts_tenant_created
+ *     (tenant_id, created_at, id). The name, joined and last_seen sorts and
+ *     the per-letter counts read the tenant's contacts without an index of
+ *     their own, as search and the total already do.
  *   - the timeline's transitions branch uses idx_transitions_contact
  *     (contact_id, transitioned_at DESC).
  */
@@ -115,8 +118,69 @@ function decodeCursor(cursor: string): CursorPayload | null {
 }
 
 // ---------------------------------------------------------------------------
+// List cursor: (sort key, id) for any sort
+// ---------------------------------------------------------------------------
+
+const SORT_KEYS = ["created", "name", "joined", "last_seen"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+type SortOrder = "asc" | "desc";
+
+/** Default direction per sort key: newest first for dates, A to Z for names. */
+const DEFAULT_ORDER: Record<SortKey, SortOrder> = {
+  created: "desc",
+  name: "asc",
+  joined: "desc",
+  last_seen: "desc",
+};
+
+interface ListCursorPayload {
+  s: SortKey;
+  o: SortOrder;
+  k: string | number;
+  id: string;
+}
+
+function encodeListCursor(sort: SortKey, order: SortOrder, key: unknown, id: string): string {
+  const k = key instanceof Date ? key.toISOString() : typeof key === "number" ? key : String(key);
+  const payload: ListCursorPayload = { s: sort, o: order, k, id };
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+}
+
+/**
+ * The list cursor, or "invalid". A cursor from before sorting existed
+ * ({ created_at, id }) still pages the default order (created, desc).
+ */
+function decodeListCursor(cursor: string): ListCursorPayload | "invalid" {
+  try {
+    const p = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (typeof p !== "object" || p === null || typeof p.id !== "string" || !isUuid(p.id)) return "invalid";
+    // Timestamp keys must parse, so a tampered cursor never reaches a SQL cast.
+    const isTime = (k: unknown) =>
+      typeof k === "number" ? Number.isFinite(k) : typeof k === "string" && !Number.isNaN(Date.parse(k));
+    if (typeof p.created_at === "string") {
+      return isTime(p.created_at) ? { s: "created", o: "desc", k: p.created_at, id: p.id } : "invalid";
+    }
+    if (!(SORT_KEYS as readonly unknown[]).includes(p.s) || (p.o !== "asc" && p.o !== "desc")) return "invalid";
+    const s = p.s as SortKey;
+    if (s === "name" ? typeof p.k !== "string" : !isTime(p.k)) return "invalid";
+    return { s, o: p.o, k: p.k as string | number, id: p.id };
+  } catch {
+    return "invalid";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Query validation
 // ---------------------------------------------------------------------------
+
+const PAYMENT_STATUSES = ["free", "trial", "paid", "past_due", "cancelled"] as const;
+
+/** An ISO 8601 date (UTC midnight) or date-time, normalised to an ISO instant. */
+const instant = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}([T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?)?$/, "Expected an ISO 8601 date or date-time")
+  .refine((v) => !Number.isNaN(Date.parse(v)), "Expected an ISO 8601 date or date-time")
+  .transform((v) => new Date(v).toISOString());
 
 const listQuerySchema = z.object({
   limit: z.string().optional(),
@@ -126,7 +190,24 @@ const listQuerySchema = z.object({
   tenure_bucket: z.enum(RETENTION_TENURE_BUCKETS).optional(),
   recency_bucket: z.enum(RETENTION_RECENCY_BUCKETS).optional(),
   search: z.string().max(200).optional(),
+  payment_status: z.enum(PAYMENT_STATUSES).optional(),
+  letter: z
+    .string()
+    .regex(/^[a-zA-Z#]$/, "Expected one letter a-z, or #")
+    .transform((v) => v.toLowerCase())
+    .optional(),
+  joined_after: instant.optional(),
+  joined_before: instant.optional(),
+  last_seen_after: instant.optional(),
+  last_seen_before: instant.optional(),
+  sort: z.enum(SORT_KEYS).optional(),
+  order: z.enum(["asc", "desc"]).optional(),
 });
+
+/** Initials outside a-z count under "#", as the letter filter does. */
+function letterOf(initial: string): string {
+  return /^[a-z]$/.test(initial) ? initial : "#";
+}
 
 function validationError(c: AppContext, issues: z.ZodIssue[]) {
   return c.json(
@@ -160,27 +241,44 @@ export default function contactsRoutes() {
   /**
    * GET /v1/contacts
    *
-   * List contacts for the tenant, cursor-paginated DESC on (created_at, id):
- * newest contacts first, which is what a People screen is for. The cursor
- * shape matches the other paginated routes; only the direction differs.
+   * List contacts for the tenant, keyset-paginated. Without `sort` the order
+   * is newest contacts first (created_at DESC, id DESC), as before sorting
+   * existed.
    *
    * Query params:
    *   ?limit=<n>              default 50, max 200
-   *   ?after=<cursor>         opaque cursor from previous page's next_cursor
+   *   ?after=<cursor>         opaque cursor from previous page's next_cursor;
+   *                           it belongs to the sort it came from (400 otherwise)
+   *   ?sort=<key>             created (default) | name | joined | last_seen
+   *   ?order=<dir>            asc | desc; default desc, name asc
    *   ?lifecycle_state=<s>    exact match on the seven lifecycle states
    *   ?engagement_depth=<d>   exact match on power|regular|casual|minimal
+   *   ?payment_status=<p>     exact match on free|trial|paid|past_due|cancelled
+   *   ?letter=<l>             display name starts with a-z, or "#" for anything else
+   *   ?joined_after=<iso>     joined (first seen, else created) at or after
+   *   ?joined_before=<iso>    joined strictly before
+   *   ?last_seen_after=<iso>  last seen at or after (never-seen contacts excluded)
+   *   ?last_seen_before=<iso> last seen strictly before (never-seen contacts excluded)
    *   ?tenure_bucket=<t>      retention-grid tenure bucket (new|growing|established|loyal)
    *   ?recency_bucket=<r>     retention-grid recency bucket (active|cooling|idle|dormant)
    *   ?search=<text>          case-insensitive substring on email, name, external_id
+   *
+   * The display name is the name, else the email, else the external id; the
+   * `name` sort and the `letter` filter use it lowercased. Dates take an ISO
+   * 8601 date (UTC midnight) or date-time.
    *
    * The bucket filters apply the same core day-range functions as the
    * retention-grid read model, so /people?tenure_bucket=X&recency_bucket=Y
    * lists exactly the contacts sitting in that grid cell.
    *
-   * Response: { contacts: [...], next_cursor: string | null, total?: number }
+   * Response:
+   *   { contacts: [...], next_cursor: string | null,
+   *     total?: number, letters?: { [letter]: number } }
    *
-   * `total` is how many contacts match the filters and search across all
-   * pages. It is present on the first page only (no `after`).
+   * First page only (no `after`): `total` is how many contacts match the
+   * filters and search across all pages; `letters` counts the matches per
+   * initial with every filter except `letter` applied, for an A-Z bar
+   * (letters with no one are absent).
    */
   router.get("/", "member", allowAdminKey("contacts:read"), async (c) => {
     const parsed = listQuerySchema.safeParse(c.req.query());
@@ -190,12 +288,19 @@ export default function contactsRoutes() {
 
     const db: Db = c.var.db;
     const tenantId = c.var.tenant!.id;
-    const limit = clampLimit(parsed.data.limit);
+    const q = parsed.data;
+    const limit = clampLimit(q.limit);
     const fetchLimit = limit + 1;
-    const cursor = parsed.data.after ? decodeCursor(parsed.data.after) : null;
-    const state = parsed.data.lifecycle_state ?? null;
-    const depth = parsed.data.engagement_depth ?? null;
-    const search = parsed.data.search?.trim() ? `%${parsed.data.search.trim()}%` : null;
+    const sortKey: SortKey = q.sort ?? "created";
+    const order: SortOrder = q.order ?? DEFAULT_ORDER[sortKey];
+
+    const cursor = q.after ? decodeListCursor(q.after) : null;
+    if (cursor !== null && cursor !== "invalid" && (cursor.s !== sortKey || cursor.o !== order)) {
+      return c.json({ error: "The cursor belongs to another sort; start again without `after`." }, 400);
+    }
+    // An unreadable cursor starts from the first page, as it always has.
+    const after = cursor !== null && cursor !== "invalid" ? { key: cursor.k, id: cursor.id } : null;
+    const search = q.search?.trim() ? `%${q.search.trim()}%` : null;
 
     // Retention-grid bucket filters resolve to day ranges via the tenant's
     // lifecycle config (recency thresholds depend on natural_frequency_days).
@@ -204,7 +309,7 @@ export default function contactsRoutes() {
     let tenureMax: number | null = null;
     let recencyMin: number | null = null;
     let recencyMax: number | null = null;
-    if (parsed.data.tenure_bucket || parsed.data.recency_bucket) {
+    if (q.tenure_bucket || q.recency_bucket) {
       const settings = (await storeFor(db).apiContacts.getTenantSettings({ tenantId })) as
         | Record<string, unknown>
         | null
@@ -212,52 +317,61 @@ export default function contactsRoutes() {
       const config: LifecycleConfig = resolveLifecycleConfig(
         settings?.lifecycle as Partial<LifecycleConfig> | null | undefined,
       );
-      if (parsed.data.tenure_bucket) {
-        const r = tenureBucketRange(parsed.data.tenure_bucket);
+      if (q.tenure_bucket) {
+        const r = tenureBucketRange(q.tenure_bucket);
         tenureMin = r.minDays;
         tenureMax = r.maxDays;
       }
-      if (parsed.data.recency_bucket) {
-        const r = recencyBucketRange(
-          parsed.data.recency_bucket,
-          config.natural_frequency_days,
-        );
+      if (q.recency_bucket) {
+        const r = recencyBucketRange(q.recency_bucket, config.natural_frequency_days);
         recencyMin = r.minDays;
         recencyMax = r.maxDays;
       }
     }
 
     const filter = {
-      lifecycleState: state,
-      engagementDepth: depth,
+      lifecycleState: q.lifecycle_state ?? null,
+      engagementDepth: q.engagement_depth ?? null,
+      paymentStatus: q.payment_status ?? null,
       searchPattern: search,
+      letter: q.letter ?? null,
       tenureMinDays: tenureMin,
       tenureMaxDays: tenureMax,
       recencyMinDays: recencyMin,
       recencyMaxDays: recencyMax,
-      // DESC keyset: newest contacts first. Rows strictly older than the cursor.
-      before: cursor ? { createdAt: cursor.created_at, id: cursor.id } : null,
+      joinedAfter: q.joined_after ?? null,
+      joinedBefore: q.joined_before ?? null,
+      lastSeenAfter: q.last_seen_after ?? null,
+      lastSeenBefore: q.last_seen_before ?? null,
     };
     const store = storeFor(db).apiContacts;
-    // The total is counted on the first page only: later pages are "Load
-    // more" on a list whose header already has it.
-    const [rows, total] = await Promise.all([
-      store.listContacts({ tenantId, filter, limit: fetchLimit }),
-      parsed.data.after ? Promise.resolve(undefined) : store.countContacts({ tenantId, filter }),
+    // Counts come with the first page only: later pages are "Load more" on
+    // a list whose header and A-Z bar already have them.
+    const [rows, initials] = await Promise.all([
+      store.listContacts({ tenantId, filter, sort: { key: sortKey, order }, after, limit: fetchLimit }),
+      q.after ? Promise.resolve(null) : store.countContactsByInitial({ tenantId, filter }),
     ]);
 
     const hasNextPage = rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
     const lastRow = pageRows[pageRows.length - 1];
     const nextCursor = hasNextPage && lastRow
-      ? encodeCursor(lastRow.created_at, lastRow.id)
+      ? encodeListCursor(sortKey, order, lastRow.sort_key, lastRow.id)
       : null;
+    const contacts = pageRows.map(({ sort_key: _key, ...row }) => row);
 
-    return c.json(
-      total === undefined
-        ? { contacts: pageRows, next_cursor: nextCursor }
-        : { contacts: pageRows, next_cursor: nextCursor, total },
-    );
+    if (initials === null) {
+      return c.json({ contacts, next_cursor: nextCursor });
+    }
+    const letters: Record<string, number> = {};
+    for (const { initial, n } of initials) {
+      const l = letterOf(initial);
+      letters[l] = (letters[l] ?? 0) + n;
+    }
+    const total = filter.letter !== null
+      ? (letters[filter.letter] ?? 0)
+      : Object.values(letters).reduce((sum, n) => sum + n, 0);
+    return c.json({ contacts, next_cursor: nextCursor, total, letters });
   });
 
   /**

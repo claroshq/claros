@@ -1,9 +1,15 @@
 /**
  * Postgres implementation of the queries used by packages/api/src/routes/contacts.ts.
  */
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { PgDb } from "./db.js";
-import type { ApiContactsQueries, ContactListFilter, ContactListRow, ContactNoteRow } from "../areas/api-contacts.js";
+import type {
+  ApiContactsQueries,
+  ContactListFilter,
+  ContactListRow,
+  ContactListSort,
+  ContactNoteRow,
+} from "../areas/api-contacts.js";
 import { listContactTopicStatuses } from "./contact-topics.js";
 import { pgWriteOutbox } from "./outbox.js";
 
@@ -32,26 +38,74 @@ function toNote(r: NoteRaw): ContactNoteRow {
   };
 }
 
-/** The People list filter as a WHERE condition (without the cursor). */
-function listWhere(tenantId: string, filter: ContactListFilter) {
-  const state = filter.lifecycleState;
-  const depth = filter.engagementDepth;
-  const search = filter.searchPattern;
-  const tenureMin = filter.tenureMinDays;
-  const tenureMax = filter.tenureMaxDays;
-  const recencyMin = filter.recencyMinDays;
-  const recencyMax = filter.recencyMaxDays;
-  return sql`tenant_id = ${tenantId}
-    AND (${state}::text IS NULL OR lifecycle_state = ${state})
-    AND (${depth}::text IS NULL OR engagement_depth = ${depth})
-    AND (${search}::text IS NULL OR
-         email ILIKE ${search} OR
-         name ILIKE ${search} OR
-         external_id ILIKE ${search})
-    AND (${tenureMin}::int IS NULL OR first_seen_at <= now() - make_interval(days => ${tenureMin}))
-    AND (${tenureMax}::int IS NULL OR first_seen_at > now() - make_interval(days => ${tenureMax}))
-    AND (${recencyMin}::int IS NULL OR last_seen_at <= now() - make_interval(days => ${recencyMin}))
-    AND (${recencyMax}::int IS NULL OR last_seen_at > now() - make_interval(days => ${recencyMax}))`;
+/** The name the People list shows and sorts by: name, else email, else external id. */
+const DISPLAY_NAME = sql`coalesce(nullif(trim(name), ''), email, external_id)`;
+
+/** Lowercased first character of the display name (see ContactListFilter.letter). */
+const INITIAL = sql`lower(substr(${DISPLAY_NAME}, 1, 1))`;
+
+const LETTERS = "abcdefghijklmnopqrstuvwxyz".split("");
+
+/** The sort key expressions (ContactListSort); never null. */
+function sortExpr(key: ContactListSort["key"]): SQL {
+  switch (key) {
+    case "created":
+      return sql`created_at`;
+    case "name":
+      // Byte order, as SQLite's BINARY collation, so both backends agree.
+      return sql`(lower(${DISPLAY_NAME}) COLLATE "C")`;
+    case "joined":
+      return sql`coalesce(first_seen_at, created_at)`;
+    case "last_seen":
+      return sql`coalesce(last_seen_at, 'epoch'::timestamptz)`;
+  }
+}
+
+/** A cursor key as a bound value of the sort key's type. */
+function cursorValue(key: ContactListSort["key"], value: string | number): SQL {
+  if (key === "name") return sql`(${String(value)}::text COLLATE "C")`;
+  const iso = typeof value === "number" ? new Date(value).toISOString() : value;
+  return sql`${iso}::timestamptz`;
+}
+
+/** The People list filter as WHERE conditions (without the cursor). */
+function listConditions(tenantId: string, filter: ContactListFilter, withLetter = true): SQL[] {
+  const c: SQL[] = [sql`tenant_id = ${tenantId}`];
+  if (filter.lifecycleState !== null) c.push(sql`lifecycle_state = ${filter.lifecycleState}`);
+  if (filter.engagementDepth !== null) c.push(sql`engagement_depth = ${filter.engagementDepth}`);
+  if (filter.paymentStatus !== null) c.push(sql`payment_status = ${filter.paymentStatus}`);
+  if (filter.searchPattern !== null) {
+    const p = filter.searchPattern;
+    c.push(sql`(email ILIKE ${p} OR name ILIKE ${p} OR external_id ILIKE ${p})`);
+  }
+  if (withLetter && filter.letter !== null) {
+    c.push(
+      filter.letter === "#"
+        ? sql`${INITIAL} NOT IN (${sql.join(LETTERS.map((l) => sql`${l}`), sql`, `)})`
+        : sql`${INITIAL} = ${filter.letter}`,
+    );
+  }
+  if (filter.tenureMinDays !== null) {
+    c.push(sql`first_seen_at <= now() - make_interval(days => ${filter.tenureMinDays}::int)`);
+  }
+  if (filter.tenureMaxDays !== null) {
+    c.push(sql`first_seen_at > now() - make_interval(days => ${filter.tenureMaxDays}::int)`);
+  }
+  if (filter.recencyMinDays !== null) {
+    c.push(sql`last_seen_at <= now() - make_interval(days => ${filter.recencyMinDays}::int)`);
+  }
+  if (filter.recencyMaxDays !== null) {
+    c.push(sql`last_seen_at > now() - make_interval(days => ${filter.recencyMaxDays}::int)`);
+  }
+  if (filter.joinedAfter !== null) {
+    c.push(sql`coalesce(first_seen_at, created_at) >= ${filter.joinedAfter}::timestamptz`);
+  }
+  if (filter.joinedBefore !== null) {
+    c.push(sql`coalesce(first_seen_at, created_at) < ${filter.joinedBefore}::timestamptz`);
+  }
+  if (filter.lastSeenAfter !== null) c.push(sql`last_seen_at >= ${filter.lastSeenAfter}::timestamptz`);
+  if (filter.lastSeenBefore !== null) c.push(sql`last_seen_at < ${filter.lastSeenBefore}::timestamptz`);
+  return c;
 }
 
 export function pgApiContacts(db: PgDb): ApiContactsQueries {
@@ -63,33 +117,38 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
       return tenantRows.rows[0]?.settings ?? null;
     },
 
-    async listContacts({ tenantId, filter, limit }) {
-      // DESC keyset: newest contacts first. Rows strictly older than the cursor.
-      const cursorClause = filter.before
-        ? sql`AND ROW(created_at, id) < ROW(${filter.before.createdAt}::timestamptz, ${filter.before.id}::uuid)`
-        : sql``;
-
+    async listContacts({ tenantId, filter, sort, after, limit }) {
+      const key = sortExpr(sort.key);
+      const conditions = listConditions(tenantId, filter);
+      if (after) {
+        const cmp = sort.order === "desc" ? sql`<` : sql`>`;
+        conditions.push(sql`ROW(${key}, id) ${cmp} ROW(${cursorValue(sort.key, after.key)}, ${after.id}::uuid)`);
+      }
+      const dir = sort.order === "desc" ? sql`DESC` : sql`ASC`;
       return (
         await db.execute<ContactListRow>(sql`
           SELECT id, tenant_id, external_id, email, name, company,
                  lifecycle_state, engagement_depth, payment_status,
-                 last_seen_at, created_at
+                 first_seen_at, last_seen_at, created_at,
+                 ${key}::text AS sort_key
           FROM contacts
-          WHERE ${listWhere(tenantId, filter)}
-            ${cursorClause}
-          ORDER BY created_at DESC, id DESC
+          WHERE ${sql.join(conditions, sql` AND `)}
+          ORDER BY ${key} ${dir}, id ${dir}
           LIMIT ${limit}
         `)
       ).rows;
     },
 
-    async countContacts({ tenantId, filter }) {
+    async countContactsByInitial({ tenantId, filter }) {
       const rows = (
-        await db.execute<{ n: string | number }>(sql`
-          SELECT count(*) AS n FROM contacts WHERE ${listWhere(tenantId, filter)}
+        await db.execute<{ initial: string; n: string | number }>(sql`
+          SELECT ${INITIAL} AS initial, count(*) AS n
+          FROM contacts
+          WHERE ${sql.join(listConditions(tenantId, filter, false), sql` AND `)}
+          GROUP BY 1
         `)
       ).rows;
-      return Number(rows[0]?.n ?? 0);
+      return rows.map((r) => ({ initial: r.initial, n: Number(r.n) }));
     },
 
     async getContact({ tenantId, contactId }) {

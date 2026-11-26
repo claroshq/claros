@@ -3,11 +3,17 @@
  *
  * A table people scan for a long time: 13px cells, micro-label headers,
  * 1px separators, dot badges for lifecycle state. Search matches email,
- * name and external id; filters cover lifecycle state and engagement
- * depth. Retention-grid cell filters (tenure_bucket, recency_bucket)
- * arrive via the URL from the Lifecycle screen's "Show users" and show
- * as a removable chip. Pagination is cursor-based ("Load more"),
- * matching the API.
+ * name and external id; filters cover lifecycle state, engagement depth,
+ * payment status and a date range on joined or last seen. The A-Z bar
+ * narrows to names starting with one letter ("#" for anything else) and
+ * greys out letters with no one under the other filters. Name, Joined and
+ * Last seen sort from their column headers.
+ *
+ * All of it lives in the URL (src/lib/people-query.ts): deep-linkable,
+ * shareable, and the back button works. Retention-grid cell filters
+ * (tenure_bucket, recency_bucket) arrive the same way from the Lifecycle
+ * screen's "Show users" and show as a banner. Pagination is keyset-based
+ * ("Load more"), matching the API, for every sort.
  *
  * Empty without filters is not an error state: it is a tenant whose
  * events have not started flowing, and the copy says so. Empty with
@@ -15,9 +21,9 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Users, SearchX } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Search, Users, SearchX } from "lucide-react";
 import { useContacts } from "../contacts.js";
-import type { Contact, ContactFilters } from "../api.js";
+import type { Contact, ContactSortKey, PaymentStatus } from "../api.js";
 import { Badge, type BadgeVariant } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
@@ -33,24 +39,27 @@ import {
   TableRow,
   TableCell,
 } from "../components/ui/table.js";
-
-const LIFECYCLE_STATES: ReadonlyArray<Contact["lifecycle_state"]> = [
-  "signed_up",
-  "activated",
-  "engaged",
-  "at_risk",
-  "dormant",
-  "churned",
-  "resurrected",
-];
-
-const ENGAGEMENT_DEPTHS = ["power", "regular", "casual", "minimal"] as const;
-
-const TENURE_BUCKETS = ["new", "growing", "established", "loyal"] as const;
-const RECENCY_BUCKETS = ["active", "cooling", "idle", "dormant"] as const;
-
-type TenureBucket = (typeof TENURE_BUCKETS)[number];
-type RecencyBucket = (typeof RECENCY_BUCKETS)[number];
+import { cn } from "@/lib/utils";
+import {
+  DATE_PRESETS,
+  DATE_PRESET_LABELS,
+  ENGAGEMENT_DEPTHS,
+  LETTERS,
+  LIFECYCLE_STATES,
+  PAYMENT_STATUSES,
+  clearedQuery,
+  effectiveSort,
+  isFiltering,
+  nextSort,
+  readPeopleQuery,
+  toContactFilters,
+  writePeopleQuery,
+  type DateField,
+  type DatePreset,
+  type EngagementDepth,
+  type PeopleQuery,
+  type TenureBucket,
+} from "../lib/people-query.js";
 
 const TENURE_LABELS: Record<TenureBucket, string> = {
   new: "New",
@@ -59,13 +68,13 @@ const TENURE_LABELS: Record<TenureBucket, string> = {
   loyal: "Loyal",
 };
 
-function isTenureBucket(v: string | null): v is TenureBucket {
-  return v !== null && (TENURE_BUCKETS as readonly string[]).includes(v);
-}
-
-function isRecencyBucket(v: string | null): v is RecencyBucket {
-  return v !== null && (RECENCY_BUCKETS as readonly string[]).includes(v);
-}
+const PAYMENT_LABELS: Record<PaymentStatus, string> = {
+  free: "Free",
+  trial: "Trial",
+  paid: "Paid",
+  past_due: "Past due",
+  cancelled: "Cancelled",
+};
 
 function stateVariant(state: Contact["lifecycle_state"]): BadgeVariant {
   switch (state) {
@@ -97,12 +106,23 @@ function paymentVariant(status: string): BadgeVariant {
   }
 }
 
+/** Same rule as the server's name sort and letter filter. */
 function displayName(c: Contact): string {
-  return c.name ?? c.email ?? c.external_id;
+  const name = c.name?.trim();
+  return name ? name : (c.email ?? c.external_id);
 }
 
 function initial(c: Contact): string {
   return displayName(c).trim().charAt(0).toUpperCase() || "?";
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}),
+  });
 }
 
 function formatLastSeen(iso: string | null): string {
@@ -112,10 +132,7 @@ function formatLastSeen(iso: string | null): string {
   if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return formatDate(iso);
 }
 
 function TableSkeleton() {
@@ -128,6 +145,7 @@ function TableSkeleton() {
           <Skeleton className="h-5 w-20 rounded-full" />
           <Skeleton className="h-4 w-16" />
           <Skeleton className="h-4 w-14" />
+          <Skeleton className="h-4 w-16" />
           <Skeleton className="h-4 w-16" />
         </div>
       ))}
@@ -168,49 +186,167 @@ function EmptyFiltered({ onClear }: { onClear: () => void }) {
   );
 }
 
+/**
+ * The A-Z bar. "All" clears the letter. Letters nobody's name starts with
+ * (under the other filters) are disabled; older servers send no counts, so
+ * then every letter stays enabled.
+ */
+function LetterBar({
+  value,
+  counts,
+  onChange,
+}: {
+  value: string | null;
+  counts: Record<string, number> | undefined;
+  onChange: (letter: string | null) => void;
+}) {
+  const item =
+    "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-sm px-1.5 font-mono text-[12px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return (
+    <div
+      role="toolbar"
+      aria-label="Filter by first letter"
+      className="flex min-w-0 items-center gap-0.5 overflow-x-auto"
+    >
+      <button
+        type="button"
+        aria-pressed={value === null}
+        onClick={() => onChange(null)}
+        className={cn(
+          item,
+          "px-2 font-sans text-[13px]",
+          value === null
+            ? "bg-accent-soft font-semibold text-accent-text"
+            : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        )}
+      >
+        All
+      </button>
+      {LETTERS.map((l) => {
+        const n = counts?.[l] ?? 0;
+        const empty = counts !== undefined && n === 0 && value !== l;
+        const label = l === "#" ? "Other" : l.toUpperCase();
+        return (
+          <button
+            key={l}
+            type="button"
+            aria-pressed={value === l}
+            aria-label={
+              counts === undefined
+                ? `Names starting with ${label}`
+                : `Names starting with ${label}: ${n.toLocaleString("en-US")}`
+            }
+            title={counts === undefined ? undefined : `${n.toLocaleString("en-US")} ${n === 1 ? "person" : "people"}`}
+            disabled={empty}
+            onClick={() => onChange(value === l ? null : l)}
+            className={cn(
+              item,
+              value === l
+                ? "bg-accent-soft font-semibold text-accent-text"
+                : empty
+                  ? "cursor-default text-subtle-foreground"
+                  : "text-foreground hover:bg-secondary",
+            )}
+          >
+            {l === "#" ? "#" : l.toUpperCase()}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A column header that sorts the list; aria-sort on the cell says which way. */
+function SortableHead({
+  label,
+  sortKey,
+  active,
+  order,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: ContactSortKey;
+  active: boolean;
+  order: "asc" | "desc";
+  onSort: (key: ContactSortKey) => void;
+  align?: "left" | "right";
+}) {
+  const Icon = !active ? ChevronsUpDown : order === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <TableHead
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+      className={align === "right" ? "text-right" : undefined}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-sm uppercase tracking-[0.06em] transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active && "text-foreground",
+          align === "right" && "flex-row-reverse",
+        )}
+      >
+        {label}
+        <Icon
+          size={12}
+          strokeWidth={2}
+          aria-hidden="true"
+          className={active ? "text-foreground" : "text-subtle-foreground"}
+        />
+      </button>
+    </TableHead>
+  );
+}
+
 export default function PeoplePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [state, setState] = useState<Contact["lifecycle_state"] | "">("");
-  const [depth, setDepth] = useState<(typeof ENGAGEMENT_DEPTHS)[number] | "">("");
+  const query = useMemo(() => readPeopleQuery(searchParams), [searchParams]);
+  const [searchInput, setSearchInput] = useState(query.search);
 
-  // Retention-grid cell filters arrive via the URL (from the Lifecycle
-  // screen's "Show users"). They live in the address bar, not in local
-  // state: deep-linkable, shareable, and the back button works.
-  const tenureParam = searchParams.get("tenure_bucket");
-  const recencyParam = searchParams.get("recency_bucket");
-  const tenure = isTenureBucket(tenureParam) ? tenureParam : null;
-  const recency = isRecencyBucket(recencyParam) ? recencyParam : null;
-  const cellFiltering = tenure !== null || recency !== null;
+  // Patches apply to the live URL, not the router's last render: two
+  // changes in quick succession (pick "All", then a payment status) must
+  // not resurrect the first one's old value.
+  function update(patch: Partial<PeopleQuery>) {
+    setSearchParams(writePeopleQuery(new URLSearchParams(window.location.search), patch), { replace: true });
+  }
 
-  // Debounce the search term; the query key carries the settled value.
+  // The search box writes to the URL after a pause; the URL is what the
+  // list reads. A URL change from elsewhere (back button, Clear) refills it.
   useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    const t = setTimeout(() => {
+      if (searchInput.trim() !== query.search.trim()) update({ search: searchInput.trim() });
+    }, 300);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
+  useEffect(() => {
+    setSearchInput((current) => (current.trim() === query.search.trim() ? current : query.search));
+  }, [query.search]);
 
-  const filters: ContactFilters = useMemo(
-    () => ({
-      ...(search ? { search } : {}),
-      ...(state ? { lifecycle_state: state } : {}),
-      ...(depth ? { engagement_depth: depth } : {}),
-      ...(tenure ? { tenure_bucket: tenure } : {}),
-      ...(recency ? { recency_bucket: recency } : {}),
-    }),
-    [search, state, depth, tenure, recency],
+  const cellFiltering = query.tenure !== null || query.recency !== null;
+  const filtering = isFiltering(query);
+  const sort = effectiveSort(query);
+
+  // Date presets resolve against today in the operator's time zone, so the
+  // filters change when the query does or the day turns, not every render.
+  const today = new Date().toDateString();
+  const filters = useMemo(
+    () => toContactFilters(query, query.search.trim(), new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [query, today],
   );
-  const filtering = search !== "" || state !== "" || depth !== "" || cellFiltering;
 
   const list = useContacts(filters);
   const contacts = useMemo(
     () => list.data?.pages.flatMap((p) => p.contacts) ?? [],
     [list.data],
   );
+  const firstPage = list.data?.pages[0];
   // The server counts every match on the first page. Older servers do not,
   // so fall back to the loaded rows with "+" while more pages exist.
-  const total = list.data?.pages[0]?.total;
+  const total = firstPage?.total;
   const countLabel =
     total !== undefined
       ? total.toLocaleString("en-US")
@@ -219,22 +355,21 @@ export default function PeoplePage() {
 
   function clearFilters() {
     setSearchInput("");
-    setSearch("");
-    setState("");
-    setDepth("");
-    setSearchParams({}, { replace: true });
+    setSearchParams(clearedQuery(new URLSearchParams(window.location.search)), { replace: true });
   }
 
   function clearCellFilter() {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("tenure_bucket");
-        next.delete("recency_bucket");
-        return next;
-      },
-      { replace: true },
-    );
+    update({ tenure: null, recency: null });
+  }
+
+  function onSort(key: ContactSortKey) {
+    update(nextSort(query, key));
+  }
+
+  function onDatePreset(value: DatePreset | "") {
+    if (value === "") update({ datePreset: null, dateFrom: null, dateTo: null });
+    else if (value === "custom") update({ datePreset: "custom" });
+    else update({ datePreset: value, dateFrom: null, dateTo: null });
   }
 
   return (
@@ -267,8 +402,8 @@ export default function PeoplePage() {
             <p className="mt-0.5 text-[14px] text-foreground">
               Showing the cell{" "}
               <span className="font-semibold">
-                {tenure ? TENURE_LABELS[tenure] : "Any tenure"} ·{" "}
-                <span className="capitalize">{recency ?? "any recency"}</span>
+                {query.tenure ? TENURE_LABELS[query.tenure] : "Any tenure"} ·{" "}
+                <span className="capitalize">{query.recency ?? "any recency"}</span>
               </span>
             </p>
           </div>
@@ -288,7 +423,7 @@ export default function PeoplePage() {
 
       {/* Toolbar: separated from the data by a hairline, so controls read
           as chrome and the table reads as content. */}
-      <div className="mb-6 flex flex-wrap items-center gap-3 border-b border-border pb-5">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-72">
           <Search
             size={16}
@@ -303,11 +438,11 @@ export default function PeoplePage() {
             className="pl-9"
           />
         </div>
-        <div className="w-[calc(50%-6px)] sm:w-48">
+        <div className="w-[calc(50%-6px)] sm:w-40">
           <Select
             aria-label="Filter by lifecycle state"
-            value={state}
-            onChange={(e) => setState(e.target.value as Contact["lifecycle_state"] | "")}
+            value={query.state ?? ""}
+            onChange={(e) => update({ state: (e.target.value || null) as Contact["lifecycle_state"] | null })}
           >
             <option value="">All states</option>
             {LIFECYCLE_STATES.map((s) => (
@@ -315,11 +450,11 @@ export default function PeoplePage() {
             ))}
           </Select>
         </div>
-        <div className="w-[calc(50%-6px)] sm:w-44">
+        <div className="w-[calc(50%-6px)] sm:w-36">
           <Select
             aria-label="Filter by engagement depth"
-            value={depth}
-            onChange={(e) => setDepth(e.target.value as (typeof ENGAGEMENT_DEPTHS)[number] | "")}
+            value={query.depth ?? ""}
+            onChange={(e) => update({ depth: (e.target.value || null) as EngagementDepth | null })}
           >
             <option value="">Any depth</option>
             {ENGAGEMENT_DEPTHS.map((d) => (
@@ -327,9 +462,76 @@ export default function PeoplePage() {
             ))}
           </Select>
         </div>
+        <div className="w-[calc(50%-6px)] sm:w-36">
+          <Select
+            aria-label="Filter by payment status"
+            value={query.payment ?? ""}
+            onChange={(e) => update({ payment: (e.target.value || null) as PaymentStatus | null })}
+          >
+            <option value="">Any payment</option>
+            {PAYMENT_STATUSES.map((p) => (
+              <option key={p} value={p}>{PAYMENT_LABELS[p]}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-[calc(50%-6px)] sm:w-32">
+          <Select
+            aria-label="Date to filter on"
+            value={query.dateField}
+            onChange={(e) => update({ dateField: e.target.value as DateField })}
+          >
+            <option value="joined">Joined</option>
+            <option value="last_seen">Last seen</option>
+          </Select>
+        </div>
+        <div className="w-full sm:w-48">
+          <Select
+            aria-label="Date range"
+            value={query.datePreset ?? ""}
+            onChange={(e) => onDatePreset(e.target.value as DatePreset | "")}
+          >
+            <option value="">Any time</option>
+            {DATE_PRESETS.map((p) => (
+              <option key={p} value={p}>{DATE_PRESET_LABELS[p]}</option>
+            ))}
+          </Select>
+        </div>
+        {query.datePreset === "custom" && (
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <div className="flex-1 sm:w-40 sm:flex-none">
+              <Input
+                type="date"
+                aria-label="From date"
+                value={query.dateFrom ?? ""}
+                max={query.dateTo ?? undefined}
+                onChange={(e) => update({ dateFrom: e.target.value || null })}
+              />
+            </div>
+            <span className="text-[13px] text-muted-foreground" aria-hidden="true">to</span>
+            <div className="flex-1 sm:w-40 sm:flex-none">
+              <Input
+                type="date"
+                aria-label="To date"
+                value={query.dateTo ?? ""}
+                min={query.dateFrom ?? undefined}
+                onChange={(e) => update({ dateTo: e.target.value || null })}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* A-Z bar and Clear share the hairline row that separates the
+          controls (chrome) from the table (content). */}
+      <div className="mb-6 flex items-center gap-3 border-b border-border pb-3">
+        <LetterBar
+          value={query.letter}
+          counts={firstPage?.letters}
+          onChange={(letter) => update({ letter })}
+        />
         {filtering && (
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
-            Clear
+          <Button variant="ghost" size="sm" className="ml-auto shrink-0" onClick={clearFilters}>
+            Clear filters
           </Button>
         )}
       </div>
@@ -360,12 +562,27 @@ export default function PeoplePage() {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Name</TableHead>
+                <SortableHead label="Name" sortKey="name" active={sort.key === "name"} order={sort.order} onSort={onSort} />
                 <TableHead>Email</TableHead>
                 <TableHead>Lifecycle</TableHead>
                 <TableHead>Depth</TableHead>
                 <TableHead>Payment</TableHead>
-                <TableHead className="text-right">Last seen</TableHead>
+                <SortableHead
+                  label="Joined"
+                  sortKey="joined"
+                  active={sort.key === "joined"}
+                  order={sort.order}
+                  onSort={onSort}
+                  align="right"
+                />
+                <SortableHead
+                  label="Last seen"
+                  sortKey="last_seen"
+                  active={sort.key === "last_seen"}
+                  order={sort.order}
+                  onSort={onSort}
+                  align="right"
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -419,7 +636,10 @@ export default function PeoplePage() {
                       <span className="text-subtle-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] text-muted-foreground">
+                    {formatDate(c.first_seen_at ?? c.created_at)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] text-muted-foreground">
                     {formatLastSeen(c.last_seen_at)}
                   </TableCell>
                 </TableRow>

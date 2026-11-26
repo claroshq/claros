@@ -27,6 +27,12 @@
  *   - ?lifecycle_state with an invalid value returns 400 with issues
  *   - ?engagement_depth with an invalid value returns 400 with issues
  *
+ * Sorting, A-Z, payment and dates:
+ *   - ?sort=name|joined|last_seen with ?order, paged with the sort's cursor
+ *   - first page carries total and per-letter counts; ?letter filters by initial
+ *   - ?payment_status filters exactly; joined and last seen ranges
+ *   - a cursor from another sort is 400; a { created_at, id } cursor still pages
+ *
  * Pagination (list):
  *   - two pages are disjoint and together cover all rows
  *   - next_cursor is null on the last page
@@ -529,6 +535,163 @@ describe("GET /v1/contacts", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().issues[0].path).toBe("engagement_depth");
+  });
+});
+
+describe("GET /v1/contacts sorting, A-Z, payment and dates", () => {
+  type Row = { id: string; name: string | null; email: string | null; external_id: string };
+  const display = (c: Row) => (c.name?.trim() ? c.name : (c.email ?? c.external_id)).toLowerCase();
+
+  async function get(url: string) {
+    const app = await buildApp({ db, logger: false });
+    return app.inject({ method: "GET", url, headers: { cookie: cookieA } });
+  }
+
+  /** Every row of a sort, following next_cursor. */
+  async function walk(query: string, limit = 25): Promise<Row[]> {
+    const rows: Row[] = [];
+    let after: string | null = null;
+    for (let i = 0; i < 20; i++) {
+      const sep = query ? "&" : "";
+      const res = await get(
+        `/v1/contacts?${query}${sep}limit=${limit}${after ? `&after=${encodeURIComponent(after)}` : ""}`,
+      );
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      rows.push(...body.contacts);
+      after = body.next_cursor;
+      if (!after) break;
+    }
+    return rows;
+  }
+
+  it("sorts by display name both ways and pages through every contact", async () => {
+    if (!dbAvailable) return;
+    const asc = await walk("sort=name");
+    expect(asc.length).toBe(63);
+    expect(new Set(asc.map((c) => c.id)).size).toBe(63);
+    expect(display(asc[0]!)).toBe("ada lovelace");
+    const names = asc.map(display);
+    for (let i = 1; i < names.length; i++) expect(names[i]! >= names[i - 1]!).toBe(true);
+    // the contact without a name or email sorts by its external id
+    expect(names).toContain("user-noemail-1");
+
+    const desc = await walk("sort=name&order=desc");
+    expect(desc.map((c) => c.id)).toEqual(asc.map((c) => c.id).reverse());
+  });
+
+  it("sorts by joined and last seen and pages with the sort's cursor", async () => {
+    if (!dbAvailable) return;
+    const joined = await walk("sort=joined", 10);
+    expect(joined.length).toBe(63);
+    expect(new Set(joined.map((c) => c.id)).size).toBe(63);
+    // Ada joined first (first_seen_at = baseTime), so she is last newest-first
+    expect(joined[joined.length - 1]!.id).toBe(contactRichId);
+    expect((await walk("sort=joined&order=asc", 10))[0]!.id).toBe(contactRichId);
+
+    const lastSeen = await walk("sort=last_seen", 10);
+    expect(lastSeen.length).toBe(63);
+    // only Ada has been seen; never-seen contacts come after her
+    expect(lastSeen[0]!.id).toBe(contactRichId);
+  });
+
+  it("returns the total and per-letter counts on the first page, and filters by letter", async () => {
+    if (!dbAvailable) return;
+    const all = (await get("/v1/contacts")).json();
+    expect(all.total).toBe(63);
+    expect(all.letters).toEqual({ a: 1, g: 1, p: 60, u: 1 });
+
+    const p = (await get("/v1/contacts?letter=P&limit=200")).json();
+    expect(p.total).toBe(60);
+    expect(p.contacts.length).toBe(60);
+    expect(p.contacts.every((c: Row) => display(c).startsWith("p"))).toBe(true);
+    // counts ignore the letter filter, so the A-Z bar keeps every letter
+    expect(p.letters).toEqual({ a: 1, g: 1, p: 60, u: 1 });
+
+    const other = (await get("/v1/contacts?letter=%23")).json();
+    expect(other.contacts).toEqual([]);
+    expect(other.total).toBe(0);
+
+    const page2 = (await get(`/v1/contacts?after=${encodeURIComponent(all.next_cursor)}`)).json();
+    expect(page2.letters).toBeUndefined();
+
+    const bad = await get("/v1/contacts?letter=ab");
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().issues[0].path).toBe("letter");
+  });
+
+  it("filters by payment status", async () => {
+    if (!dbAvailable) return;
+    const paid = (await get("/v1/contacts?payment_status=paid")).json();
+    expect(paid.contacts.map((c: Row) => c.id)).toEqual([contactRichId]);
+    expect(paid.total).toBe(1);
+    expect(paid.letters).toEqual({ a: 1 });
+
+    const bad = await get("/v1/contacts?payment_status=gold");
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().issues[0].path).toBe("payment_status");
+  });
+
+  it("filters by joined and last seen ranges, with dates or date-times", async () => {
+    if (!dbAvailable) return;
+    const iso = (ms: number) => new Date(ms).toISOString();
+    // joined = first seen, else created: Ada at baseTime, Grace +2d, no-email +3d, page contacts +4d
+    const late = (await get(`/v1/contacts?joined_after=${iso(baseTime + 86400_000 * 3.5)}`)).json();
+    expect(late.total).toBe(60);
+    const early = (await get(`/v1/contacts?joined_before=${iso(baseTime + 86400_000 * 2.5)}&sort=joined`)).json();
+    expect(early.contacts.map((c: Row) => c.id)).toEqual([contactSparseId, contactRichId]);
+
+    // only Ada has a last_seen_at; never-seen contacts are outside every range
+    const seen = (await get(`/v1/contacts?last_seen_after=${iso(baseTime)}`)).json();
+    expect(seen.contacts.map((c: Row) => c.id)).toEqual([contactRichId]);
+    const notSeen = (await get(`/v1/contacts?last_seen_before=${iso(baseTime)}`)).json();
+    expect(notSeen.total).toBe(0);
+
+    const dateOnly = await get("/v1/contacts?joined_after=2000-01-01");
+    expect(dateOnly.statusCode).toBe(200);
+    expect(dateOnly.json().total).toBe(63);
+
+    const bad = await get("/v1/contacts?joined_before=yesterday");
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().issues[0].path).toBe("joined_before");
+  });
+
+  it("rejects a cursor from another sort and still reads cursors from before sorting", async () => {
+    if (!dbAvailable) return;
+    const byName = (await get("/v1/contacts?sort=name&limit=5")).json();
+    const mismatch = await get(`/v1/contacts?limit=5&after=${encodeURIComponent(byName.next_cursor)}`);
+    expect(mismatch.statusCode).toBe(400);
+
+    // A { created_at, id } cursor as earlier versions issued pages the default order.
+    const first = (await get("/v1/contacts?limit=5")).json();
+    const last = first.contacts[4];
+    const legacy = Buffer.from(JSON.stringify({ created_at: last.created_at, id: last.id })).toString("base64url");
+    const next = (await get(`/v1/contacts?limit=5&after=${legacy}`)).json();
+    const viaNew = (await get(`/v1/contacts?limit=5&after=${encodeURIComponent(first.next_cursor)}`)).json();
+    expect(next.contacts.map((c: Row) => c.id)).toEqual(viaNew.contacts.map((c: Row) => c.id));
+
+    // A tampered cursor is unreadable and starts from the first page, never a 500.
+    for (const payload of [
+      { s: "joined", o: "desc", k: "not a date", id: last.id },
+      { s: "name", o: "asc", k: "a", id: "not-a-uuid" },
+      { created_at: "garbage", id: last.id },
+    ]) {
+      const cursor = Buffer.from(JSON.stringify(payload)).toString("base64url");
+      const sort = "s" in payload ? `&sort=${payload.s}&order=${payload.o}` : "";
+      const res = await get(`/v1/contacts?limit=5${sort}&after=${cursor}`);
+      expect(res.statusCode).toBe(200);
+    }
+
+    const bad = await get("/v1/contacts?sort=email");
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().issues[0].path).toBe("sort");
+  });
+
+  it("lists first_seen_at with each contact", async () => {
+    if (!dbAvailable) return;
+    const paid = (await get("/v1/contacts?payment_status=paid")).json();
+    expect(new Date(paid.contacts[0].first_seen_at).getTime()).toBe(baseTime);
+    expect(paid.contacts[0].sort_key).toBeUndefined();
   });
 });
 
