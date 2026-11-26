@@ -3,9 +3,13 @@
  *
  * The corpus the AI writes from. Each row shows the entry's preview inline
  * (the list endpoint truncates content to 300 characters), so nobody has to
- * open an entry to know what it says. Embedding state is a first-class
- * signal: pending, failed, skipped (no embedding provider: word matching),
- * or embedded.
+ * open an entry to know what it says.
+ *
+ * Entries are grouped by category (the kb_select unit), pinned entries
+ * first within a group. Only exceptions are loud: the embedding badge shows
+ * for pending, failed and (when a provider exists) skipped entries, never
+ * for "embedded", which is the normal state. Content type shows only when
+ * it is not markdown. Tags render as quiet text, capped with a +N.
  *
  * Re-embed is asynchronous and returns counts, not a job: { enqueued,
  * remaining, total_qualifying }. remaining > 0 means another batch is
@@ -20,6 +24,7 @@ import { useEmbeddings } from "../settings.js";
 import type { KbEntryPreview, FlowApiError } from "../api.js";
 import { Badge } from "../components/ui/badge.js";
 import { embeddingVariant, embeddingLabel } from "../kb-embedding.js";
+import { groupEntries, UNCATEGORIZED } from "../kb-groups.js";
 import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
 import { PageHeader } from "../components/page-header.js";
@@ -33,6 +38,8 @@ function formatDate(iso: string): string {
     day: "numeric",
   });
 }
+
+const MAX_TAGS = 4;
 
 function actionErrorMessage(err: unknown): string {
   if (err !== null && typeof err === "object" && "kind" in err) {
@@ -52,6 +59,66 @@ function ListSkeleton() {
         <Skeleton key={i} className="h-20 w-full" />
       ))}
     </div>
+  );
+}
+
+function KbRow({
+  entry,
+  hideSkipped,
+  onOpen,
+}: {
+  entry: KbEntryPreview;
+  /** With no embedding provider every entry is skipped; the page note says so once. */
+  hideSkipped: boolean;
+  onOpen: () => void;
+}) {
+  const status = entry.embedding_status;
+  const showEmbedding = status !== null && !(status === "skipped" && hideSkipped);
+  const shownTags = entry.tags.slice(0, MAX_TAGS);
+  const hiddenTags = entry.tags.length - shownTags.length;
+  const showType = entry.content_type !== "markdown";
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="block w-full px-2 py-3.5 text-left transition-colors duration-(--dur-fast) hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex items-center gap-2.5">
+        <span
+          className={cn(
+            "truncate text-[14px] font-medium",
+            entry.is_active ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {entry.title}
+        </span>
+        {entry.pinned && <Badge variant="accent">pinned</Badge>}
+        {!entry.is_active && <Badge variant="muted">inactive</Badge>}
+        {showEmbedding && (
+          <Badge variant={embeddingVariant(status)} pulse={status === "pending"}>
+            {embeddingLabel(status)}
+          </Badge>
+        )}
+        <span className="ml-auto shrink-0 pl-4 font-mono text-[12px] text-subtle-foreground">
+          {formatDate(entry.updated_at)}
+        </span>
+      </div>
+      <p className="mt-1 max-w-3xl line-clamp-2 text-[14px] leading-relaxed text-muted-foreground">
+        {entry.content_preview}
+      </p>
+      {(shownTags.length > 0 || showType) && (
+        <p
+          className="mt-1.5 truncate font-mono text-[12px] text-subtle-foreground"
+          title={entry.tags.length > 0 ? entry.tags.join(", ") : undefined}
+        >
+          {showType && <span className="text-muted-foreground">{entry.content_type}</span>}
+          {showType && shownTags.length > 0 && "  ·  "}
+          {shownTags.join(" · ")}
+          {hiddenTags > 0 && ` +${hiddenTags}`}
+        </p>
+      )}
+    </button>
   );
 }
 
@@ -89,6 +156,8 @@ export default function KbPage() {
   );
 
   const failedCount = entries.filter((e) => e.embedding_status === "failed").length;
+  const groups = useMemo(() => groupEntries(entries), [entries]);
+  const showGroupHeaders = !(groups.length === 1 && groups[0]!.name === UNCATEGORIZED);
 
   function handleReembed() {
     setReembedNote(null);
@@ -221,55 +290,26 @@ export default function KbPage() {
               above.
             </p>
           )}
-          <div className="divide-y divide-border border-t border-b border-border">
-            {entries.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => navigate(`/kb/${entry.id}`)}
-                className="block w-full px-1 py-4 text-left transition-colors duration-(--dur-fast) hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={cn(
-                      "text-[14px] font-medium",
-                      entry.is_active ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    {entry.title}
-                  </span>
-                  {!entry.is_active && <Badge variant="muted">inactive</Badge>}
-                  {entry.pinned && <Badge variant="neutral">pinned</Badge>}
-                  <Badge
-                    variant={embeddingVariant(entry.embedding_status)}
-                    pulse={entry.embedding_status === "pending"}
-                  >
-                    {embeddingLabel(entry.embedding_status)}
-                  </Badge>
-                  <span className="ml-auto font-mono text-[13px] text-muted-foreground">
-                    {formatDate(entry.updated_at)}
-                  </span>
-                </div>
-                <p className="mt-1.5 line-clamp-2 text-[14px] leading-relaxed text-muted-foreground">
-                  {entry.content_preview}
-                </p>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <span className="font-mono text-[12px] text-subtle-foreground">
-                    {entry.content_type}
-                  </span>
-                  {entry.category && (
-                    <span className="font-mono text-[12px] text-muted-foreground">{entry.category}</span>
-                  )}
-                  {entry.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[12px] text-muted-foreground"
-                    >
-                      {tag}
-                    </span>
+          <div className="space-y-8">
+            {groups.map((group) => (
+              <section key={group.name} aria-label={showGroupHeaders ? group.name : undefined}>
+                {showGroupHeaders && (
+                  <h2 className="mb-2 flex items-baseline gap-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                    {group.name}
+                    <span className="text-subtle-foreground">{group.entries.length}</span>
+                  </h2>
+                )}
+                <div className="divide-y divide-border border-t border-b border-border">
+                  {group.entries.map((entry) => (
+                    <KbRow
+                      key={entry.id}
+                      entry={entry}
+                      hideSkipped={noEmbeddingProvider}
+                      onOpen={() => navigate(`/kb/${entry.id}`)}
+                    />
                   ))}
                 </div>
-              </button>
+              </section>
             ))}
           </div>
           {list.hasNextPage && (

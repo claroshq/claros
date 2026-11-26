@@ -12,6 +12,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Changed
 
+- Knowledge base: the list is grouped by category, with a header and count per category and pinned entries first in each. Rows are quieter: the embedding badge shows only for entries that are embedding, failed or not embedded (never for the normal "embedded" state, and not at all when no embedding provider is set, since the page note says so once), the content type shows only when it is not markdown, tags are plain text capped at four with a +N, and the preview is narrower. Dashboard only; no API change, no migration.
 - Docs: the README covers what shipped in 0.8.4 to 0.8.11 (flow editor, templates per flow, branding and language, AI guardrails, the person page, history import) and the full dashboard navigation, with new screenshots of Home, the flow editor, Approvals and the retention grid. `scripts/seed-screenshots.mjs` reads `SEED_NOW` to date its history relative to another day.
 
 ### Fixed
