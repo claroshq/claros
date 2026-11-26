@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.8.12] - 2026-11-27
+
 ### Added
 
 - People: an A-Z bar, sortable columns, a payment status filter and a date filter. The A-Z bar keeps the names starting with one letter (`#` for anything else) and greys out letters with nobody under the other filters. **Name**, **Joined** and **Last seen** sort from the table header, both ways; the list starts with the latest joined. The date filter works on Joined (first seen, else added) or Last seen, with presets and a custom range. A new **Joined** column shows the date. Search, filters, letter and sort live in the page address, so a view can be bookmarked and shared. `GET /v1/contacts` adds `sort` (`created`, `name`, `joined`, `last_seen`) and `order`, `payment_status`, `letter`, `joined_after`/`joined_before` and `last_seen_after`/`last_seen_before`; each row adds `first_seen_at`, and the first page adds `letters` (matches per initial). Without the new parameters the answer is unchanged, and cursors issued before this release still page the default order. Same on Postgres and D1; no migration. See [How do I find, filter and sort people?](docs/guide/FAQ.md#how-do-i-find-filter-and-sort-people).
@@ -21,7 +23,6 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Fixed
 
 - Integrate page: a key created from the API keys card (admin keys in particular) is shown in that card and scrolled into view. It appeared only at the top of the page, out of sight, and is shown just once.
-
 - Docs: the `kb` admin key scope lists `POST /v1/kb/import`, which it has covered since v0.8.
 - People: the header shows how many contacts there are (or how many match the search and filters) instead of the rows loaded so far, which read "50+ contacts" for any list longer than one page. `GET /v1/contacts` adds `total` to the first page (no `after`): the number of contacts matching the filters and search across all pages. Same on Postgres and D1; no migration.
 
@@ -309,7 +310,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.11...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.12...HEAD
+[0.8.12]: https://github.com/claroshq/claros/compare/v0.8.11...v0.8.12
 [0.8.11]: https://github.com/claroshq/claros/compare/v0.8.10...v0.8.11
 [0.8.10]: https://github.com/claroshq/claros/compare/v0.8.9...v0.8.10
 [0.8.9]: https://github.com/claroshq/claros/compare/v0.8.8...v0.8.9
