@@ -21,6 +21,7 @@ import {
   deleteContact,
   type ContactFilters,
   setContactTopics,
+  setContactName,
 } from "./api.js";
 
 export const CONTACTS_QUERY_KEY = ["contacts"] as const;
@@ -95,6 +96,18 @@ export function useSetContactTopics(id: string) {
   return useMutation({
     mutationFn: (topics: Record<string, boolean>) => setContactTopics(id, topics),
     onSuccess: () => qc.invalidateQueries({ queryKey: contactQueryKey(id) }),
+  });
+}
+
+/** Set and lock the person's name, or (null) clear the lock. */
+export function useSetContactName(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string | null) => setContactName(id, name),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: contactQueryKey(id) });
+      void qc.invalidateQueries({ queryKey: CONTACTS_QUERY_KEY, exact: false, refetchType: "none" });
+    },
   });
 }
 

@@ -157,7 +157,7 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
     async getContact({ tenantId, contactId }) {
       const contactRows = (
         await db.execute<Record<string, unknown>>(sql`
-          SELECT id, tenant_id, external_id, email, name, company, properties,
+          SELECT id, tenant_id, external_id, email, name, name_locked_at, company, properties,
                  lifecycle_state, engagement_depth, payment_status,
                  first_seen_at, last_seen_at, activated_at, created_at
           FROM contacts
@@ -191,6 +191,18 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
         `)
       ).rows;
       return supRows[0] ?? null;
+    },
+
+    async setContactName(input) {
+      const set = input.lock
+        ? sql`name = ${input.name}, name_locked_at = ${input.now}`
+        : sql`name_locked_at = NULL`;
+      const res = await db.execute<{ id: string }>(sql`
+        UPDATE contacts SET ${set}
+        WHERE tenant_id = ${input.tenantId} AND id = ${input.contactId}::uuid
+        RETURNING id
+      `);
+      return res.rows.length > 0;
     },
 
     async contactExists({ tenantId, contactId }) {

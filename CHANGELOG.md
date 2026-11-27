@@ -6,6 +6,14 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard, person page: edit a person's name (the pencil next to it). An edited name is locked: identify calls from your app no longer change it, and the page says so with **Use the name from your app**, which clears the lock so the next identify that sends a name sets it again. API: `PUT /v1/contacts/:id/name` `{"name": "..."}` (at most 200 characters) and `DELETE /v1/contacts/:id/name`, member session only; `GET /v1/contacts/:id` returns `name_locked_at`. Email, company and plan stay identify-only. Migrations `0036_contact_name_lock` (Postgres) and `0016_contact_name_lock` (D1) add the nullable column `contacts.name_locked_at`.
+
+### Changed
+
+- Dashboard, person page: Profile and Properties move from the right column to the main column, above the timeline, in two columns; the right column keeps what you act on (notes, topics, flows, actions). Properties show the first ten with **Show all**, objects and arrays last, each on its own row.
+
 ## [0.10.0] - 2026-11-27
 
 ### Upgrade

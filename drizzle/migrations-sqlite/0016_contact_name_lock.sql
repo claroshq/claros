@@ -1,0 +1,1 @@
+ALTER TABLE `contacts` ADD `name_locked_at` integer;

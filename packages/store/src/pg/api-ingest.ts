@@ -285,7 +285,8 @@ async function attemptContactUpdate(
     setClauses.email = columnUpdates.email;
   }
   if ("name" in columnUpdates) {
-    setClauses.name = columnUpdates.name;
+    // A name edited in the dashboard is locked: identify leaves it alone.
+    setClauses.name = sql`CASE WHEN ${contacts.nameLockedAt} IS NULL THEN ${columnUpdates.name ?? null} ELSE ${contacts.name} END`;
   }
   if ("company" in columnUpdates) {
     setClauses.company = columnUpdates.company;

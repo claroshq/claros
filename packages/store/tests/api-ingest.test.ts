@@ -273,6 +273,26 @@ for (const factory of testBackends()) {
         expect(await conflictsOf(t)).toEqual([]);
       });
 
+      it("leaves a name locked in the dashboard alone until the lock is cleared", async () => {
+        const t = await b.newTenant();
+        await identify(t, "u1", emptyPlan({ columnUpdates: { name: "Ada", company: "Acme" } }));
+        const id = (await contactOf(t, "u1")).id;
+
+        expect(await b.store.apiContacts.setContactName({ tenantId: t, contactId: id, name: "Ada Lovelace", lock: true, now: NOW })).toBe(true);
+        expect(await contactOf(t, "u1")).toMatchObject({ name: "Ada Lovelace", nameLockedAt: NOW });
+
+        // Locked: identify keeps the edited name (also against null) and still writes the other columns.
+        await identify(t, "u1", emptyPlan({ columnUpdates: { name: "ada", company: "Acme Ltd" } }));
+        await identify(t, "u1", emptyPlan({ columnUpdates: { name: null } }));
+        expect(await contactOf(t, "u1")).toMatchObject({ name: "Ada Lovelace", company: "Acme Ltd" });
+
+        // Unlocked: the name stays until identify sends one.
+        expect(await b.store.apiContacts.setContactName({ tenantId: t, contactId: id, lock: false })).toBe(true);
+        expect(await contactOf(t, "u1")).toMatchObject({ name: "Ada Lovelace", nameLockedAt: null });
+        await identify(t, "u1", emptyPlan({ columnUpdates: { name: "ada" } }));
+        expect((await contactOf(t, "u1")).name).toBe("ada");
+      });
+
       it("merges properties like jsonb ||: top-level replace, removed keys dropped, nulls kept", async () => {
         const t = await b.newTenant();
         await insertContact(t, {

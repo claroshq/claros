@@ -336,12 +336,13 @@ for (const factory of testBackends()) {
     it("getContact returns the full row with parsed properties, null when absent", async () => {
       const c = contacts[0]!;
       const row = await b.store.apiContacts.getContact({ tenantId, contactId: c.id });
-      expect(norm(row!, ["first_seen_at", "last_seen_at", "activated_at", "created_at"])).toEqual({
+      expect(norm(row!, ["first_seen_at", "last_seen_at", "activated_at", "created_at", "name_locked_at"])).toEqual({
         id: c.id,
         tenant_id: tenantId,
         external_id: c.externalId,
         email: c.email,
         name: c.name,
+        name_locked_at: null,
         company: "Co",
         properties: { plan: "pro", tags: ["a", "b"], n: 1 },
         lifecycle_state: "engaged",
@@ -355,6 +356,24 @@ for (const factory of testBackends()) {
       expect(await b.store.apiContacts.getContact({ tenantId, contactId: randomUUID() })).toBeNull();
       const other = await b.newTenant();
       expect(await b.store.apiContacts.getContact({ tenantId: other, contactId: c.id })).toBeNull();
+    });
+
+    it("setContactName sets and locks the name, clears the lock, and is tenant scoped", async () => {
+      const t = await b.newTenant();
+      const [row] = await b.db.insert(s.contacts).values({ tenantId: t, externalId: "n1", name: "ada", lifecycleState: "signed_up" }).returning({ id: s.contacts.id });
+      const id = row.id as string;
+      const at = new Date(now);
+      expect(await b.store.apiContacts.setContactName({ tenantId: t, contactId: id, name: "Ada L", lock: true, now: at })).toBe(true);
+      let got = await b.store.apiContacts.getContact({ tenantId: t, contactId: id });
+      expect(got!.name).toBe("Ada L");
+      expect(ms(got!.name_locked_at)).toBe(now);
+      expect(await b.store.apiContacts.setContactName({ tenantId: t, contactId: id, lock: false })).toBe(true);
+      got = await b.store.apiContacts.getContact({ tenantId: t, contactId: id });
+      expect(got!.name).toBe("Ada L");
+      expect(got!.name_locked_at).toBeNull();
+      const other = await b.newTenant();
+      expect(await b.store.apiContacts.setContactName({ tenantId: other, contactId: id, name: "x", lock: true, now: at })).toBe(false);
+      expect(await b.store.apiContacts.setContactName({ tenantId: t, contactId: randomUUID(), lock: false })).toBe(false);
     });
 
     it("contactExists is tenant scoped", async () => {

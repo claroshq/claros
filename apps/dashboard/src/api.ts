@@ -1408,6 +1408,8 @@ export interface Contact {
   external_id: string;
   email: string | null;
   name: string | null;
+  /** Set when the name was edited in the dashboard: identify no longer changes it. */
+  name_locked_at?: string | null;
   company: string | null;
   lifecycle_state:
     | "signed_up"
@@ -1569,7 +1571,20 @@ export async function addContactNote(id: string, body: string): Promise<ContactN
   return res.json() as Promise<ContactNote>;
 }
 
-/** DELETE /v1/contacts/:id/notes/:noteId */
+/**
+ * PUT /v1/contacts/:id/name with a name sets and locks it; DELETE (name null)
+ * clears the lock so identify sets the name again.
+ */
+export async function setContactName(id: string, name: string | null): Promise<void> {
+  const res = await apiFetch(`/v1/contacts/${id}/name`, name === null
+    ? { method: "DELETE" }
+    : { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(err?.error ?? `Saving the name failed (${res.status})`);
+  }
+}
+
 /** PUT /v1/contacts/:id/topics - set topic subscriptions by slug. */
 export async function setContactTopics(id: string, topics: Record<string, boolean>): Promise<{ topics: ContactTopicStatus[] }> {
   const res = await apiFetch(`/v1/contacts/${id}/topics`, {
@@ -1584,6 +1599,7 @@ export async function setContactTopics(id: string, topics: Record<string, boolea
   return res.json() as Promise<{ topics: ContactTopicStatus[] }>;
 }
 
+/** DELETE /v1/contacts/:id/notes/:noteId */
 export async function deleteContactNote(id: string, noteId: string): Promise<void> {
   const res = await apiFetch(`/v1/contacts/${id}/notes/${noteId}`, { method: "DELETE" });
   if (!res.ok && res.status !== 404) throw new Error(`Deleting the note failed (${res.status})`);
