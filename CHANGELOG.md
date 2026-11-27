@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-27
+
+### Upgrade
+
+Two migrations run with the normal upgrade: `0036_contact_name_lock` (Postgres) and `0016_contact_name_lock` (D1). They only add the nullable column `contacts.name_locked_at`; no backfill and nothing else to do. A rollback to 0.10.0 leaves the column unused, and names edited in the dashboard are then overwritten by the next identify again. The API changes are additive.
+
 ### Added
 
 - Dashboard, person page: edit a person's name (the pencil next to it). An edited name is locked: identify calls from your app no longer change it, and the page says so with **Use the name from your app**, which clears the lock so the next identify that sends a name sets it again. API: `PUT /v1/contacts/:id/name` `{"name": "..."}` (at most 200 characters) and `DELETE /v1/contacts/:id/name`, member session only; `GET /v1/contacts/:id` returns `name_locked_at`. Email, company and plan stay identify-only. Migrations `0036_contact_name_lock` (Postgres) and `0016_contact_name_lock` (D1) add the nullable column `contacts.name_locked_at`.
@@ -382,7 +388,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/claroshq/claros/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/claroshq/claros/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/claroshq/claros/compare/v0.8.15...v0.9.0
 [0.8.15]: https://github.com/claroshq/claros/compare/v0.8.14...v0.8.15
