@@ -2,8 +2,9 @@
  * Product switcher (multi-product instances).
  *
  * Renders only when the user can act on more than one product; a
- * single-product install shows nothing. The trigger shows the open product
- * (monogram, name, slug or public host); it opens a menu of the active
+ * single-product install shows nothing. The trigger is a quiet one-line
+ * select: a color dot (productHue, stable per product) and the open
+ * product's name; it opens a menu of the active
  * products with a check on the open one, a filter field above
  * SWITCHER_FILTER_THRESHOLD products, and footer actions: "All products"
  * (the full-screen picker, /products) and "New product" for instance admins.
@@ -27,11 +28,19 @@ import { useNavigate } from "react-router-dom";
 import { Check, ChevronsUpDown, LayoutGrid, Plus } from "lucide-react";
 import { useProducts } from "../products.js";
 import { switchProduct } from "../product.js";
-import { SWITCHER_FILTER_THRESHOLD, activeProducts, switcherProducts } from "../product-entry.js";
+import { SWITCHER_FILTER_THRESHOLD, activeProducts, productHue, switcherProducts } from "../product-entry.js";
 import type { ProductSummary } from "../api.js";
-import { ProductAvatar } from "./product-avatar.js";
 import { Badge } from "./ui/badge.js";
 import { cn } from "@/lib/utils";
+
+/** The product's identity dot; grey when archived or unknown. */
+function ProductDot({ product }: { product?: ProductSummary }) {
+  const color =
+    product && !product.archived
+      ? `oklch(var(--product-dot-l) var(--product-dot-c) ${productHue(product.id)})`
+      : "var(--fg-subtle)";
+  return <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />;
+}
 
 type Item =
   | { kind: "product"; key: string; product: ProductSummary }
@@ -173,7 +182,6 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
 
   const menuId = `${baseId}-menu`;
   const activeId = items.length > 0 ? `${baseId}-item-${activeIndex}` : undefined;
-  const subline = current?.public_host ?? current?.slug ?? null;
 
   return (
     <div className="relative px-3 pb-3">
@@ -191,33 +199,23 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
             setOpen(true);
           }
         }}
+        title={current ? (current.public_host ?? current.slug) : undefined}
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-md border px-2 py-1.5 text-left transition-colors duration-(--dur-fast)",
+          "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors duration-(--dur-fast)",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          open ? "border-border-strong bg-card" : "border-border bg-background hover:border-border-strong hover:bg-card",
+          open ? "bg-secondary" : "hover:bg-secondary",
         )}
       >
-        {current ? (
-          <ProductAvatar name={current.name} logoUrl={current.logo_url} size="sm" tone={current.archived ? "muted" : "accent"} />
-        ) : (
-          <ProductAvatar name="?" size="sm" tone="muted" />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-[14px] font-semibold leading-5 text-foreground">
-              {current?.name ?? "Select a product"}
-            </span>
-          </span>
-          {subline && (
-            <span className="block truncate font-mono text-[12px] leading-4 text-muted-foreground">{subline}</span>
-          )}
+        <ProductDot product={current} />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+          {current?.name ?? "Select a product"}
         </span>
         {current?.archived && (
           <Badge variant="muted" className="h-5 shrink-0 px-2 text-[11px]">
             archived
           </Badge>
         )}
-        <ChevronsUpDown size={16} strokeWidth={1.5} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <ChevronsUpDown size={14} strokeWidth={1.5} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       </button>
 
       {open && (
@@ -276,11 +274,11 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                       onPointerMove={() => setActiveIndex(i)}
                       onClick={() => activate(item)}
                       className={cn(
-                        "mx-1 flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-medium text-muted-foreground",
+                        "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium text-muted-foreground",
                         highlighted && "bg-selected text-foreground",
                       )}
                     >
-                      <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <Icon size={14} strokeWidth={1.5} aria-hidden="true" />
                       {item.label}
                     </div>
                   </React.Fragment>
@@ -297,23 +295,19 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                   onPointerMove={() => setActiveIndex(i)}
                   onClick={() => activate(item)}
                   className={cn(
-                    "mx-1 flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5",
+                    "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5",
                     highlighted && "bg-selected",
                   )}
+                  title={p.public_host ?? p.slug}
                 >
-                  <ProductAvatar name={p.name} logoUrl={p.logo_url} size="xs" tone={isCurrent ? "accent" : "neutral"} />
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        "block truncate text-[13px] leading-5 text-foreground",
-                        isCurrent ? "font-semibold" : "font-medium",
-                      )}
-                    >
-                      {p.name}
-                    </span>
-                    <span className="block truncate font-mono text-[12px] leading-4 text-muted-foreground">
-                      {p.public_host ?? p.slug}
-                    </span>
+                  <ProductDot product={p} />
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground",
+                      isCurrent ? "font-semibold" : "font-medium",
+                    )}
+                  >
+                    {p.name}
                   </span>
                   {isCurrent && (
                     <Check size={16} strokeWidth={1.5} className="shrink-0 text-accent-text" aria-hidden="true" />

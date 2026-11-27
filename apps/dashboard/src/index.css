@@ -95,6 +95,11 @@
   --chart-positive: oklch(0.72 0.08 185);
   --chart-negative: oklch(0.74 0.09 27);
 
+  /* Product identity dot (sidebar switcher): lightness and chroma per
+   * theme; the hue comes from the product (product-entry.ts productHue). */
+  --product-dot-l: 0.62;
+  --product-dot-c: 0.13;
+
   --ring: var(--accent);
 
   /* Overlay elevation (dropdowns, dialogs). Surfaces themselves stay flat. */
@@ -151,6 +156,9 @@
 
   --chart-positive: oklch(0.8 0.07 185);
   --chart-negative: oklch(0.8 0.08 27);
+
+  --product-dot-l: 0.74;
+  --product-dot-c: 0.12;
 
   --overlay-shadow: 0 8px 24px -8px oklch(0 0 0 / 0.55);
 }

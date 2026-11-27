@@ -10,6 +10,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 - Lifecycle: `gone_quiet` is the new name of the `churned` state, and `gone_quiet_days` the new name of `churned_days`. The state means no product activity for that many days; it says nothing about billing, and a paying customer can be in it, which "churned" did not convey. `gone_quiet` is accepted wherever a state is given (flow trigger `from`/`to`, segment `lifecycle_states`, `lifecycle_state`, `lifecycle_state_not`, `lifecycle_state_change` exits, `GET /v1/contacts?lifecycle_state=`) and means the same state; `gone_quiet_days` wins over `churned_days`, and giving both with different values is a config error. The dashboard shows `gone_quiet` everywhere, with a tooltip on the state badge. Stored and returned values are still `churned` in this release. Same on Postgres and D1; no migration. See [Activity and lifecycle states](docs/guide/CONCEPTS.md#activity-and-lifecycle-states).
 
+### Changed
+
+- Dashboard: the sidebar product switcher is a quiet one-line select: a color dot and the product name, no monogram tile or host line (the host shows on hover). Each product keeps its dot color across renames.
+
 ### Deprecated
 
 - The lifecycle state name `churned` and the setting `churned_days`. The next minor release migrates stored data to `gone_quiet` and the API returns `gone_quiet` in `lifecycle_state`, transitions, analytics and imports; check integrations that compare `lifecycle_state` with `"churned"`. `churned` and `churned_days` stay accepted as input.

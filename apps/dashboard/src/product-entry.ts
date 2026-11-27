@@ -74,6 +74,20 @@ export function productMonogram(name: string): string {
   return letters.toUpperCase();
 }
 
+/**
+ * Hues for the product identity dot. Clear of the semantic hues (success
+ * 185, warning 72-82, danger 27) and coral pop (35-40), so a product dot
+ * never reads as a status.
+ */
+export const PRODUCT_HUES = [225, 255, 285, 315, 345, 140, 110] as const;
+
+/** A product's dot hue: stable per product id, so a rename keeps the color. */
+export function productHue(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PRODUCT_HUES[h % PRODUCT_HUES.length]!;
+}
+
 export type FocusKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Home" | "End";
 
 /**
