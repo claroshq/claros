@@ -26,6 +26,7 @@ import { storeFor } from "@claros/store";
 import { compiledPlanSchema, planStepFor } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter } from "../http/router.js";
+import { renderMessagePreviews } from "../message-preview.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -212,6 +213,8 @@ export default function sentLogRoutes() {
    *
    * Single message detail: envelope, content, and event timeline.
    * Returns the full message row plus the most recent events (up to 100).
+   * preview_html is the body in the email template, as the recipient's
+   * client showed it (message-preview.ts lists what can differ).
    */
   router.get("/:id", "member", async (c) => {
     const db: Db = c.var.db;
@@ -231,6 +234,10 @@ export default function sentLogRoutes() {
     // Fetch event timeline (all events, ordered chronologically)
     const events = await storeFor(db).apiSentLog.listMessageEvents({ tenantId, messageId });
 
+    // The mail as the recipient's client showed it: the body in the email
+    // template, with the links tagged as the drain tags them.
+    const preview = (await renderMessagePreviews(db, tenantId, [msg], { tagLinks: true })).get(msg.id) ?? null;
+
     return c.json({
       message: {
         id: msg.id,
@@ -243,6 +250,8 @@ export default function sentLogRoutes() {
         feedback: msg.feedback,
         subject: msg.subject,
         body_html: msg.body_html,
+        preview_html: preview?.html ?? null,
+        preheader: preview?.preheader ?? null,
         body_text: msg.body_text,
         brain_reasoning: msg.brain_reasoning,
         brain_action_type: msg.brain_action_type,

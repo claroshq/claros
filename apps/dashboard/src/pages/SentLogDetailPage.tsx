@@ -1,25 +1,27 @@
 /**
  * Sent-mail log detail page.
  *
- * Shows a single message: the envelope (who, when, which flow), the event
- * timeline (what happened after send), and the content as it was sent.
+ * The mail comes first, as the recipient's client showed it: the body inside
+ * the email template (brand, eyebrow, preheader, footer), rendered by the
+ * server the same way the drain wraps it at send time (preview_html). The
+ * side column holds the envelope, the event timeline, where the content came
+ * from, and the AI reasoning.
  *
- * Content preview: the body_html is rendered inside a sandboxed iframe with
- * scripts disabled (sandbox="") to prevent injected JS from accessing the
- * dashboard DOM. The referrerPolicy is set to no-referrer to avoid leaking
- * the dashboard URL to image hosts or link targets.
+ * Preview isolation: the HTML renders in a sandboxed iframe without
+ * allow-scripts, so nothing in it runs. allow-same-origin is granted only so
+ * the page can read the document's height and show the whole mail without a
+ * second scrollbar; with scripts off the frame cannot act on that origin.
+ * referrerPolicy no-referrer keeps the dashboard URL from image hosts.
  *
- * Below the content, "Made from" links to the flow step and, when the step
- * renders a template, to that template in the flow editor. The template is
- * its current version and may differ from what was sent; the preview above
- * is the sent mail. Opened from a person's timeline, the back link returns
- * to that person.
+ * The template and brand are their current versions and the unsubscribe
+ * link is a placeholder, so the page says so under the preview. Opened from
+ * a person's timeline, the back link returns to that person.
  *
  * The timeline uses the message_events table. For messages sent before the
  * event table existed, only the high-water feedback value is shown - we do
  * not fabricate a timeline from a single value.
  */
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
@@ -146,10 +148,10 @@ export default function SentLogDetailPage() {
   }
 
   const { message: msg, events } = detail.data;
+  const contactLabel = msg.contact.name ?? msg.contact.email ?? msg.contact.external_id ?? "Person";
 
   return (
-    <div className="mx-auto max-w-4xl">
-      {/* Back link */}
+    <div className="mx-auto max-w-6xl">
       <Link
         to={back.to}
         className="mb-4 inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"
@@ -158,139 +160,100 @@ export default function SentLogDetailPage() {
       </Link>
 
       <PageHeader
-        eyebrow="Message Detail"
+        eyebrow="Sent mail"
         title={msg.subject ?? "(no subject)"}
+        actions={
+          <>
+            <Badge variant={statusVariant(msg.status)}>{msg.status}</Badge>
+            {msg.feedback && <Badge variant={eventVariant(msg.feedback)}>{msg.feedback}</Badge>}
+          </>
+        }
       />
 
-      {/* Envelope */}
-      <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 rounded-lg border border-border bg-card p-5">
-        <EnvelopeField label="To" value={msg.recipient_address ?? msg.contact.email ?? "-"} />
-        <EnvelopeField
-          label="Contact"
-          value={msg.contact.name ?? msg.contact.external_id ?? "-"}
-          link={msg.contact.external_id ? `/people/${msg.contact_id}` : undefined}
-        />
-        <EnvelopeField label="Flow" value={msg.flow_name ?? "-"} link={`/flows/${msg.flow_id}/edit`} />
-        <EnvelopeField label="Step" value={msg.flow_step_order !== null ? `#${msg.flow_step_order}` : "-"} />
-        <EnvelopeField label="Sent" value={formatDateTime(msg.sent_at)} />
-        <EnvelopeField label="Created" value={formatDateTime(msg.created_at)} />
-        <div className="flex items-center gap-3">
-          <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Status
-          </span>
-          <Badge variant={statusVariant(msg.status)}>{msg.status}</Badge>
-          {msg.feedback && (
-            <Badge variant={eventVariant(msg.feedback)}>{msg.feedback}</Badge>
-          )}
-        </div>
-        {msg.retry_count > 0 && (
-          <EnvelopeField label="Retries" value={String(msg.retry_count)} />
-        )}
-      </div>
-
-      {/* Brain reasoning (for AI-drafted messages) */}
-      {msg.brain_reasoning && (
-        <details className="mb-6">
-          <summary className="cursor-pointer select-none text-[13px] font-medium text-muted-foreground hover:text-foreground">
-            Brain reasoning
-          </summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-4 font-mono text-[12px] text-muted-foreground">
-            {msg.brain_reasoning}
-          </pre>
-        </details>
-      )}
-
-      {/* Event Timeline */}
-      <section className="mb-8">
-        <h2 className="mb-4 text-[14px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          Timeline
-        </h2>
-        {events.length === 0 ? (
-          <p className="text-[13px] text-subtle-foreground">
-            {msg.feedback
-              ? `Highest engagement: ${msg.feedback} (no event-level timestamps available for this message).`
-              : "No delivery events recorded. The transport may not report events, or the message was sent before event logging was enabled."}
-          </p>
-        ) : (
-          <ol className="relative space-y-0">
-            {events.map((event, idx) => (
-              <TimelineEvent
-                key={event.id}
-                event={event}
-                last={idx === events.length - 1}
-              />
-            ))}
-          </ol>
-        )}
-      </section>
-
-      {/* Content: tabbed view */}
-      <ContentTabs
-        bodyHtml={msg.body_html}
-        bodyText={msg.body_text}
-      />
-
-      {/* Where the content came from */}
-      <section className="mt-6 rounded-lg border border-border bg-card p-5">
-        <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          Made from
-        </h2>
-        <dl className="space-y-2 text-[14px]">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <dt className="text-muted-foreground">Flow</dt>
-            <dd>
-              <Link
-                to={`/flows/${msg.flow_id}/edit`}
-                className="text-accent-text underline underline-offset-4"
-              >
-                {msg.flow_name ?? "Flow"}
-                {msg.flow_step_order !== null ? `, step ${msg.flow_step_order}` : ""}
-              </Link>
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-baseline gap-2">
-            <dt className="text-muted-foreground">Template</dt>
-            <dd>
-              {msg.template_ref ? (
-                <>
-                  <Link
-                    to={`/flows/${msg.flow_id}/edit?template=${encodeURIComponent(msg.template_ref)}`}
-                    className="font-mono text-[13px] text-accent-text underline underline-offset-4"
-                  >
-                    {msg.template_ref}
-                  </Link>
-                  <span className="ml-2 text-[13px] text-subtle-foreground">
-                    current version; the preview above is what was sent
-                  </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">
-                  {msg.brain_action_type ? "None, drafted by AI for this person" : "None"}
-                </span>
-              )}
-            </dd>
-          </div>
-        </dl>
-      </section>
-
-      {/* Link to Approvals if message was pending */}
       {msg.status === "failed" && (
-        <div className="mt-6 rounded-md border border-warning bg-warning-soft px-4 py-3" role="alert">
+        <div className="mb-6 rounded-md border border-warning bg-warning-soft px-4 py-3" role="alert">
           <p className="text-[14px] text-foreground">
             This message failed.{" "}
-            {msg.brain_reasoning && (
-              <span>Reason: {msg.brain_reasoning}. </span>
-            )}
-            <Link
-              to="/approvals"
-              className="text-accent-text underline underline-offset-4"
-            >
+            <Link to="/approvals" className="text-accent-text underline underline-offset-4">
               View Approvals
             </Link>{" "}
             for retry options.
           </p>
         </div>
       )}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <MailView
+          subject={msg.subject}
+          to={msg.recipient_address ?? msg.contact.email}
+          date={msg.sent_at ?? msg.created_at}
+          preheader={msg.preheader}
+          previewHtml={msg.preview_html}
+          bodyText={msg.body_text}
+        />
+
+        <aside className="space-y-6">
+          <SideSection title="Details">
+            <dl className="space-y-2.5 text-[13px]">
+              <DetailRow label="To">
+                <span className="break-all font-mono">{msg.recipient_address ?? msg.contact.email ?? "-"}</span>
+              </DetailRow>
+              <DetailRow label="Person">
+                <Link to={`/people/${msg.contact_id}`} className="text-accent-text underline underline-offset-4">
+                  {contactLabel}
+                </Link>
+              </DetailRow>
+              <DetailRow label="Flow">
+                <Link to={`/flows/${msg.flow_id}/edit`} className="text-accent-text underline underline-offset-4">
+                  {msg.flow_name ?? "Flow"}
+                  {msg.flow_step_order !== null ? `, step ${msg.flow_step_order}` : ""}
+                </Link>
+              </DetailRow>
+              <DetailRow label="Content">
+                {msg.template_ref ? (
+                  <Link
+                    to={`/flows/${msg.flow_id}/edit?template=${encodeURIComponent(msg.template_ref)}`}
+                    className="font-mono text-accent-text underline underline-offset-4"
+                  >
+                    {msg.template_ref}
+                  </Link>
+                ) : (
+                  <span className="text-foreground">
+                    {msg.brain_action_type ? "Drafted by AI for this person" : "-"}
+                  </span>
+                )}
+              </DetailRow>
+              <DetailRow label="Created">{formatDateTime(msg.created_at)}</DetailRow>
+              <DetailRow label="Sent">{formatDateTime(msg.sent_at)}</DetailRow>
+              {msg.retry_count > 0 && <DetailRow label="Retries">{String(msg.retry_count)}</DetailRow>}
+            </dl>
+          </SideSection>
+
+          <SideSection title="Timeline">
+            {events.length === 0 ? (
+              <p className="text-[13px] text-subtle-foreground">
+                {msg.feedback
+                  ? `Highest engagement: ${msg.feedback} (no event-level timestamps available for this message).`
+                  : "No delivery events recorded. The transport may not report events, or the message was sent before event logging was enabled."}
+              </p>
+            ) : (
+              <ol className="relative space-y-0">
+                {events.map((event, idx) => (
+                  <TimelineEvent key={event.id} event={event} last={idx === events.length - 1} />
+                ))}
+              </ol>
+            )}
+          </SideSection>
+
+          {msg.brain_reasoning && (
+            <SideSection title="Why this mail">
+              <p className="max-h-60 overflow-auto whitespace-pre-wrap text-[13px] leading-[20px] text-muted-foreground">
+                {msg.brain_reasoning}
+              </p>
+            </SideSection>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -299,30 +262,20 @@ export default function SentLogDetailPage() {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function EnvelopeField({
-  label,
-  value,
-  link,
-}: {
-  label: string;
-  value: string;
-  link?: string;
-}) {
+function SideSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        {label}
-      </span>
-      {link ? (
-        <Link
-          to={link}
-          className="truncate font-mono text-[13px] text-accent-text underline underline-offset-4"
-        >
-          {value}
-        </Link>
-      ) : (
-        <span className="truncate font-mono text-[13px] text-foreground">{value}</span>
-      )}
+    <section className="rounded-lg border border-border bg-card p-4">
+      <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-foreground">{children}</dd>
     </div>
   );
 }
@@ -383,63 +336,117 @@ function TimelineEvent({ event, last }: { event: MessageEvent; last: boolean }) 
   );
 }
 
-function ContentTabs({
-  bodyHtml,
+/**
+ * The mail in a client-style frame: subject, recipient and date on top, then
+ * the rendered HTML at its full height. Plain text and the HTML source are
+ * one click away.
+ */
+function MailView({
+  subject,
+  to,
+  date,
+  preheader,
+  previewHtml,
   bodyText,
 }: {
-  bodyHtml: string | null;
+  subject: string | null;
+  to: string | null;
+  date: string | null;
+  preheader: string | null;
+  previewHtml: string | null;
   bodyText: string | null;
 }) {
-  const [tab, setTab] = useState<"preview" | "text" | "html">("preview");
+  const [tab, setTab] = useState<"preview" | "text" | "html">(previewHtml ? "preview" : "text");
 
-  if (!bodyHtml && !bodyText) {
+  if (!previewHtml && !bodyText) {
     return (
-      <p className="text-[13px] text-subtle-foreground">
-        No content available (message may have been suppressed or skipped before content generation).
+      <p className="rounded-lg border border-border bg-card p-5 text-[14px] text-muted-foreground">
+        No content available (the message may have been suppressed or skipped before content generation).
       </p>
     );
   }
 
   return (
-    <section>
-      <div className="mb-3 flex items-center gap-1 border-b border-border">
-        {bodyHtml && (
-          <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
-            Preview
-          </TabButton>
+    <section className="min-w-0">
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <p className="text-[16px] font-semibold text-foreground">{subject ?? "(no subject)"}</p>
+          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+            <span className="min-w-0 truncate">
+              To <span className="font-mono text-foreground">{to ?? "-"}</span>
+            </span>
+            <span className="font-mono text-[12px]">{formatDateTime(date)}</span>
+          </div>
+          {preheader && (
+            <p className="mt-2 truncate text-[13px] text-subtle-foreground">
+              <span className="mr-1.5 text-[11px] font-semibold uppercase tracking-[0.06em]">Preview line</span>
+              {preheader}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 border-b border-border px-3">
+          {previewHtml && (
+            <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
+              As received
+            </TabButton>
+          )}
+          {bodyText && (
+            <TabButton active={tab === "text"} onClick={() => setTab("text")}>
+              Plain text
+            </TabButton>
+          )}
+          {previewHtml && (
+            <TabButton active={tab === "html"} onClick={() => setTab("html")}>
+              HTML source
+            </TabButton>
+          )}
+        </div>
+
+        {tab === "preview" && previewHtml && <MailFrame html={previewHtml} />}
+        {tab === "text" && bodyText && (
+          <pre className="max-h-[720px] overflow-auto whitespace-pre-wrap bg-card p-5 font-mono text-[13px] leading-[20px] text-foreground">
+            {bodyText}
+          </pre>
         )}
-        {bodyText && (
-          <TabButton active={tab === "text"} onClick={() => setTab("text")}>
-            Plain Text
-          </TabButton>
-        )}
-        {bodyHtml && (
-          <TabButton active={tab === "html"} onClick={() => setTab("html")}>
-            HTML Source
-          </TabButton>
+        {tab === "html" && previewHtml && (
+          <pre className="max-h-[720px] overflow-auto whitespace-pre-wrap break-all bg-card p-5 font-mono text-[12px] text-muted-foreground">
+            {previewHtml}
+          </pre>
         )}
       </div>
-
-      {tab === "preview" && bodyHtml && (
-        <iframe
-          sandbox=""
-          referrerPolicy="no-referrer"
-          title="Message preview"
-          srcDoc={bodyHtml}
-          className="h-[500px] w-full rounded-md border border-border bg-white"
-        />
-      )}
-      {tab === "text" && bodyText && (
-        <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-4 font-mono text-[13px] text-foreground">
-          {bodyText}
-        </pre>
-      )}
-      {tab === "html" && bodyHtml && (
-        <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-card p-4 font-mono text-[12px] text-muted-foreground">
-          {bodyHtml}
-        </pre>
-      )}
+      <p className="mt-2 text-[12px] text-subtle-foreground">
+        Rendered with the flow&apos;s current email template and brand. The unsubscribe link was signed for this
+        recipient when it was sent and is a placeholder here.
+      </p>
     </section>
+  );
+}
+
+/** The rendered mail, sized to its content so the page has one scrollbar. */
+function MailFrame({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(640);
+  const fit = useCallback(() => {
+    const doc = ref.current?.contentDocument;
+    if (!doc?.documentElement) return;
+    const h = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0);
+    if (h > 0) setHeight(Math.min(h + 2, 6000));
+    // Images load after the document; measure again once they have.
+    for (const img of Array.from(doc.images)) {
+      if (!img.complete) img.addEventListener("load", fit, { once: true });
+    }
+  }, []);
+  return (
+    <iframe
+      ref={ref}
+      sandbox="allow-same-origin"
+      referrerPolicy="no-referrer"
+      title="Message as received"
+      srcDoc={html}
+      onLoad={fit}
+      style={{ height }}
+      className="block w-full bg-[#f9fafb]"
+    />
   );
 }
 

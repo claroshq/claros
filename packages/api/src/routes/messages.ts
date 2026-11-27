@@ -32,13 +32,6 @@ import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter, allowAdminKey } from "../http/router.js";
 import {
-  wrapInShell,
-  resolveMessageLayout,
-  buildShellComplianceHtml,
-  stepPresentation,
-  type BrandSettings,
-} from "@claros/core";
-import {
   ACTION_TYPE_RE,
   BULK_MAX_IDS,
   approveMessage,
@@ -56,7 +49,7 @@ import {
   type MessageActionResult,
   type ServiceContext,
 } from "../services/messages.js";
-import { loadCustomLayout } from "./layouts.js";
+import { renderMessagePreviews } from "../message-preview.js";
 import type { AppContext } from "../http/env.js";
 
 // ---------------------------------------------------------------------------
@@ -106,49 +99,6 @@ type MessageListRow = Record<string, unknown> & {
   kb_entry_id?: string | null;
   imported?: boolean | null;
 };
-
-/**
- * What the recipient's client will show: the body in the product's branded
- * shell (brand, eyebrow, preheader, footer), rendered the same way as the
- * drain does at send time. Only the unsubscribe link is a placeholder; the
- * real one is signed per message when it is sent. Link tracking (UTM) is
- * not applied. Null when the message has no HTML body.
- */
-async function buildPreviews(db: Db, tenantId: string, rows: MessageListRow[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (!rows.some((r) => r.body_html)) return out;
-  const tenant = await storeFor(db).workerDrain.getTenant(tenantId);
-  const settings = (tenant?.settings as Record<string, unknown> | null) ?? {};
-  const brand = (settings.brand as BrandSettings | undefined) ?? {};
-  const addr = typeof settings.postal_address === "string" ? settings.postal_address.trim() : "";
-  const footer = buildShellComplianceHtml(
-    "#",
-    addr || "No postal address set. Mail is held until one is set in Settings.",
-    tenant?.locale ?? null,
-  );
-  const plans = new Map<string, unknown>();
-  const shells = new Map<string, Awaited<ReturnType<typeof resolveMessageLayout<BrandSettings>>>>();
-  const load = (id: string) => loadCustomLayout(db, tenantId, id);
-  for (const flowId of new Set(rows.filter((r) => r.body_html).map((r) => r.flow_id))) {
-    const flow = await storeFor(db).apiFlows.findFlow({ tenantId, id: flowId });
-    plans.set(flowId, flow?.compiledPlan ?? null);
-    shells.set(flowId, await resolveMessageLayout(brand, flow?.emailTemplate, load));
-  }
-  for (const r of rows) {
-    if (!r.body_html) continue;
-    const presentation = stepPresentation(plans.get(r.flow_id) ?? null, r.flow_step_order, r.brain_action_type);
-    out.set(r.id, wrapInShell({
-      bodyHtml: r.body_html,
-      brand: shells.get(r.flow_id)?.brand ?? brand,
-      tenantName: tenant?.name ?? "Our Team",
-      complianceFooterHtml: footer,
-      eyebrow: presentation.eyebrow,
-      preheader: presentation.preheader,
-      layout: shells.get(r.flow_id)?.layout ?? null,
-    }));
-  }
-  return out;
-}
 
 function serializeMessageRow(r: MessageListRow, previewHtml: string | null = null) {
   let waiting_reason: string | null = null;
@@ -242,9 +192,10 @@ export default function messagesRoutes() {
       { status: statusFilter, limit, after: query.after },
     );
 
-    const previews = await buildPreviews(db, tenantId, pageRows);
+    // What the recipient's client will show (see message-preview.ts).
+    const previews = await renderMessagePreviews(db, tenantId, pageRows);
     return c.json({
-      messages: pageRows.map((r) => serializeMessageRow(r, previews.get(r.id) ?? null)),
+      messages: pageRows.map((r) => serializeMessageRow(r, previews.get(r.id)?.html ?? null)),
       next_cursor: nextCursor,
     });
   });
