@@ -9,6 +9,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Changed
 
 - Dashboard: Lifecycle sits on cards. The retention grid is one card whose footer carries the "pick a cell" hint and the threshold note (the dashed hint box is gone), the selected cell opens a card under it, and Movement's chart and two tables are cards like Analytics. Empty grid cells are a dashed outline instead of a dark well.
+- Dashboard: the Knowledge Base list has a category rail with counts (a chip row on narrow screens) and a search over title, text, tags and category; both stay in the URL. Previews read as plain text (markdown and HTML syntax stripped), category headings read as words (`feature_edu` shows as "Feature edu", with the key beside it), pinned is a pin icon and dates are relative. Retry failed embeddings moves into the failure note and shows only when an entry failed. No API change, no migration.
 
 ## [0.13.2] - 2026-11-27
 
