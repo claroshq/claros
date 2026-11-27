@@ -27,6 +27,7 @@ Two migrations run with the normal upgrade: `0035_message_revisions` (Postgres) 
 ### Fixed
 
 - Dashboard, Sent Mail: messages without a send time after the first 50 rows could not be reached with **Load more** (the cursor stopped at them). Numbered pages reach every row.
+- Person page: long property values (for example a `topics` object from identify) wrap inside the Properties card instead of running past it; object and array properties show as indented JSON.
 
 ## [0.9.0] - 2026-11-27
 
