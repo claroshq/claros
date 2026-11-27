@@ -258,12 +258,33 @@ function RailCard({
 function Fact({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex justify-between gap-4 py-1">
-      <dt className="text-muted-foreground">{label}</dt>
+      <dt className="max-w-[60%] shrink-0 text-muted-foreground [overflow-wrap:anywhere]">{label}</dt>
       <dd className={cn(
-        "text-right",
+        "min-w-0 text-right [overflow-wrap:anywhere]",
         mono ? "font-mono text-[13px] text-muted-foreground" : "text-foreground",
       )}>
         {value}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * A property row. Scalars sit on one line like a Fact; objects and arrays
+ * go under their key as indented JSON, since a one-line JSON blob cannot
+ * fit the rail.
+ */
+function PropertyFact({ label, value }: { label: string; value: unknown }) {
+  if (value === null || typeof value !== "object") {
+    return <Fact label={label} value={typeof value === "string" ? value : JSON.stringify(value)} />;
+  }
+  return (
+    <div className="py-1">
+      <dt className="text-muted-foreground [overflow-wrap:anywhere]">{label}</dt>
+      <dd className="mt-1">
+        <pre className="whitespace-pre-wrap rounded-md bg-sunken px-2 py-1.5 font-mono text-[12px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere]">
+          {JSON.stringify(value, null, 2)}
+        </pre>
       </dd>
     </div>
   );
@@ -468,13 +489,7 @@ export default function PersonPage() {
             ) : (
               <dl>
                 {propertyEntries.map(([key, value]) => (
-                  <Fact
-                    key={key}
-                    label={key}
-                    value={
-                      typeof value === "string" ? value : JSON.stringify(value)
-                    }
-                  />
+                  <PropertyFact key={key} label={key} value={value} />
                 ))}
               </dl>
             )}
