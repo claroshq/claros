@@ -252,3 +252,83 @@ export function lowContrastShare(data: Uint8ClampedArray, width: number, height:
   }
   return visible ? low / visible : 0;
 }
+
+/** Lightness range of a recolored pixel in the dark-mode version (HSL, 0..1). */
+const DARK_VARIANT_MIN_L = 0.75;
+const DARK_VARIANT_MAX_L = 0.94;
+/** Contrast a recolored pixel is lifted to, where the lightness range allows. */
+const DARK_VARIANT_CONTRAST = 4.5;
+
+function rgbToHsl({ r, g, b }: Rgb): [number, number, number] {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
+  else if (max === gn) h = (bn - rn) / d + 2;
+  else h = (rn - gn) / d + 4;
+  return [h / 6, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): Rgb {
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return { r: v, g: v, b: v };
+  }
+  const hue = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return {
+    r: Math.round(hue(p, q, h + 1 / 3) * 255),
+    g: Math.round(hue(p, q, h) * 255),
+    b: Math.round(hue(p, q, h - 1 / 3) * 255),
+  };
+}
+
+/**
+ * The logo's dark-mode version: every visible pixel with less than 3:1
+ * contrast against `bg` gets its lightness inverted (kept between 75% and
+ * 94%, raised toward 4.5:1), with hue, saturation and alpha unchanged. A
+ * black or navy wordmark becomes off-white, a dark green one pale green;
+ * colors that already read on dark (an accent dot, a mid gray) are left
+ * alone. Meant for a logo whose background is already transparent.
+ */
+export function darkVariant(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  bg: Rgb = DARK_MAIL_BG,
+): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(data.length);
+  out.set(data);
+  for (let p = 0; p < width * height; p++) {
+    const o = p * 4;
+    if (data[o + 3]! === 0) continue;
+    const c = { r: data[o]!, g: data[o + 1]!, b: data[o + 2]! };
+    if (contrastRatio(c, bg) >= 3) continue;
+    const [h, s, l] = rgbToHsl(c);
+    let lightness = Math.min(DARK_VARIANT_MAX_L, Math.max(DARK_VARIANT_MIN_L, 1 - l));
+    let next = hslToRgb(h, s, lightness);
+    while (contrastRatio(next, bg) < DARK_VARIANT_CONTRAST && lightness < DARK_VARIANT_MAX_L) {
+      lightness = Math.min(DARK_VARIANT_MAX_L, lightness + 0.02);
+      next = hslToRgb(h, s, lightness);
+    }
+    out[o] = next.r;
+    out[o + 1] = next.g;
+    out[o + 2] = next.b;
+  }
+  return out;
+}

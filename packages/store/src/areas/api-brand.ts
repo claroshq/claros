@@ -4,7 +4,13 @@
  * /brand). Implementations: ../pg/api-brand.ts and ../d1/api-brand.ts.
  */
 
-/** A stored brand image (today only kind 'logo'). */
+/**
+ * Kinds of stored brand image: the logo, and the version of it shown when
+ * mail is read in dark mode.
+ */
+export type BrandAssetKind = "logo" | "logo_dark";
+
+/** A stored brand image. */
 export interface BrandAssetRow {
   contentType: string;
   bytes: Uint8Array;
@@ -30,21 +36,23 @@ export interface ApiBrandQueries {
   findProductByPublicHost(host: string): Promise<BrandProductRow | null>;
   /** The product with this slug, or null. */
   findProductBySlug(slug: string): Promise<BrandProductRow | null>;
-  /** The product's uploaded logo, or null. */
-  getLogo(tenantId: string): Promise<BrandAssetRow | null>;
+  /** The product's uploaded image of this kind (default the logo), or null. */
+  getLogo(tenantId: string, kind?: BrandAssetKind): Promise<BrandAssetRow | null>;
   /**
-   * Store (insert or replace) the product's logo and replace its settings
-   * JSON, as one atomic unit.
+   * Store (insert or replace) the product's image of this kind (default the
+   * logo) and replace its settings JSON, as one atomic unit.
    */
   saveLogo(input: {
     tenantId: string;
+    kind?: BrandAssetKind;
     logo: Omit<BrandAssetRow, "updatedAt">;
     settings: Record<string, unknown>;
     now: Date;
   }): Promise<void>;
   /**
-   * Delete the product's logo and, when settings is given, replace its
-   * settings JSON, as one atomic unit. True when a logo existed.
+   * Delete the product's image of this kind (default the logo) and, when
+   * settings is given, replace its settings JSON, as one atomic unit. True
+   * when the image existed.
    */
-  deleteLogo(input: { tenantId: string; settings?: Record<string, unknown> }): Promise<boolean>;
+  deleteLogo(input: { tenantId: string; kind?: BrandAssetKind; settings?: Record<string, unknown> }): Promise<boolean>;
 }

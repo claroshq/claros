@@ -203,3 +203,72 @@ describe("config as code", () => {
     expect(again.changes).toEqual([]);
   });
 });
+
+describe("dark-mode logo (/v1/settings/brand/logo-dark)", () => {
+  const darkUrl = `${BASE}/v1/settings/brand/logo-dark`;
+  const delDark = (auth: Record<string, string>) => a.fetch(new Request(darkUrl, { method: "DELETE", headers: auth }));
+
+  it("stores it next to the logo, sets brand.logo_dark_url and leaves logo_height alone", async () => {
+    const p = await product("logo-dark");
+    const c = cookie(p.ownerCookie);
+    const light = (await (await upload(c, LOGO_PNG, "image/png")).json()) as any;
+    const res = await upload(c, LOGO_JPEG, "image/jpeg", darkUrl);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as any;
+    const url = `${BASE}/brand/${p.slug}/logo-dark?v=${sha(LOGO_JPEG).slice(0, 12)}`;
+    expect(body.logo).toMatchObject({ url, content_type: "image/jpeg", in_use: true });
+    expect(body.brand).toMatchObject({ logo_url: light.logo.url, logo_dark_url: url, logo_height: 30 });
+
+    const tenant = (await (await get(`${BASE}/v1/settings/tenant`, c)).json()) as any;
+    expect(tenant.tenant.brand.logo_dark_url).toBe(url);
+    expect(((await (await get(darkUrl, cookie(p.memberCookie))).json()) as any).logo.url).toBe(url);
+
+    // Served publicly, apart from the logo.
+    const served = await get(url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(LOGO_JPEG);
+    expect(new Uint8Array(await (await get(light.logo.url)).arrayBuffer())).toEqual(LOGO_PNG);
+  });
+
+  it("deletes only the dark-mode logo and clears brand.logo_dark_url", async () => {
+    const p = await product("logo-dark-del");
+    const c = cookie(p.ownerCookie);
+    await upload(c, LOGO_PNG, "image/png");
+    const dark = (await (await upload(c, LOGO_PNG, "image/png", darkUrl)).json()) as any;
+    expect((await delDark(cookie(p.memberCookie))).status).toBe(403);
+    const res = await delDark(c);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.brand.logo_dark_url).toBeNull();
+    expect(body.brand.logo_url).not.toBeNull();
+    expect((await get(dark.logo.url)).status).toBe(404);
+    expect((await get(`${BASE}/brand/${p.slug}/logo`)).status).toBe(200);
+    expect((await delDark(c)).status).toBe(404);
+  });
+
+  it("applies the same upload rules", async () => {
+    const p = await product("logo-dark-rules");
+    expect((await upload(cookie(p.ownerCookie), SVG, "image/svg+xml", darkUrl)).status).toBe(415);
+    expect((await upload(cookie(p.memberCookie), LOGO_PNG, "image/png", darkUrl)).status).toBe(403);
+  });
+
+  it("is served on a product's public host", async () => {
+    const p = await product("logo-dark-host");
+    const host = `dark-${p.slug}.example.com`;
+    await db.update(tenants).set({ publicHost: host }).where(eq(tenants.id, p.tenantId));
+    const { logo } = (await (await upload(cookie(p.ownerCookie), LOGO_PNG, "image/png", darkUrl)).json()) as any;
+    expect(logo.url).toBe(`https://${host}/brand/logo-dark?v=${sha(LOGO_PNG).slice(0, 12)}`);
+    expect((await get(logo.url)).status).toBe(200);
+  });
+
+  it("PATCH /v1/settings/tenant accepts an external logo_dark_url and refuses a non-URL", async () => {
+    const p = await product("logo-dark-patch");
+    const patch = (brand: Record<string, unknown>) =>
+      a.inject({ method: "PATCH", url: "/v1/settings/tenant", headers: { cookie: p.ownerCookie, "content-type": "application/json" }, payload: { brand } });
+    expect((await patch({ logo_dark_url: "javascript:alert(1)" })).statusCode).toBe(400);
+    const ok = await patch({ logo_dark_url: "https://cdn.example.com/dark.png" });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().tenant.brand.logo_dark_url).toBe("https://cdn.example.com/dark.png");
+  });
+});

@@ -200,6 +200,7 @@ const tenantPatchBodySchema = z.object({
       {
         brand_name: nullableString().optional(),
         logo_url: nullableString().optional(),
+        logo_dark_url: nullableString().optional(),
         logo_height: nullableNumber().optional(),
         accent_color: nullableString().optional(),
         footer_text: nullableString().optional(),
@@ -695,6 +696,7 @@ export default function settingsRoutes() {
         brand: {
           brand_name: (brand.brand_name as string | undefined) ?? null,
           logo_url: (brand.logo_url as string | undefined) ?? null,
+          logo_dark_url: (brand.logo_dark_url as string | undefined) ?? null,
           logo_height: (brand.logo_height as number | undefined) ?? null,
           accent_color: (brand.accent_color as string | undefined) ?? null,
           footer_text: (brand.footer_text as string | undefined) ?? null,
@@ -716,7 +718,7 @@ export default function settingsRoutes() {
    * Update operator-managed tenant settings.
    *
    * Supports: postal_address, brain_context, brand (object with brand_name,
-   * logo_url, logo_height, accent_color, footer_text, reply_to, layout).
+   * logo_url, logo_dark_url, logo_height, accent_color, footer_text, reply_to, layout).
    * Merges over existing settings - does not overwrite lifecycle/throttle
    * that the templates route writes.
    *
@@ -772,15 +774,17 @@ export default function settingsRoutes() {
 
       // Validate brand fields if provided
       if (brand) {
-        if (brand.logo_url !== undefined && brand.logo_url !== null) {
+        for (const key of ["logo_url", "logo_dark_url"] as const) {
+          const value = brand[key];
+          if (value === undefined || value === null) continue;
           // Must be a valid absolute URL (http or https)
           try {
-            const url = new URL(brand.logo_url);
+            const url = new URL(value);
             if (!["http:", "https:"].includes(url.protocol)) {
-              return c.json({ error: "brand.logo_url must be an http or https URL." }, 400);
+              return c.json({ error: `brand.${key} must be an http or https URL.` }, 400);
             }
           } catch {
-            return c.json({ error: "brand.logo_url must be a valid URL." }, 400);
+            return c.json({ error: `brand.${key} must be a valid URL.` }, 400);
           }
         }
         if (brand.accent_color !== undefined && brand.accent_color !== null) {
@@ -865,6 +869,7 @@ export default function settingsRoutes() {
           brand: {
             brand_name: (finalBrand.brand_name as string | undefined) ?? null,
             logo_url: (finalBrand.logo_url as string | undefined) ?? null,
+            logo_dark_url: (finalBrand.logo_dark_url as string | undefined) ?? null,
             logo_height: (finalBrand.logo_height as number | undefined) ?? null,
             accent_color: (finalBrand.accent_color as string | undefined) ?? null,
             footer_text: (finalBrand.footer_text as string | undefined) ?? null,

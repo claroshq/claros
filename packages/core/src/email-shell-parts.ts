@@ -15,6 +15,12 @@ export interface BrandSettings {
   brand_name?: string;
   /** Absolute URL to logo image. If absent, the brand name is shown as text. */
   logo_url?: string;
+  /**
+   * Absolute URL to the logo's dark-mode version (v0.8.14), shown instead
+   * of logo_url when mail is read in dark mode by an app that tells the
+   * email (Apple Mail, Outlook). Used only together with logo_url.
+   */
+  logo_dark_url?: string;
   /** Logo height in px. Default 32. Max 64. */
   logo_height?: number;
   /** Hex color for the accent bar and link color. Default "#2563eb" (blue-600). */

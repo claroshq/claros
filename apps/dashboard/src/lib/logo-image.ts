@@ -1,9 +1,17 @@
 /**
- * Browser side of logo background removal: decode an uploaded file into
- * pixels, and encode processed pixels back into a PNG file. The pixel
- * logic is in logo-background.ts.
+ * Browser side of logo processing: decode an uploaded file into pixels, and
+ * encode processed pixels back into PNG files. The pixel logic is in
+ * logo-background.ts.
  */
-import { analyzeLogo, lowContrastShare, removeBackground, type LogoAnalysis, type RemoveOptions, type Rgb } from "./logo-background.js";
+import {
+  analyzeLogo,
+  darkVariant,
+  lowContrastShare,
+  removeBackground,
+  type LogoAnalysis,
+  type RemoveOptions,
+  type Rgb,
+} from "./logo-background.js";
 
 export interface DecodedLogo {
   data: Uint8ClampedArray;
@@ -24,11 +32,10 @@ function canvas(width: number, height: number): { el: HTMLCanvasElement; ctx: Ca
   return { el, ctx };
 }
 
-/** Decode a PNG or JPEG file and analyze its background. Null when the browser cannot decode it. */
-export async function decodeLogo(file: File): Promise<DecodedLogo | null> {
+async function decodeSource(source: Blob): Promise<DecodedLogo | null> {
   let bitmap: ImageBitmap;
   try {
-    bitmap = await createImageBitmap(file);
+    bitmap = await createImageBitmap(source);
   } catch {
     return null;
   }
@@ -40,6 +47,11 @@ export async function decodeLogo(file: File): Promise<DecodedLogo | null> {
   return { data, width, height, analysis: analyzeLogo(data, width, height) };
 }
 
+/** Decode a PNG or JPEG file and analyze its background. Null when the browser cannot decode it. */
+export function decodeLogo(file: File): Promise<DecodedLogo | null> {
+  return decodeSource(file);
+}
+
 function toBlob(el: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) =>
     el.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not encode the image."))), "image/png"),
@@ -47,22 +59,12 @@ function toBlob(el: HTMLCanvasElement): Promise<Blob> {
 }
 
 /**
- * The logo with its background removed, as a PNG file named after the
- * original. When the PNG is larger than maxBytes and the image is wider
- * than FALLBACK_MAX_WIDTH, it is scaled down to that width once.
- * lowContrast is lowContrastShare of the result on the dark mail body.
+ * Pixels as a PNG file. When the PNG is larger than maxBytes and the image
+ * is wider than FALLBACK_MAX_WIDTH, it is scaled down to that width once.
  */
-export async function transparentLogo(
-  original: File,
-  decoded: DecodedLogo,
-  background: Rgb,
-  options: RemoveOptions,
-  maxBytes: number,
-): Promise<{ file: File; lowContrast: number }> {
-  const { data, width, height } = decoded;
-  const processed = removeBackground(data, width, height, background, options);
+async function encodePng(data: Uint8ClampedArray<ArrayBuffer>, width: number, height: number, name: string, maxBytes: number): Promise<File> {
   const { el, ctx } = canvas(width, height);
-  ctx.putImageData(new ImageData(processed.data, width, height), 0, 0);
+  ctx.putImageData(new ImageData(data, width, height), 0, 0);
   let blob = await toBlob(el);
   if (blob.size > maxBytes && width > FALLBACK_MAX_WIDTH) {
     const h = Math.max(1, Math.round((height * FALLBACK_MAX_WIDTH) / width));
@@ -71,9 +73,47 @@ export async function transparentLogo(
     small.ctx.drawImage(el, 0, 0, FALLBACK_MAX_WIDTH, h);
     blob = await toBlob(small.el);
   }
-  const name = original.name.replace(/\.(png|jpe?g)$/i, "") + ".png";
-  return {
-    file: new File([blob], name, { type: "image/png" }),
-    lowContrast: lowContrastShare(processed.data, width, height),
-  };
+  return new File([blob], name, { type: "image/png" });
+}
+
+function baseName(name: string): string {
+  return name.replace(/\.(png|jpe?g)$/i, "") || "logo";
+}
+
+export interface PreparedLogo {
+  /** The logo to upload: transparent when removal was asked for, else the original file. */
+  logo: File;
+  /** The dark-mode version, when asked for and the logo is transparent. */
+  dark: File | null;
+  /** lowContrastShare of the logo on the dark mail body (0 when it was not made transparent). */
+  lowContrast: number;
+}
+
+/**
+ * The files to upload for a chosen logo. With background, the background
+ * is removed first (removeBackground); the dark-mode version is made from
+ * the transparent pixels, so it is only offered for a logo that is (or was
+ * made) transparent.
+ */
+export async function prepareLogo(
+  original: File,
+  decoded: DecodedLogo,
+  options: { background: Rgb | null; remove: RemoveOptions; dark: boolean },
+  maxBytes: number,
+): Promise<PreparedLogo> {
+  const { width, height } = decoded;
+  const name = baseName(original.name);
+  let pixels: Uint8ClampedArray = decoded.data;
+  let logo = original;
+  if (options.background) {
+    const processed = removeBackground(decoded.data, width, height, options.background, options.remove);
+    pixels = processed.data;
+    logo = await encodePng(processed.data, width, height, `${name}.png`, maxBytes);
+  }
+  const transparent = options.background !== null || decoded.analysis.kind === "transparent";
+  const lowContrast = transparent ? lowContrastShare(pixels, width, height) : 0;
+  const dark = options.dark && transparent
+    ? await encodePng(darkVariant(pixels, width, height), width, height, `${name}-dark.png`, maxBytes)
+    : null;
+  return { logo, dark, lowContrast };
 }
