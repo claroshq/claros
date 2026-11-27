@@ -238,6 +238,15 @@ Borders and elevation:
   outline buttons) and is measured at 3:1+ against the canvas. This split
   exists because a single border token either fails WCAG 1.4.11 on inputs
   or makes every card edge shout.
+- **Forbidden, product and site, no exceptions: coloring or thickening one
+  side of a card, panel, callout, quote or list.** No accent strip on the
+  left, no colored top bar, no `border-l-2` rule beside a nested list, no
+  `border-left: 3px solid var(--accent)` callout. A container's edge is the
+  same 1px on all four sides. To mark something, use a dot, a badge, a
+  fill or a full border (dashed for archived or empty). The only one-sided
+  lines allowed are neutral layout dividers (sidebar edge, row separators,
+  card header rule, tab underline). The owner has rejected the pattern
+  repeatedly; treat it like em dashes.
 - Empty states use a dashed `--border-strong` frame: the dashed edge says
   "content will live here" without inventing a new color.
 
@@ -616,5 +625,8 @@ scanned:
 | `--fs-display` | 36px (2.25rem) | section titles |
 | `--fs-page` | 48px (3rem) | the landing hero, once |
 
-Body weight 400 with antialiasing, as in the product. Site CSS uses the
+Body weight 400 with antialiasing, as in the product. The one-sided
+border ban in section 5 and the em dash ban in section 14 apply to the
+site unchanged. In dark mode, inset surfaces (`--bg-sunken`) step lighter
+than the page, never darker; only the terminal stays near-black. Site CSS uses the
 `--fs-*` names only, never a literal font size.

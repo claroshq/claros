@@ -453,7 +453,7 @@ export function LayoutStudioPage() {
               className={`absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-[6px] transition-opacity duration-(--dur-med) ${pending ? "opacity-100" : "pointer-events-none opacity-0"}`}
               aria-hidden={!pending}
             >
-              <div className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-card px-4 py-3 text-body text-foreground shadow-overlay" role="status">
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-body text-foreground shadow-overlay" role="status">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-accent" aria-hidden="true" />
                 Applying your change...
               </div>

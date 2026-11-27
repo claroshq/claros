@@ -708,7 +708,7 @@ function RecentActivity() {
                   <span className={cn("min-w-0 flex-1", item.group && "pt-1.5")}>
                     <span className="block truncate text-body leading-6">{item.text}</span>
                     {item.group && (
-                      <span className="mt-2 block space-y-1 border-l-2 border-border pl-3.5 text-small text-muted-foreground">
+                      <span className="mt-2 block space-y-1 rounded-md border border-border bg-sunken px-3 py-2 text-small text-muted-foreground">
                         {item.group.slice(0, GROUP_LIST_MAX).map((title, i) => (
                           <span key={i} className="block truncate">{title}</span>
                         ))}
