@@ -24,10 +24,11 @@ export type LifecycleState = (typeof LIFECYCLE_STATES)[number];
 /**
  * `gone_quiet` is the new name of the `churned` state (no product activity
  * for churned_days; says nothing about billing, a paying customer can be in
- * it). During the deprecation window the stored and returned value stays
- * `churned`, and `gone_quiet` is accepted wherever a state is given as input
- * (flow triggers, conditions, exits, filters) and means the same state. The
- * next minor release migrates stored values and returns `gone_quiet`.
+ * it). The database stores `churned` (no data migration, DECISIONS.md
+ * 2026-11-27); `gone_quiet` is accepted wherever a state is given as input
+ * (flow triggers, conditions, exits, filters) and means the same state.
+ * During the deprecation window the API still returns `churned`; the next
+ * minor release returns `gone_quiet`.
  */
 export const GONE_QUIET = "gone_quiet" as const;
 
