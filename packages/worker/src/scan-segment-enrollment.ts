@@ -31,6 +31,7 @@ import {
   type EnrollableFlow,
   type LifecycleConfig,
   type SegmentTriggerConfig,
+  storedLifecycleState,
 } from "@claros/core";
 import { enrollContactInFlows } from "./enroll.js";
 import { passesTriggerWhere } from "./audience.js";
@@ -175,7 +176,7 @@ async function processSegmentFlow(
       : await store.listStateContactsPage({
           tenantId,
           flowId: flow.id,
-          states: byState?.lifecycle_states ?? null,
+          states: byState?.lifecycle_states?.map(storedLifecycleState) ?? null,
           depths: byState?.engagement_depths ?? null,
           afterId: lastId,
           limit,

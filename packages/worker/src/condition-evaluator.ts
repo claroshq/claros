@@ -17,6 +17,7 @@ import {
   evaluateContactCondition,
   evaluateConditionTree,
   type ContactConditionContext,
+  storedLifecycleState,
 } from "@claros/core";
 
 // ---------------------------------------------------------------------------
@@ -143,13 +144,13 @@ async function evaluateStepLeaf(
   }
 
   if (typeof cond.lifecycle_state === "string") {
-    return contact.lifecycleState === cond.lifecycle_state
+    return contact.lifecycleState === storedLifecycleState(cond.lifecycle_state)
       ? { outcome: "pass" }
       : { outcome: "fail" };
   }
 
   if (typeof cond.lifecycle_state_not === "string") {
-    return contact.lifecycleState !== cond.lifecycle_state_not
+    return contact.lifecycleState !== storedLifecycleState(cond.lifecycle_state_not)
       ? { outcome: "pass" }
       : { outcome: "fail" };
   }
@@ -263,7 +264,7 @@ async function evaluatePlanExitLeaf(
     // We check whether the contact is currently in that state. This is an
     // approximation: the contact could have transitioned to S and then away.
     // But for the scan's purposes, being in state S now is the observable signal.
-    stateChangePasses = contact.lifecycleState === targetState;
+    stateChangePasses = contact.lifecycleState === storedLifecycleState(targetState);
   }
 
   // Both parts must be true (AND semantics for combined conditions)

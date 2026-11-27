@@ -15,6 +15,7 @@
  * module only decides.
  */
 import { z } from "zod";
+import { storedLifecycleState } from "./lifecycle/states.js";
 
 export const TRAIT_OPS = ["eq", "neq", "in", "exists", "not_exists", "gt", "lt"] as const;
 export type TraitOp = (typeof TRAIT_OPS)[number];
@@ -323,7 +324,8 @@ async function evaluateAudienceLeaf(cond: unknown, ctx: ContactConditionContext)
       const want = o[keys[0]];
       if (typeof want !== "string" || want === "" || !ctx.lifecycleState) return null;
       const state = await ctx.lifecycleState();
-      return keys[0] === "lifecycle_state" ? state === want : state !== want;
+      const stored = storedLifecycleState(want);
+      return keys[0] === "lifecycle_state" ? state === stored : state !== stored;
     }
   }
   return evaluateContactCondition(cond, ctx);

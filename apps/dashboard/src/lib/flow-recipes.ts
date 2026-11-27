@@ -107,7 +107,7 @@ export const RECIPES: Recipe[] = [
   {
     id: "win-back",
     title: "Win back",
-    description: "When someone churns, one personal note written by the AI for them.",
+    description: "When someone goes quiet, one personal note written by the AI for them.",
     needsLlm: true,
     build: () => ({
       ...emptyDraft({ type: "lifecycle_transition", config: { to: "churned" } }),
@@ -115,7 +115,7 @@ export const RECIPES: Recipe[] = [
       reentry_policy: "cooldown",
       reentry_cooldown_days: 90,
       emails: [
-        { delay: "0m", action_type: "winback", instruction: "This person stopped using the product. Write a short, warm note from a person, not a campaign. Mention one thing that changed or that fits how they used the product, based on their traits and history. One clear way back in. No discount, no guilt, no exclamation marks. Three short paragraphs at most." },
+        { delay: "0m", action_type: "winback", instruction: "This person stopped using the product (they may still be a paying customer). Write a short, warm note from a person, not a campaign. Mention one thing that changed or that fits how they used the product, based on their traits and history. One clear way back in. No discount, no guilt, no exclamation marks. Three short paragraphs at most." },
       ],
     }),
   },

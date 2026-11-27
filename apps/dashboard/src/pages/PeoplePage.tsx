@@ -60,6 +60,7 @@ import {
   type PeopleQuery,
   type TenureBucket,
 } from "../lib/people-query.js";
+import { stateHint, stateName } from "../lib/lifecycle-names.js";
 
 const TENURE_LABELS: Record<TenureBucket, string> = {
   new: "New",
@@ -446,7 +447,7 @@ export default function PeoplePage() {
           >
             <option value="">All states</option>
             {LIFECYCLE_STATES.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{stateName(s)}</option>
             ))}
           </Select>
         </div>
@@ -614,8 +615,8 @@ export default function PeoplePage() {
                     {c.email ?? "-"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={stateVariant(c.lifecycle_state)}>
-                      {c.lifecycle_state}
+                    <Badge variant={stateVariant(c.lifecycle_state)} title={stateHint(c.lifecycle_state)}>
+                      {stateName(c.lifecycle_state)}
                     </Badge>
                   </TableCell>
                   <TableCell>

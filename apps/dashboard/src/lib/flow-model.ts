@@ -4,6 +4,8 @@
  * docs/guide/FLOWS.md); the server validates them again on save.
  */
 
+import { stateName } from "./lifecycle-names.js";
+
 export type Json = Record<string, unknown>;
 export type Condition = Json;
 
@@ -130,6 +132,12 @@ export function fromConditionList(list: Condition[]): Condition | Condition[] | 
   return list;
 }
 
+/** A lifecycle state (or list of them) by display name: churned shows as gone_quiet. */
+function fmtState(v: unknown): string {
+  if (Array.isArray(v)) return v.map(fmtState).join(", ");
+  return typeof v === "string" ? stateName(v) : fmt(v);
+}
+
 function fmt(v: unknown): string {
   if (Array.isArray(v)) return v.map(fmt).join(", ");
   if (typeof v === "string") return v;
@@ -180,9 +188,9 @@ export function summarizeCondition(c: unknown): string {
     case "first_contact":
       return v === false ? "has received mail before" : "has never received mail";
     case "lifecycle_state":
-      return `lifecycle state is ${fmt(v)}`;
+      return `lifecycle state is ${fmtState(v)}`;
     case "lifecycle_state_not":
-      return `lifecycle state is not ${fmt(v)}`;
+      return `lifecycle state is not ${fmtState(v)}`;
     case "event_since_step":
       return `${fmt(v)} happened since the previous step`;
     case "date_unchanged":
@@ -190,7 +198,7 @@ export function summarizeCondition(c: unknown): string {
     case "event":
       return `${fmt(v)} occurs`;
     case "lifecycle_state_change":
-      return `becomes ${fmt((v as Json | undefined)?.to)}`;
+      return `becomes ${fmtState((v as Json | undefined)?.to)}`;
   }
 }
 
@@ -348,7 +356,7 @@ export function summarizeTrigger(type: string, config: Json): string {
   const tail = where.length > 0 ? `, if ${summarizeCondition(where)}` : "";
   switch (type) {
     case "lifecycle_transition":
-      return `A contact moves ${config.from ? `from ${fmt(config.from)} ` : ""}to ${fmt(config.to)}${tail}`;
+      return `A contact moves ${config.from ? `from ${fmtState(config.from)} ` : ""}to ${fmtState(config.to)}${tail}`;
     case "event": {
       const events = triggerEvents(config);
       return `${events.length > 1 ? "One of the events" : "The event"} ${events.join(", ")} is received${tail}`;
@@ -356,7 +364,7 @@ export function summarizeTrigger(type: string, config: Json): string {
     case "segment":
       if (segmentByState(config)) {
         const depths = Array.isArray(config.engagement_depths) && config.engagement_depths.length > 0 ? ` with engagement ${fmt(config.engagement_depths)}` : "";
-        return `A contact is ${fmt(config.lifecycle_states)}${depths}${tail}`;
+        return `A contact is ${fmtState(config.lifecycle_states)}${depths}${tail}`;
       }
       return `A contact is in the ${fmt(config.tenure_bucket)} / ${fmt(config.recency_bucket)} retention cell${tail}`;
     case "manual":

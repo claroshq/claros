@@ -23,7 +23,7 @@ export const LIFECYCLE_DEFAULTS: Readonly<LifecycleConfig> = {
  * Only known keys are accepted; unknown keys are ignored.
  */
 export function resolveLifecycleConfig(
-  overrides?: Partial<LifecycleConfig> | null,
+  overrides?: (Partial<LifecycleConfig> & { gone_quiet_days?: number }) | null,
 ): LifecycleConfig {
   if (!overrides) return { ...LIFECYCLE_DEFAULTS };
   return {
@@ -38,7 +38,8 @@ export function resolveLifecycleConfig(
     at_risk_missed_intervals:
       overrides.at_risk_missed_intervals ?? LIFECYCLE_DEFAULTS.at_risk_missed_intervals,
     dormant_days: overrides.dormant_days ?? LIFECYCLE_DEFAULTS.dormant_days,
-    churned_days: overrides.churned_days ?? LIFECYCLE_DEFAULTS.churned_days,
+    // gone_quiet_days is the new name of churned_days and wins when both are set.
+    churned_days: overrides.gone_quiet_days ?? overrides.churned_days ?? LIFECYCLE_DEFAULTS.churned_days,
     engagement_depth_window_days:
       overrides.engagement_depth_window_days ??
       LIFECYCLE_DEFAULTS.engagement_depth_window_days,

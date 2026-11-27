@@ -21,6 +21,27 @@ export const LIFECYCLE_STATES = [
 
 export type LifecycleState = (typeof LIFECYCLE_STATES)[number];
 
+/**
+ * `gone_quiet` is the new name of the `churned` state (no product activity
+ * for churned_days; says nothing about billing, a paying customer can be in
+ * it). During the deprecation window the stored and returned value stays
+ * `churned`, and `gone_quiet` is accepted wherever a state is given as input
+ * (flow triggers, conditions, exits, filters) and means the same state. The
+ * next minor release migrates stored values and returns `gone_quiet`.
+ */
+export const GONE_QUIET = "gone_quiet" as const;
+
+/** Every state name accepted as input: the seven states plus `gone_quiet`. */
+export const LIFECYCLE_STATE_NAMES = [...LIFECYCLE_STATES, GONE_QUIET] as const;
+
+/**
+ * The stored lifecycle_state value for a state name given as input
+ * (`gone_quiet` -> `churned`); any other string is returned unchanged.
+ */
+export function storedLifecycleState(name: string): string {
+  return name === GONE_QUIET ? "churned" : name;
+}
+
 // ---------------------------------------------------------------------------
 // Transition trigger types
 // ---------------------------------------------------------------------------
@@ -176,7 +197,7 @@ export interface LifecycleConfig {
   at_risk_missed_intervals: number;
   /** Days of inactivity before dormant (from last_seen_at). */
   dormant_days: number;
-  /** Days of inactivity before churned (from last_seen_at). */
+  /** Days of inactivity before churned, now called gone_quiet (from last_seen_at). */
   churned_days: number;
   /** Window for engagement depth computation (days). */
   engagement_depth_window_days: number;

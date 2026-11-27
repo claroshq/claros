@@ -12,8 +12,8 @@ None of them sends mail, enrolls a contact in a flow, queues a job or fires a we
 
 Importing never triggers anything by itself, but what you import changes what the scan sees afterwards:
 
-- **Segment-triggered flows** enroll every contact that is in their cell or lifecycle state at the next scan, however it got there. After the recompute, contacts who stopped using the product long ago are `dormant` or `churned`, so a segment flow on those states enrolls them. Pause segment flows before the recompute and resume them on purpose; the dry run lists how many contacts each one would match.
-- **Lifecycle-transition flows** (for example a win back on `-> churned`) react only to transitions the scan makes. The recompute leaves every contact in the state its history leads to at that moment, so the next scan makes no transition. Contacts who are close to a threshold do cross it in the following days, as they would have without the import; the dry run shows how many (`upcoming`).
+- **Segment-triggered flows** enroll every contact that is in their cell or lifecycle state at the next scan, however it got there. After the recompute, contacts who stopped using the product long ago are `dormant` or `gone_quiet` (`churned` in API output until the next minor release), so a segment flow on those states enrolls them. Pause segment flows before the recompute and resume them on purpose; the dry run lists how many contacts each one would match.
+- **Lifecycle-transition flows** (for example a win back on `-> gone_quiet`) react only to transitions the scan makes. The recompute leaves every contact in the state its history leads to at that moment, so the next scan makes no transition. Contacts who are close to a threshold do cross it in the following days, as they would have without the import; the dry run shows how many (`upcoming`).
 - **Event-triggered flows** never see imported events.
 - Set `settings.lifecycle` (`activation_events`, `engagement_events`, the day thresholds) before the recompute: it applies the current settings to the whole history.
 
@@ -77,7 +77,7 @@ For every contact the recompute replays its events in time order through the sam
 
 - the first event sets `first_seen_at`; events in `engagement_events` (every event when the list is empty) move `last_seen_at` and count toward the engagement counters;
 - `signed_up -> activated` when all `activation_events` have occurred, `activated_at` at that moment; activity after activation, at risk or dormant leads to `engaged`, activity after churn to `resurrected` and then `engaged`;
-- `engaged -> at_risk -> dormant -> churned` at the moment each inactivity threshold of `settings.lifecycle` is crossed.
+- `engaged -> at_risk -> dormant -> gone_quiet` (stored as `churned` until the next minor release) at the moment each inactivity threshold of `settings.lifecycle` is crossed.
 
 The result replaces the contact's `lifecycle_state`, `first_seen_at`, `last_seen_at`, `activated_at` and engagement counters. The transitions of the replay are stored with their original times and `metadata` `{"source": "import"}`, so the contact timeline and lifecycle analytics show them; they enroll no one. Running the recompute again replaces those import transitions and changes nothing when the history is the same.
 

@@ -129,3 +129,11 @@ Requested by the maintainer right after the template library shipped ("send this
 - **Deleting** a custom template that a non-archived flow uses answers 409 with the flow names; the Templates list reports `flow_count`.
 - Config documents do not check that a custom template id exists (they hold no template list); an unknown id falls back at send time like a deleted one. Built-in keys are checked.
 
+
+## 2026-11-27: `churned` renamed `gone_quiet`
+
+Found on a live instance: a contact who pays every month showed as `churned`, because the state means "no product activity for `churned_days`" (payment events were not in `engagement_events`) and says nothing about billing. "Churned" reads as "left and stopped paying", so the maintainer chose to rename the state in the API, not only in the dashboard. Decisions:
+
+- **Name.** `gone_quiet`, threshold `gone_quiet_days`. It says what the engine observes (no activity) without a claim about money. The plan or payment status stays a trait (`payment_status`).
+- **Expand-contract (architecture rule 6).** Step 1 (this release): `gone_quiet` is accepted wherever a state is input (flow trigger `from`/`to`, segment `lifecycle_states`, `lifecycle_state`, `lifecycle_state_not`, `lifecycle_state_change` exits, `GET /v1/contacts?lifecycle_state=`) and means the stored `churned` (`storedLifecycleState` in core, applied where states are compared, so stored flows may hold either name). `gone_quiet_days` is accepted and wins over `churned_days`; giving both with different values is a config error. Stored and returned values stay `churned`; the dashboard shows `gone_quiet` and keeps sending `churned`. Step 2 (next minor): a migration rewrites `contacts.lifecycle_state`, `lifecycle_transitions.from_state/to_state` and state names inside flow trigger configs and plans on Postgres and D1, the API returns `gone_quiet`, and `churned` stays accepted as input with no removal date.
+- **Not done:** making the state billing-aware (Claros does not know billing beyond the `payment_status` trait, and a paying customer who stopped using the product is exactly the contact a win-back should reach), or adding payment events to `engagement_events` by default.

@@ -13,7 +13,7 @@ import { datePropertyTriggerSchema, dateScheduleTriggerSchema } from "../dates.j
 import { TOPIC_KINDS } from "../topics-transports.js";
 import { BRAND_LAYOUTS } from "../email-shell.js";
 import { RETENTION_TENURE_BUCKETS, RETENTION_RECENCY_BUCKETS } from "../lifecycle/retention-grid.js";
-import { LIFECYCLE_STATES } from "../lifecycle/states.js";
+import { LIFECYCLE_STATES, LIFECYCLE_STATE_NAMES } from "../lifecycle/states.js";
 import { ENGAGEMENT_DEPTHS } from "../lifecycle/engagement-depth.js";
 import { WEBHOOK_EVENTS, ANALYTICS_SINKS } from "../webhooks.js";
 
@@ -84,8 +84,8 @@ export const configTriggerSchema = z
     /** segment: one retention-grid cell ... */
     tenure_bucket: z.enum(RETENTION_TENURE_BUCKETS).optional(),
     recency_bucket: z.enum(RETENTION_RECENCY_BUCKETS).optional(),
-    /** ... or contacts in any of these lifecycle states (and engagement depths). */
-    lifecycle_states: z.array(z.enum(LIFECYCLE_STATES)).min(1).max(LIFECYCLE_STATES.length).optional(),
+    /** ... or contacts in any of these lifecycle states (and engagement depths); gone_quiet = churned. */
+    lifecycle_states: z.array(z.enum(LIFECYCLE_STATE_NAMES)).min(1).max(LIFECYCLE_STATE_NAMES.length).optional(),
     engagement_depths: z.array(z.enum(ENGAGEMENT_DEPTHS)).min(1).max(ENGAGEMENT_DEPTHS.length).optional(),
     /** date_property (G3): the date trait and the signed offset from it ("-3d"). */
     property: z.string().min(1).max(64).optional(),
@@ -246,14 +246,22 @@ export const configLifecycleSchema = z
     natural_frequency_days: z.number().int().min(1).max(365).optional(),
     at_risk_missed_intervals: z.number().int().min(1).max(52).optional(),
     dormant_days: z.number().int().min(1).max(3650).optional(),
+    /** Days without activity before gone_quiet. */
+    gone_quiet_days: z.number().int().min(1).max(3650).optional(),
+    /** Deprecated name of gone_quiet_days, still accepted. */
     churned_days: z.number().int().min(1).max(3650).optional(),
     engagement_depth_window_days: z.number().int().min(1).max(365).optional(),
     power_user_percentile: z.number().gt(0).lt(1).optional(),
   })
   .strict()
   .superRefine((l, ctx) => {
-    if (l.dormant_days !== undefined && l.churned_days !== undefined && l.churned_days <= l.dormant_days) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "churned_days must be greater than dormant_days" });
+    if (l.gone_quiet_days !== undefined && l.churned_days !== undefined && l.gone_quiet_days !== l.churned_days) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "set gone_quiet_days only (churned_days is its deprecated name)" });
+    }
+    const goneQuiet = l.gone_quiet_days ?? l.churned_days;
+    if (l.dormant_days !== undefined && goneQuiet !== undefined && goneQuiet <= l.dormant_days) {
+      const key = l.gone_quiet_days !== undefined ? "gone_quiet_days" : "churned_days";
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} must be greater than dormant_days` });
     }
   });
 

@@ -26,6 +26,7 @@ import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 import { Select } from "./ui/select.js";
 import { Textarea } from "./ui/textarea.js";
+import { stateName, storedState } from "../lib/lifecycle-names.js";
 
 const SMALL = "h-8 text-[13px]";
 
@@ -84,10 +85,10 @@ export function ConditionEditor({ value, onChange, onRemove, scope, depth = 1, d
           </Select>
         )}
         {(kind === "lifecycle_state" || kind === "lifecycle_state_not") && (
-          <Select aria-label="Lifecycle state" className={`${SMALL} w-40`} value={String(inner ?? "")} disabled={disabled} onChange={(e) => set(e.target.value)}>
+          <Select aria-label="Lifecycle state" className={`${SMALL} w-40`} value={storedState(String(inner ?? ""))} disabled={disabled} onChange={(e) => set(e.target.value)}>
             {LIFECYCLE_STATES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {stateName(s)}
               </option>
             ))}
           </Select>
@@ -96,13 +97,13 @@ export function ConditionEditor({ value, onChange, onRemove, scope, depth = 1, d
           <Select
             aria-label="Becomes lifecycle state"
             className={`${SMALL} w-40`}
-            value={String((inner as Json | undefined)?.to ?? "")}
+            value={storedState(String((inner as Json | undefined)?.to ?? ""))}
             disabled={disabled}
             onChange={(e) => set({ to: e.target.value })}
           >
             {LIFECYCLE_STATES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {stateName(s)}
               </option>
             ))}
           </Select>

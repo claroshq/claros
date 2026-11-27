@@ -61,6 +61,9 @@ export {
 
 export {
   LIFECYCLE_STATES,
+  LIFECYCLE_STATE_NAMES,
+  GONE_QUIET,
+  storedLifecycleState,
   VALID_TRANSITIONS,
   VALID_TRANSITION_MAP,
   assertValidTransition,

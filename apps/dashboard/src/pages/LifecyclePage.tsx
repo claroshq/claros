@@ -41,6 +41,7 @@ import { Button } from "../components/ui/button.js";
 import { PageHeader } from "../components/page-header.js";
 import { cn } from "../lib/utils.js";
 import type { ContactAudience } from "../api.js";
+import { stateName } from "../lib/lifecycle-names.js";
 
 // ---------------------------------------------------------------------------
 // Grid vocabulary
@@ -762,7 +763,7 @@ export default function LifecyclePage() {
                         <tr key={row.state} className="h-9 border-b border-border last:border-0">
                           <td>
                             <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[12px] text-foreground">
-                              {row.state}
+                              {stateName(row.state)}
                             </span>
                           </td>
                           <td className="text-right font-mono text-[13px] text-muted-foreground">
@@ -817,13 +818,13 @@ export default function LifecyclePage() {
                         >
                           <div className="flex h-9 items-center gap-2.5 text-[14px]">
                             <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[12px] text-muted-foreground">
-                              {e.from_state}
+                              {stateName(e.from_state)}
                             </span>
                             <span aria-hidden="true" className="text-subtle-foreground">
                               {"->"}
                             </span>
                             <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[12px] text-foreground">
-                              {e.to_state}
+                              {stateName(e.to_state)}
                             </span>
                             <div className="h-1 min-w-0 flex-1 rounded-full bg-sunken">
                               <div

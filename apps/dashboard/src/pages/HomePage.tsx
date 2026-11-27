@@ -454,7 +454,7 @@ const TIPS: string[] = [
   "Set a flow's reentry_policy to \"cooldown\" when contacts can legitimately trigger it twice, like a trial that converts then churns and returns.",
   "Approvals are the trust layer. Keep auto-approve off until a flow has drafted emails you would sign your name to.",
   "The Knowledge Base is read at draft time. Add your pricing page and cancellation policy so drafts stop inventing answers.",
-  "At-risk contacts stopped engaging but have not churned. A short, personal re-engagement flow beats a discount blast.",
+  "At-risk contacts stopped engaging but have not gone quiet yet. A short, personal re-engagement flow beats a discount blast.",
   "Critical-class messages bypass the throttle but never fairness. A big tenant cannot starve a small tenant's dunning emails.",
   "Every outgoing email carries List-Unsubscribe headers automatically. Never remove the footer; the drain refuses to send without it.",
   "Rotate ingest keys without downtime: create the new key, deploy it, then revoke the old one from the Integrate page.",
