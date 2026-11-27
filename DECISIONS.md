@@ -152,3 +152,13 @@ Requested by the maintainer so an operator can work a product's approval queue f
 - **Results.** A message that moved on is a tool result (`outcome: conflict` with the status), not a protocol error. Bulk tools report mixed outcomes as a normal result; single-message conflicts and invalid input are `isError` results. `queue_summary` counts `value_gated` and failed generations over the last 7 days (both are final statuses that would otherwise grow without bound).
 - **Actors.** Approve, reject, cancel and edit record `api_key:<key id>` as before. Regenerate, unapprove, exclude and pause/resume have no actor column; the MCP log line (tool, product, key id, outcome, duration, never arguments) is their record for now. Adding columns is left for later.
 - **Later.** OAuth 2.1 for claude.ai custom connectors with per-person attribution, a retention grid tool, notifying a connected client when drafts wait.
+
+## 2026-11-27: Revise a draft with AI
+
+The maintainer found the Approvals action row unusable for what reviewers actually do: tell the AI what is wrong with a draft ("there is no /mcp page") and get a better one. The only input there was the force-action-type field of regenerate. Defaults taken:
+
+- **Through the content worker, not a new LLM call in the API.** Revise is regenerate with an `instruction`. The worker already assembles the full drafting context (context sources, knowledge base, named links, writing rules, language) and runs the post-draft checks (text rules, link allowlist, single CTA). A second, lighter path in the API would drift from it. The cost is latency: the revised draft arrives after the queue job runs, not inside the request; the dashboard follows it with `GET /v1/messages/:id`.
+- **The previous draft is revised, not replaced.** The row keeps its subject and body; the claim returns them with the instruction, and the instruction block (previous subject, body, feedback) is appended to the step's brain instruction after budget truncation and variable rendering, so neither changes it.
+- **Decide and the value gate are skipped** on a revision, as for a forced action: a reviewer asked for it and reviews the result. A choose step keeps the action it picked.
+- **The thread is stored** (`lifecycle_messages.revisions`, append-only JSON with actor and time; `revision_request` while one is being applied), so it survives a reload and records who asked for what. Revise had no actor record before; regenerate without instruction still has none.
+- **Template steps are re-rendered, not revised**; the reasoning says so. Edit the draft or the template instead.

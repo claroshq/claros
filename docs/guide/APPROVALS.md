@@ -6,7 +6,7 @@ Messages of flows with approval mode `require` wait in the queue (status `pendin
 
 ## The queue
 
-`GET /v1/messages` lists the queue (or another status with `?status=`), critical-class flows first (v0.8), then oldest first. Each message carries the flow name and class, the action type, the brain's reasoning, who approved, rejected or edited it, and, when it was edited, the content as drafted (`original`).
+`GET /v1/messages` lists the queue (or another status with `?status=`), critical-class flows first (v0.8), then oldest first. `GET /v1/messages/:id` (unreleased) returns one message in any status, in the same shape. Each message carries the flow name and class, the action type, the brain's reasoning, who approved, rejected or edited it, and, when it was edited, the content as drafted (`original`).
 
 ## Actions
 
@@ -16,6 +16,7 @@ Messages of flows with approval mode `require` wait in the queue (status `pendin
 | Reject | `POST /v1/messages/:id/reject` (bulk: `/bulk/reject`) | `pending_approval` | `rejected` |
 | Edit (v0.8) | `PATCH /v1/messages/:id` `{"subject": "...", "body_markdown": "..."}` | `pending_approval` | unchanged; the drafted version is kept |
 | Regenerate (v0.8) | `POST /v1/messages/:id/regenerate` `{"action_type": "..."}` (optional) | `pending_approval` | `pending_generation` |
+| Revise (unreleased) | `POST /v1/messages/:id/regenerate` `{"instruction": "..."}` | `pending_approval` | `pending_generation`, then back to `pending_approval` |
 | Cancel (v0.8) | `POST /v1/messages/:id/cancel` | `approved` | `cancelled` |
 | Back to review (v0.8) | `POST /v1/messages/:id/unapprove` | `approved` | `pending_approval` |
 | Exclude person (v0.8) | `POST /v1/contacts/:id/exclude` | every unsent message of the person | `cancelled` |
@@ -25,9 +26,10 @@ Every transition is a compare-and-swap on the current status: when the message a
 
 - **Edit** renders the Markdown body to HTML and text like a drafted body. The first edit keeps the drafted subject and body in `original_subject`, `original_body_html` and `original_body_text`; `edited_by` and `edited_at` record the last edit.
 - **Regenerate** sends the message back for a new draft. With `action_type`, the brain drafts that action and skips its decide step (the reviewer took that decision); the value gate still runs.
+- **Revise** (unreleased) asks the AI to rewrite the current draft with your feedback, for example `{"instruction": "There is no /mcp page, link to the docs instead."}` (at most 2,000 characters). The content worker gets the previous subject and body plus the instruction, under the product's usual drafting rules (named links and the link allowlist, writing rules, knowledge base, context data, language). It keeps the action the draft was written for, skips the decide step and the value gate (a reviewer asked for it and reviews it), and puts the revised draft back in the queue. The checks after drafting still apply: a revised draft with a link that is not allowed is blocked like any other draft. Each instruction is kept on the message in `revisions` (`[{"instruction", "by", "at"}]`, oldest first); `revision_request` holds the one being applied and is cleared when the revised draft is written. A step that renders a template is re-rendered, not revised; edit the draft or the template instead.
 - **Exclude person** adds a manual suppression of the person's address and cancels every message not handed to the drain yet (`pending_generation`, `generating`, `awaiting_content`, `pending_approval`, `approved`), in one atomic step. A message already `sending` is left to the drain (the suppression check before the send stops it when it has not left yet). Undo with `DELETE /v1/suppressions/:email`; cancelled messages stay cancelled. The person's page (People) has the same action under **Actions**, **Exclude from mail**.
 
-The dashboard Approvals screen offers all of these. Keyboard: `j`/`k` move through the queue, `a` approves, `r` rejects, `e` edits. Approved messages that have not been sent yet are listed under **Approved, not sent yet** with **Back to review** and **Cancel send**.
+The dashboard Approvals screen offers all of these. Under the draft, **Revise with AI** is a conversation with the drafter: type what should change and press Enter; the draft stays on screen, marked as revising, until the revised one arrives, and the thread shows every instruction given for that draft. **More** holds redraft from scratch (optionally as another action type) and exclude person. Keyboard: `j`/`k` move through the queue, `a` approves, `r` rejects, `e` edits, `/` focuses the revise box. Approved messages that have not been sent yet are listed under **Approved, not sent yet** with **Back to review** and **Cancel send**.
 
 ## Reaching reviewers (v0.8)
 

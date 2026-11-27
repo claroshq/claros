@@ -1074,6 +1074,39 @@ describe("content generation worker", () => {
     });
   });
 
+  describe("revise (reviewer instruction)", () => {
+    it("rewrites the previous draft with the feedback, skips decide and the gate, clears the request", async () => {
+      if (!dbAvailable) return;
+      const contactId = await insertContact("revise");
+      const flowId = await insertFlow("Revise Flow");
+      const membershipId = await insertMembership(contactId, flowId);
+      const messageId = await insertPendingGenerationMessage({ contactId, flowId, membershipId, brainActionType: "tip_trick" });
+      await db.execute(sql`
+        UPDATE lifecycle_messages
+        SET subject = 'Try the MCP server', body_text = 'Open /mcp to start.', revision_request = 'There is no /mcp page. Link to the docs.'
+        WHERE id = ${messageId}
+      `);
+      mockDraft.mockResolvedValue({ ok: true, draft: { subject: "Try the MCP server", body_markdown: "Read the docs to start." } });
+
+      const result = await processContentTick(db, new Date("2026-07-26T10:00:00Z"), 1, [testTenantId]);
+      expect(result.advanced).toBe(1);
+      expect(mockDecide).not.toHaveBeenCalled();
+      expect(mockAssess).not.toHaveBeenCalled();
+      const ctx = mockDraft.mock.calls[0]![1] as { brain_instruction: string; action_type?: string };
+      expect(ctx.brain_instruction).toContain("REVISION REQUEST");
+      expect(ctx.brain_instruction).toContain("PREVIOUS SUBJECT: Try the MCP server");
+      expect(ctx.brain_instruction).toContain("Open /mcp to start.");
+      expect(ctx.brain_instruction).toContain("There is no /mcp page. Link to the docs.");
+
+      const msg = await getMessage(messageId);
+      expect(msg.status).toBe("pending_approval");
+      expect(msg.bodyText).toContain("Read the docs");
+      expect(msg.brainActionType).toBe("tip_trick");
+      expect(msg.revisionRequest).toBeNull();
+      expect(msg.brainReasoning).toContain("reviewer's request");
+    });
+  });
+
   describe("value gate (task 20)", () => {
     it("passing verdict: message reaches pending_approval with content intact", async () => {
       if (!dbAvailable) return;

@@ -21,6 +21,11 @@ export interface WorkerContentClaimedMessage {
   brainActionType: string | null;
   /** Set by a regenerate request that forced the action type (G20): decide is skipped. */
   forcedActionType?: string | null;
+  /** Revise: the reviewer's instruction; the draft below is to be revised, not replaced. */
+  revisionRequest?: string | null;
+  /** The draft on the row when it was claimed (the one under revision). */
+  previousSubject?: string | null;
+  previousBodyText?: string | null;
 }
 
 /** Rendered content written to a message. */

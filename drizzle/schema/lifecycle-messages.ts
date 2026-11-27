@@ -84,6 +84,10 @@ export const lifecycleMessages = pgTable(
     chooseDecision: jsonb("choose_decision"),
     /** G29: the AI-drafted opening line of a fixed template. */
     openingLine: text("opening_line"),
+    /** Reviewer feedback the next draft must apply (revise); cleared once the revised draft is written. */
+    revisionRequest: text("revision_request"),
+    /** Revise thread: [{ instruction, by, at }], oldest first. */
+    revisions: jsonb("revisions"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },

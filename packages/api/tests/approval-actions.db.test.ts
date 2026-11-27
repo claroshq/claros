@@ -69,6 +69,30 @@ describe("approval actions", () => {
     expect((await a.inject({ method: "POST", url: `/v1/messages/${messageId}/regenerate`, headers: bearer(key), payload: { action_type: "Bad Type" } })).statusCode).toBe(400);
   });
 
+  it("revises with an instruction: draft kept, thread recorded, readable by GET /v1/messages/:id", async () => {
+    const { messageId } = await newMessage(db, p.tenantId);
+    const a = await app();
+    jobs.length = 0;
+    const tooLong = await a.inject({ method: "POST", url: `/v1/messages/${messageId}/regenerate`, headers: cookieJson(p.memberCookie), payload: { instruction: "x".repeat(2001) } });
+    expect(tooLong.statusCode).toBe(400);
+    expect((await a.inject({ method: "POST", url: `/v1/messages/${messageId}/regenerate`, headers: cookieJson(p.memberCookie), payload: { instruction: 42 } })).statusCode).toBe(400);
+
+    const res = await a.inject({ method: "POST", url: `/v1/messages/${messageId}/regenerate`, headers: cookieJson(p.memberCookie), payload: { instruction: "  There is no /mcp page.  " } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "pending_generation", instruction: "There is no /mcp page." });
+    expect(await row(messageId)).toMatchObject({ status: "pending_generation", subject: "Hello", revisionRequest: "There is no /mcp page." });
+    expect(jobs).toEqual([{ queue: "claros.process-message", data: { tenant_id: p.tenantId, message_id: messageId } }]);
+
+    const one = await a.inject({ method: "GET", url: `/v1/messages/${messageId}`, headers: bearer(key) });
+    expect(one.statusCode).toBe(200);
+    const m = one.json().message;
+    expect(m).toMatchObject({ id: messageId, status: "pending_generation", revision_request: "There is no /mcp page." });
+    expect(m.revisions).toEqual([{ instruction: "There is no /mcp page.", by: expect.stringMatching(/^user:/), at: expect.any(String) }]);
+
+    expect((await a.inject({ method: "GET", url: "/v1/messages/00000000-0000-4000-8000-000000000000", headers: bearer(key) })).statusCode).toBe(404);
+    expect((await a.inject({ method: "GET", url: "/v1/messages/not-a-uuid", headers: bearer(key) })).statusCode).toBe(404);
+  });
+
   it("cancels and unapproves approved messages; stale clicks 409 without change", async () => {
     const a = await app();
     const c = await newMessage(db, p.tenantId, { status: "approved" });

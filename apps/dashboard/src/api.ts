@@ -493,6 +493,19 @@ export interface Message {
   opening_line?: string | null;
   kb_entry_id?: string | null;
   imported?: boolean;
+  /** Revise: the instruction the next draft is applying (null once applied). */
+  revision_request?: string | null;
+  /** Revise thread, oldest first. */
+  revisions?: MessageRevision[];
+}
+
+/** One reviewer instruction of a revise thread. */
+export interface MessageRevision {
+  instruction: string;
+  /** "user:<id>" or "api_key:<id>". */
+  by: string;
+  /** ISO 8601. */
+  at: string;
 }
 
 export interface MessagesPage {
@@ -572,6 +585,22 @@ export async function rejectMessage(id: string): Promise<void> {
 /** POST /v1/messages/:id/regenerate - back to generation, optionally forcing the action type. */
 export async function regenerateMessage(id: string, actionType?: string): Promise<void> {
   return messageAction(id, "regenerate", actionType ? { action_type: actionType } : {});
+}
+
+/** POST /v1/messages/:id/regenerate with an instruction - the AI revises the current draft. */
+export async function reviseMessage(id: string, instruction: string): Promise<void> {
+  return messageAction(id, "regenerate", { instruction });
+}
+
+/** GET /v1/messages/:id - one message in any status. */
+export async function fetchMessage(id: string): Promise<Message> {
+  const res = await apiFetch(`/v1/messages/${id}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    const err: MessageActionError = { status: res.status, message: body?.error ?? `HTTP ${res.status}` };
+    throw err;
+  }
+  return ((await res.json()) as { message: Message }).message;
 }
 
 /** POST /v1/messages/:id/cancel - approved -> cancelled. */

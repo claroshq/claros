@@ -84,6 +84,30 @@ export interface ContentCandidate {
   brainActionType: string | null;
   /** Action type forced by a regenerate request (G20); decide is skipped when set. */
   forcedActionType?: string | null;
+  /**
+   * Revise: a reviewer's instruction. The draft on the row is rewritten to
+   * apply it; decide and the value gate are skipped (a person is reviewing).
+   */
+  revisionRequest?: string | null;
+  /** The draft under revision (subject and plain text), when revising. */
+  previousSubject?: string | null;
+  previousBodyText?: string | null;
+}
+
+/** The part of the drafting instruction that asks for a revision of the previous draft. */
+export function revisionInstruction(candidate: Pick<ContentCandidate, "revisionRequest" | "previousSubject" | "previousBodyText">): string {
+  return [
+    "REVISION REQUEST: a reviewer read the previous draft of this email and asked for changes.",
+    "Rewrite the previous draft so it applies the reviewer's feedback. Keep what the feedback does not ask to change.",
+    "Every other rule still holds: use only the links and facts given here, and write in the same language.",
+    "",
+    `PREVIOUS SUBJECT: ${candidate.previousSubject ?? ""}`,
+    "PREVIOUS BODY:",
+    candidate.previousBodyText ?? "",
+    "",
+    "REVIEWER FEEDBACK:",
+    candidate.revisionRequest ?? "",
+  ].join("\n");
 }
 
 /** Stats returned by processContentTick for observability. */
@@ -371,7 +395,8 @@ export async function processOneContentMessage(
         flowSlug: info.flowSlug,
         flowClass: info.flowClass,
         contact: { external_id: contact.external_id, email: contact.email, traits: contact.properties ?? {} },
-        forcedActionType: candidate.forcedActionType,
+        // A revision keeps the action the draft was written for.
+        forcedActionType: candidate.forcedActionType ?? (candidate.revisionRequest ? candidate.brainActionType : null),
         now,
         provider: async () => {
           const pr = await resolveTenantProvider(db, candidate.tenantId);
@@ -575,10 +600,22 @@ export async function processOneContentMessage(
       }
     }
 
+    // 3c. Revise: the previous draft and the reviewer's feedback, added after
+    // budget truncation and variable rendering so neither alters them.
+    if (candidate.revisionRequest) {
+      draftCtx = {
+        ...draftCtx,
+        brain_instruction: [draftCtx.brain_instruction, revisionInstruction(candidate)].filter(Boolean).join("\n\n"),
+      };
+    }
+
     // 4. Call decide(), unless a reviewer forced the action type (G20
-    // regenerate): the decision to contact was then taken by a person.
+    // regenerate) or asked for a revision: the decision to contact was then
+    // taken by a person.
     let decision: { action: string; reasoning?: string | null };
-    if (candidate.forcedActionType) {
+    if (candidate.revisionRequest) {
+      decision = { action: "contact", reasoning: `Revised at a reviewer's request: ${candidate.revisionRequest}` };
+    } else if (candidate.forcedActionType) {
       decision = { action: "contact", reasoning: `forced action: ${candidate.forcedActionType}` };
     } else if (chosen) {
       // The choose step already decided to contact with this action.
@@ -687,7 +724,8 @@ export async function processOneContentMessage(
     // for audit). A gate call error leaves the message at 'awaiting_content' for
     // reap - it is NOT marked value_gated. Only a validated 'fail' verdict gates.
     // P5b: settings.brain.assess: enabled false skips the gate; threshold asks for a score.
-    const assessCfg = assessSettings(info?.settings);
+    // A revision skips the gate: the reviewer asked for it and reviews it.
+    const assessCfg = candidate.revisionRequest ? { enabled: false, threshold: null } : assessSettings(info?.settings);
     const assessResult = assessCfg.enabled
       ? await assess(provider, { draftCtx, subject, body_markdown, ...(assessCfg.threshold ? { threshold: assessCfg.threshold } : {}) })
       : ({ ok: true, assessment: { verdict: "pass", reasoning: "value gate disabled" } } as const);
@@ -889,7 +927,9 @@ async function processTemplateMessage(
       bodyText: renderResult.bodyText,
     },
     approvedAt,
-    "template_rendered: " + templateSlug,
+    candidate.revisionRequest
+      ? `template_rendered: ${templateSlug} (a template step is not revised by the AI: edit the draft or the template)`
+      : "template_rendered: " + templateSlug,
     now,
     queueEvents(candidate, targetStatus, now),
   );

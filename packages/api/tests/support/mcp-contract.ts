@@ -444,6 +444,13 @@ export function mcpContract(name: string, open: () => Promise<McpHarness>): void
       expect(h.jobs.some((j) => j.data.message_id === m)).toBe(true);
       expect((await call(k.raw, "regenerate_message", { id: m, action_type: "Bad Type" })).isError).toBe(true);
 
+      const r = await message(p.id);
+      const revised = await call(k.raw, "regenerate_message", { id: r, instruction: "Drop the second link." });
+      expect(revised.result).toMatchObject({ outcome: "done", status: "pending_generation", instruction: "Drop the second link." });
+      expect((await row(r)).revisionRequest).toBe("Drop the second link.");
+      const got = await call(k.raw, "get_message", { id: r });
+      expect(got.result.revisions).toEqual([{ instruction: "Drop the second link.", by: expect.stringMatching(/^api_key:/), at: expect.any(String) }]);
+
       const a = await message(p.id, { status: "approved" });
       expect((await call(k.raw, "unapprove_message", { id: a })).result).toEqual({ id: a, outcome: "done", status: "pending_approval" });
       expect((await row(a)).status).toBe("pending_approval");

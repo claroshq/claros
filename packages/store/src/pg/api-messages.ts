@@ -19,6 +19,7 @@ const LIST_COLUMNS = sql`
   m.approved_by, m.rejected_by, m.edited_by, m.edited_at,
   m.original_subject, m.original_body_html, m.original_body_text, m.forced_action_type,
   m.context_snapshot, m.choose_decision, m.opening_line, m.kb_entry_id, m.imported,
+  m.revision_request, m.revisions,
   f.name AS flow_name, f.flow_class,
   c.email AS contact_email, c.name AS contact_name,
   c.external_id AS contact_external_id
@@ -114,15 +115,21 @@ export function pgApiMessages(db: PgDb): ApiMessagesQueries {
       return moved.length > 0;
     },
 
-    async regenerateMessage({ tenantId, messageId, actionType, now }) {
+    async regenerateMessage({ tenantId, messageId, actionType, revision, now }) {
       const actionSet = actionType
         ? sql`brain_action_type = ${actionType}, forced_action_type = ${actionType},`
-        : sql`forced_action_type = NULL,`;
+        : revision
+          ? sql``
+          : sql`forced_action_type = NULL,`;
+      const revisionSet = revision
+        ? sql`revision_request = ${revision.instruction},
+            revisions = COALESCE(revisions, '[]'::jsonb) || jsonb_build_array(${JSON.stringify(revision)}::jsonb),`
+        : sql`revision_request = NULL,`;
       const moved = await transition(
         tenantId,
         [messageId],
         "pending_approval",
-        sql`status = 'pending_generation', ${actionSet}
+        sql`status = 'pending_generation', ${actionSet} ${revisionSet}
             retry_count = 0, status_reason = NULL,
             edited_by = NULL, edited_at = NULL,
             original_subject = NULL, original_body_html = NULL, original_body_text = NULL,

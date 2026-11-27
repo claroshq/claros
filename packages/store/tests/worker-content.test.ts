@@ -43,6 +43,9 @@ for (const factory of testBackends()) {
           flowStepOrder: expect.any(Number),
           brainActionType: null,
           forcedActionType: null,
+          revisionRequest: null,
+          previousSubject: null,
+          previousBodyText: null,
         });
         expect((await getMessage(b, m1)).status).toBe("generating");
         expect((await getMessage(b, m1)).updatedAt).toEqual(NOW);

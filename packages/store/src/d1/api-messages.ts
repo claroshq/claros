@@ -27,6 +27,7 @@ const LIST_COLUMNS = sql.raw(`
   m.approved_by, m.rejected_by, m.edited_by, m.edited_at,
   m.original_subject, m.original_body_html, m.original_body_text, m.forced_action_type,
   m.context_snapshot, m.choose_decision, m.opening_line, m.kb_entry_id, m.imported,
+  m.revision_request, m.revisions,
   f.name AS flow_name, f.flow_class,
   c.email AS contact_email, c.name AS contact_name,
   c.external_id AS contact_external_id
@@ -55,6 +56,7 @@ function listRow(r: Record<string, unknown>): MessageListRow {
     edited_at: toDate(r.edited_at),
     context_snapshot: parseJson(r.context_snapshot),
     choose_decision: parseJson(r.choose_decision),
+    revisions: parseJson(r.revisions),
     imported: r.imported === 1 || r.imported === true,
   } as MessageListRow;
 }
@@ -215,14 +217,20 @@ export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
       return moved.length > 0;
     },
 
-    async regenerateMessage({ tenantId, messageId, actionType, now }) {
+    async regenerateMessage({ tenantId, messageId, actionType, revision, now }) {
       const moved = await transition(
         tenantId,
         [messageId],
         "pending_approval",
         {
           status: "pending_generation",
-          ...(actionType ? { brainActionType: actionType, forcedActionType: actionType } : { forcedActionType: null }),
+          ...(actionType ? { brainActionType: actionType, forcedActionType: actionType } : revision ? {} : { forcedActionType: null }),
+          ...(revision
+            ? {
+                revisionRequest: revision.instruction,
+                revisions: sql`json_insert(COALESCE(revisions, '[]'), '$[#]', json(${JSON.stringify(revision)}))`,
+              }
+            : { revisionRequest: null }),
           retryCount: 0,
           statusReason: null,
           editedBy: null,

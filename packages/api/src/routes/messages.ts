@@ -12,7 +12,9 @@
  *   POST  /v1/messages/bulk/approve  approve many pending_approval messages at once
  *   POST  /v1/messages/bulk/reject   reject many pending_approval messages at once
  *   PATCH /v1/messages/:id           edit subject/body while pending_approval (G20)
+ *   GET   /v1/messages/:id           one message, any status (with its revise thread)
  *   POST  /v1/messages/:id/regenerate  new draft, optionally forcing the action type (G20)
+ *                                      or revising the draft with a reviewer instruction
  *   POST  /v1/messages/:id/cancel      approved -> cancelled (G20)
  *   POST  /v1/messages/:id/unapprove   approved -> pending_approval (G20)
  *
@@ -42,6 +44,7 @@ import {
   isUuid,
   listMessagesPage,
   parseBulkIds,
+  REVISION_MAX_CHARS,
   regenerateMessage,
   rejectMessage,
   rejectMessages,
@@ -98,6 +101,8 @@ type MessageListRow = Record<string, unknown> & {
   opening_line?: string | null;
   kb_entry_id?: string | null;
   imported?: boolean | null;
+  revision_request?: string | null;
+  revisions?: unknown;
 };
 
 function serializeMessageRow(r: MessageListRow, previewHtml: string | null = null) {
@@ -150,6 +155,8 @@ function serializeMessageRow(r: MessageListRow, previewHtml: string | null = nul
     opening_line: r.opening_line ?? null,
     kb_entry_id: r.kb_entry_id ?? null,
     imported: r.imported === true,
+    revision_request: r.revision_request ?? null,
+    revisions: Array.isArray(r.revisions) ? r.revisions : [],
     contact: {
       email: r.contact_email,
       name: r.contact_name,
@@ -250,6 +257,24 @@ export default function messagesRoutes() {
    * If the message does not exist or belongs to another tenant: 404.
    * If the message is in a different non-approved status: 409 Conflict.
    */
+  /**
+   * GET /v1/messages/:id
+   *
+   * One message in any status, serialized like the list (preview included),
+   * with its revise thread. The dashboard follows a revision with it while
+   * the message is away from pending_approval. 404 for another product's.
+   */
+  router.get("/:id", "member", allowAdminKey("messages"), async (c) => {
+    const db: Db = c.var.db;
+    const tenantId = c.var.tenant!.id;
+    const messageId = c.req.param("id")!;
+    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
+    const row = await storeFor(db).apiMessages.getMessage({ tenantId, messageId });
+    if (!row) return c.json({ error: "Message not found." }, 404);
+    const previews = await buildPreviews(db, tenantId, [row]);
+    return c.json({ message: serializeMessageRow(row, previews.get(row.id) ?? null) });
+  });
+
   router.post("/:id/approve", "member", allowAdminKey("messages"), async (c) => {
     const r = await approveMessage(serviceContext(c), c.req.param("id")!);
     if (r.kind === "ok") return c.json({ message: "Message approved.", id: r.id, status: "approved" });
@@ -343,21 +368,39 @@ export default function messagesRoutes() {
   /**
    * POST /v1/messages/:id/regenerate (G20)
    *
-   * Body (optional): { action_type }. Sends a pending_approval message back
-   * to content generation (pending_generation). With action_type the brain
-   * drafts that action and skips its decide step. 409 when stale.
+   * Body (optional): { action_type, instruction }. Sends a pending_approval
+   * message back to content generation (pending_generation). With
+   * action_type the brain drafts that action and skips its decide step.
+   * With instruction (revise) the brain rewrites the current draft to apply
+   * the reviewer's feedback, skips decide and the value gate, and the
+   * instruction joins the message's revise thread. 409 when stale.
    */
   router.post("/:id/regenerate", "member", allowAdminKey("messages"), async (c) => {
     const messageId = c.req.param("id")!;
     if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
-    const raw = (c.var.body as { action_type?: unknown } | null | undefined)?.action_type;
+    const body = c.var.body as { action_type?: unknown; instruction?: unknown } | null | undefined;
+    const raw = body?.action_type;
     if (raw !== undefined && raw !== null && (typeof raw !== "string" || !ACTION_TYPE_RE.test(raw))) {
       return c.json({ error: "'action_type' must match [a-z0-9_]{1,64}." }, 400);
     }
     const actionType = typeof raw === "string" ? raw : null;
-    const r = await regenerateMessage(serviceContext(c), messageId, actionType);
+    const rawInstruction = body?.instruction;
+    if (rawInstruction !== undefined && rawInstruction !== null && typeof rawInstruction !== "string") {
+      return c.json({ error: "'instruction' must be a string." }, 400);
+    }
+    const instruction = typeof rawInstruction === "string" && rawInstruction.trim() ? rawInstruction.trim() : null;
+    if (instruction && instruction.length > REVISION_MAX_CHARS) {
+      return c.json({ error: `'instruction' is longer than ${REVISION_MAX_CHARS} characters.` }, 400);
+    }
+    const r = await regenerateMessage(serviceContext(c), messageId, actionType, instruction);
     if (r.kind !== "ok") return actionError(c, r, "regenerate");
-    return c.json({ message: "Message sent back for a new draft.", id: messageId, status: "pending_generation", forced_action_type: actionType });
+    return c.json({
+      message: instruction ? "Message sent back for a revision." : "Message sent back for a new draft.",
+      id: messageId,
+      status: "pending_generation",
+      forced_action_type: actionType,
+      instruction,
+    });
   });
 
   /**

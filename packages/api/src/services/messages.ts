@@ -167,14 +167,31 @@ export async function editMessage(
 
 export const ACTION_TYPE_RE = /^[a-z0-9_]{1,64}$/;
 
+/** Longest reviewer instruction a revise accepts. */
+export const REVISION_MAX_CHARS = 2000;
+
 /**
  * pending_approval -> pending_generation for a new draft, then a generation
- * job. With actionType the brain drafts that action and skips decide. The
- * LLM runs later in the content worker, never here.
+ * job. With actionType the brain drafts that action and skips decide. With
+ * instruction (revise) the brain rewrites the current draft to apply the
+ * reviewer's feedback; the instruction is kept in the message's revise
+ * thread. The LLM runs later in the content worker, never here.
  */
-export async function regenerateMessage(ctx: ServiceContext, id: string, actionType: string | null): Promise<MessageActionResult> {
+export async function regenerateMessage(
+  ctx: ServiceContext,
+  id: string,
+  actionType: string | null,
+  instruction: string | null = null,
+): Promise<MessageActionResult> {
   if (!isUuid(id)) return { kind: "not_found", id };
-  const ok = await storeFor(ctx.db).apiMessages.regenerateMessage({ tenantId: ctx.tenant.id, messageId: id, actionType, now: new Date() });
+  const now = new Date();
+  const ok = await storeFor(ctx.db).apiMessages.regenerateMessage({
+    tenantId: ctx.tenant.id,
+    messageId: id,
+    actionType,
+    ...(instruction ? { revision: { instruction, by: actorOf(ctx.tenant), at: now.toISOString() } } : {}),
+    now,
+  });
   if (!ok) return settle(ctx, id, null);
   if (ctx.enqueue) {
     await ctx.enqueue(

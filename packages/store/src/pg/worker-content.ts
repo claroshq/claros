@@ -53,6 +53,9 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         flow_step_order: number | null;
         brain_action_type: string | null;
         forced_action_type: string | null;
+        revision_request: string | null;
+        subject: string | null;
+        body_text: string | null;
       }>(sql`
         WITH candidates AS (
           SELECT lm.id
@@ -67,9 +70,11 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
           UPDATE lifecycle_messages
           SET status = 'generating', updated_at = ${now}
           WHERE id IN (SELECT id FROM candidates)
-          RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type
+          RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type,
+            revision_request, subject, body_text
         )
-        SELECT id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type
+        SELECT id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type,
+          revision_request, subject, body_text
         FROM claimed
       `);
 
@@ -82,6 +87,9 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
         flowStepOrder: row.flow_step_order,
         brainActionType: row.brain_action_type,
         forcedActionType: row.forced_action_type,
+        revisionRequest: row.revision_request,
+        previousSubject: row.subject,
+        previousBodyText: row.body_text,
       }));
     },
 
@@ -162,6 +170,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
           body_html = ${bodyHtml},
           body_text = ${bodyText},
           approved_at = ${approvedAt},
+          revision_request = NULL,
           updated_at = ${now}
         WHERE id = ${messageId}
           AND status = 'awaiting_content'
@@ -180,6 +189,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
           approved_at = ${approvedAt},
           brain_reasoning = ${reasoning},
           status_reason = NULLIF(status_reason, 'llm_budget'),
+          revision_request = NULL,
           updated_at = ${now}
         WHERE id = ${messageId}
           AND status = 'generating'
