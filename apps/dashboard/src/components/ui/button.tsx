@@ -36,10 +36,10 @@ const buttonVariants = cva(
         link: "text-accent-text underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline",
       },
       size: {
-        default: "h-10 px-4",
-        sm: "h-9 px-3.5 text-small",
-        lg: "h-11 px-6",
-        icon: "h-10 w-10",
+        default: "h-9 px-4",
+        sm: "h-8 px-3 text-small",
+        lg: "h-10 px-6",
+        icon: "h-9 w-9",
       },
     },
     defaultVariants: {

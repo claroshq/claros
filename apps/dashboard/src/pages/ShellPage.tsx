@@ -164,7 +164,7 @@ export default function ShellPage({ me }: ShellPageProps) {
         {NAV_GROUPS.map((group) => (
           <div
             key={group.items[0]!.path}
-            className={group.heading ? "mt-6 space-y-[3px]" : "space-y-[3px]"}
+            className={group.heading ? "mt-5 space-y-0.5" : "space-y-0.5"}
           >
             {group.heading && (
               <p className="mb-2 px-3 text-micro font-semibold uppercase leading-4 tracking-[0.06em] text-subtle-foreground">
@@ -179,7 +179,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   <span
                     key={item.path}
                     aria-disabled="true"
-                    className="flex h-10 items-center gap-3 rounded-md px-3 text-body text-subtle-foreground select-none"
+                    className="flex h-9 items-center gap-3 rounded-md px-3 text-body text-subtle-foreground select-none"
                   >
                     <Icon size={18} strokeWidth={1.75} />
                     {item.label}
@@ -195,7 +195,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   to={item.path}
                   className={({ isActive }) =>
                     [
-                      "group flex h-10 items-center gap-3 rounded-md px-3 text-body transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "group flex h-9 items-center gap-3 rounded-md px-3 text-body transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "is-active bg-selected font-semibold text-foreground"
                         : "font-medium text-muted-foreground hover:bg-sunken hover:text-foreground",
@@ -203,7 +203,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   }
                 >
                   <Icon
-                    size={18}
+                    size={17}
                     strokeWidth={1.75}
                     className="shrink-0 text-subtle-foreground group-hover:text-foreground group-[.is-active]:text-accent-text"
                   />
@@ -289,7 +289,7 @@ export default function ShellPage({ me }: ShellPageProps) {
           <BrandLockup markSize={22} />
         </header>
 
-        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-7 sm:px-8 sm:py-10 lg:px-12 lg:py-12 2xl:px-16 2xl:py-14">
+        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-7 sm:px-8 sm:py-10 lg:px-12 lg:py-10 2xl:px-16 2xl:py-12">
           <Outlet />
         </main>
       </div>

@@ -119,7 +119,7 @@ export default function SettingsLayout() {
                       to={item.to}
                       className={({ isActive }) =>
                         cn(
-                          "flex h-10 items-center gap-3 whitespace-nowrap rounded-md px-3 text-body transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "flex h-9 items-center gap-3 whitespace-nowrap rounded-md px-3 text-body transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           isActive
                             ? "bg-selected font-semibold text-foreground"
                             : "font-medium text-muted-foreground hover:bg-card hover:text-foreground",

@@ -136,7 +136,7 @@ function Panel({
 }) {
   return (
     <section className={cn("rounded-lg border border-border bg-card shadow-card", className)}>
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3.5">
         <CardTitle>{title}</CardTitle>
         {link && <CardLink to={link.to}>{link.label}</CardLink>}
       </div>
@@ -187,7 +187,7 @@ interface AttentionItem {
 function AttentionRow({ item }: { item: AttentionItem }) {
   const Icon = item.icon;
   return (
-    <li className="flex items-start gap-4 px-6 py-5">
+    <li className="flex items-start gap-4 px-6 py-4">
       <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", TONE[item.tone])}>
         <Icon size={20} strokeWidth={1.75} />
       </span>
@@ -353,7 +353,7 @@ function NeedsYou({ items, isLoading }: { items: AttentionItem[]; isLoading: boo
   }
   if (items.length === 0) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-card px-6 py-4">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-card px-6 py-3.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
           <Check size={15} strokeWidth={2.5} />
         </span>
@@ -366,7 +366,7 @@ function NeedsYou({ items, isLoading }: { items: AttentionItem[]; isLoading: boo
   }
   return (
     <section className="rounded-lg border border-border bg-card shadow-card">
-      <div className="border-b border-border px-6 py-4">
+      <div className="border-b border-border px-6 py-3.5">
         <CardTitle>
           Needs you
           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-soft px-1.5 text-micro font-bold tabular-nums text-danger">
@@ -693,7 +693,7 @@ function RecentActivity() {
                 <Link
                   to={item.to}
                   className={cn(
-                    "flex gap-3.5 px-6 py-3.5 transition-colors duration-(--dur-fast) hover:bg-hover",
+                    "flex gap-3.5 px-6 py-3 transition-colors duration-(--dur-fast) hover:bg-hover",
                     item.group ? "items-start" : "items-center",
                   )}
                 >
@@ -708,7 +708,7 @@ function RecentActivity() {
                   <span className={cn("min-w-0 flex-1", item.group && "pt-1.5")}>
                     <span className="block truncate text-body leading-6">{item.text}</span>
                     {item.group && (
-                      <span className="mt-2 block space-y-1 border-l-2 border-border pl-3.5 text-small text-muted-foreground">
+                      <span className="mt-2 block space-y-1 rounded-md border border-border bg-sunken px-3 py-2 text-small text-muted-foreground">
                         {item.group.slice(0, GROUP_LIST_MAX).map((title, i) => (
                           <span key={i} className="block truncate">{title}</span>
                         ))}
@@ -794,7 +794,7 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
                 const waiting = pendingPerFlow.get(flow.id) ?? 0;
                 return (
                   <tr key={flow.id} className="border-b border-border last:border-0 hover:bg-hover">
-                    <td className="px-6 py-3.5">
+                    <td className="px-6 py-3">
                       <Link
                         to={`/flows/${flow.id}/edit`}
                         className="block truncate font-medium text-foreground hover:text-accent-text"
@@ -812,7 +812,7 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
                     <td className="hidden px-3 py-3.5 text-right text-body tabular-nums text-muted-foreground sm:table-cell">
                       {stats?.opened ?? 0}
                     </td>
-                    <td className="px-6 py-3.5 text-right">
+                    <td className="px-6 py-3 text-right">
                       {waiting > 0 ? (
                         <Link to="/approvals" className="text-body font-semibold tabular-nums text-accent-text">
                           {waiting}
@@ -826,7 +826,7 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
               })}
             </tbody>
           </table>
-          {others && <p className="border-t border-border px-6 py-3.5 text-small text-muted-foreground">Also {others}.</p>}
+          {others && <p className="border-t border-border px-6 py-3 text-small text-muted-foreground">Also {others}.</p>}
         </>
       )}
     </Panel>
@@ -1115,7 +1115,7 @@ export function HomeOverview({
 
       {setupBanner}
 
-      <div className="space-y-10">
+      <div className="space-y-8">
         <NeedsYou items={items} isLoading={isLoading} />
         <ThisWeek />
         <div className="grid gap-5 lg:grid-cols-3">

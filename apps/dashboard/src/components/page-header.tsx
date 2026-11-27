@@ -21,7 +21,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, subtitle, actions }: PageHeaderProps) {
   return (
-    <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
       <div className="min-w-0">
         {eyebrow && (
           <p className="text-caption font-semibold uppercase leading-4 tracking-[0.07em] text-accent-text">

@@ -4,7 +4,7 @@
  * Density rules:
  *   - Header cells are micro labels: 12px, 600, uppercase, tracked out,
  *     muted. They are furniture, not content, so they step back.
- *   - Body cells are 15px on a ~52px row rhythm (py-3.5).
+ *   - Body cells are text-body on a ~44px row rhythm (py-2.5).
  *   - Row separators are 1px --border; no zebra striping. Zebra stripes add
  *     a surface per row and still fail to outperform whitespace plus hover.
  *   - A table standing on the page canvas is framed: a white card with the
@@ -85,7 +85,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-11 px-3 text-left align-middle text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "h-10 px-3 text-left align-middle text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground [&:has([role=checkbox])]:pr-0",
       className,
     )}
     {...props}
@@ -100,7 +100,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "px-3 py-3.5 align-middle [&:has([role=checkbox])]:pr-0",
+      "px-3 py-2.5 align-middle [&:has([role=checkbox])]:pr-0",
       className,
     )}
     {...props}

@@ -238,18 +238,18 @@
   /* TYPE SCALE: the one standard for the product (and, one step up at the
    * reading sizes, for claros.org). Components use these names only, never
    * text-[Npx]. Values follow common product-UI practice (Material 3,
-   * Carbon): 15px body on a 22px line, a ~1.07-1.25 step ratio, weights
+   * Carbon, and the 14px body of Stripe and Linear): 14px body on a 20px line, a ~1.07-1.25 step ratio, weights
    * 400 / 500 / 600 (700 only for Bricolage titles). See BRAND.md section 4. */
-  --text-micro: 12px;    --text-micro--line-height: 16px;
-  --text-caption: 13px;  --text-caption--line-height: 18px;
-  --text-small: 14px;    --text-small--line-height: 20px;
-  --text-body: 15px;     --text-body--line-height: 22px;
-  --text-lead: 16px;     --text-lead--line-height: 24px;
-  --text-title: 17px;    --text-title--line-height: 24px;
-  --text-heading: 20px;  --text-heading--line-height: 28px;
-  --text-headline: 24px; --text-headline--line-height: 30px;
-  --text-display: 28px;  --text-display--line-height: 34px;
-  --text-page: 32px;     --text-page--line-height: 38px;
+  --text-micro: 11px;    --text-micro--line-height: 16px;
+  --text-caption: 12px;  --text-caption--line-height: 16px;
+  --text-small: 13px;    --text-small--line-height: 18px;
+  --text-body: 14px;     --text-body--line-height: 20px;
+  --text-lead: 15px;     --text-lead--line-height: 22px;
+  --text-title: 16px;    --text-title--line-height: 22px;
+  --text-heading: 18px;  --text-heading--line-height: 24px;
+  --text-headline: 22px; --text-headline--line-height: 28px;
+  --text-display: 24px;  --text-display--line-height: 30px;
+  --text-page: 28px;     --text-page--line-height: 34px;
 
   --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
   --font-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", system-ui, sans-serif;
