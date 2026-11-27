@@ -25,7 +25,7 @@ Event  ->  Contact  ->  Flow membership  ->  Message
 ```
 
 - **Events** arrive through the ingestion API (`/v1/track`, `/v1/identify`, `/v1/batch`, Segment-compatible). See [INGESTION.md](./INGESTION.md).
-- **Contacts** are the people. One contact per `userId` (stored as `external_id`). Email addresses are optional and unique when present. Every contact has a lifecycle state (`signed_up`, `activated`, `engaged`, `at_risk`, `dormant`, `churned`, `resurrected`) that the engine maintains from their activity.
+- **Contacts** are the people. One contact per `userId` (stored as `external_id`). Email addresses are optional and unique when present. Every contact has a lifecycle state (`signed_up`, `activated`, `engaged`, `at_risk`, `dormant`, `gone_quiet`, `resurrected`) that the engine maintains from their activity. `gone_quiet` was called `churned`; see [Activity and lifecycle states](#activity-and-lifecycle-states).
 - **Flows** are the automations. A flow has a trigger, a compiled plan of steps, and policies. When a contact matches a trigger, the engine enrolls them: they become a flow membership.
 - **Messages** are individual emails. Each step a membership reaches creates exactly one message, which is generated, optionally approved, and sent.
 
@@ -100,7 +100,9 @@ You can mix approaches across flows, and reference your own templates (`@templat
 
 ## Activity and lifecycle states
 
-The engine moves each contact through the lifecycle states from their activity. An event that counts as activity sets the contact's last seen time, counts toward their engagement depth, and moves `activated`, `at_risk` and `dormant` contacts to `engaged` and `churned` contacts to `resurrected`. The 15-minute scan moves contacts down when there has been no activity for long enough (`engaged` to `at_risk` to `dormant` to `churned`). `signed_up` becomes `activated` when the contact has sent every event in `activation_events`. The thresholds are the `lifecycle` settings in [CONFIG.md](./CONFIG.md#settings).
+The engine moves each contact through the lifecycle states from their activity. An event that counts as activity sets the contact's last seen time, counts toward their engagement depth, and moves `activated`, `at_risk` and `dormant` contacts to `engaged` and `gone_quiet` contacts to `resurrected`. The 15-minute scan moves contacts down when there has been no activity for long enough (`engaged` to `at_risk` to `dormant` to `gone_quiet`). `signed_up` becomes `activated` when the contact has sent every event in `activation_events`. The thresholds are the `lifecycle` settings in [CONFIG.md](./CONFIG.md#settings).
+
+Lifecycle states describe product activity only, not billing. A contact who still pays but has sent no activity for `gone_quiet_days` is `gone_quiet`; the plan or payment status lives in their traits. That is why `churned` was renamed `gone_quiet`. `churned` is deprecated: until the next minor release the API still stores and returns `churned`, and `gone_quiet` is accepted everywhere a state is given as input (flow triggers, conditions, exits, `GET /v1/contacts?lifecycle_state=`) and means the same state. The dashboard already shows `gone_quiet`. The next minor release stores and returns `gone_quiet` and keeps accepting `churned` as input.
 
 By default every `track` and `identify` call counts as activity. When some of your events are not real usage (a background sync, an event your backend sends on the user's behalf), list the ones that are in `settings.lifecycle.engagement_events` (v0.8.4):
 

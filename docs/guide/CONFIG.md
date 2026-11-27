@@ -111,8 +111,8 @@ The response lists each change:
       "slug": "winback",
       "name": "Win back",
       "topic": "lifecycle",
-      "trigger": { "type": "lifecycle_transition", "to": "churned" },
-      "prompt": "Two emails to churned users, 3 days apart. Stop when they come back.",
+      "trigger": { "type": "lifecycle_transition", "to": "gone_quiet" },
+      "prompt": "Two emails to users who went quiet, 3 days apart. Stop when they come back.",
       "status": "paused"
     }
   ],
@@ -151,10 +151,10 @@ Step `condition` (proceed only if true), step `exit_condition`, plan `exit_condi
 | `{"trait": {"key": "plan_tier", "op": "eq", "value": "pro"}}` | The contact's identify trait matches. `op`: `eq`, `neq`, `in` (value is a list), `exists`, `not_exists`, `gt`, `lt` (numbers or ISO dates). `key` may be a dotted path (`company.size`). |
 | `{"history": {"flow": "welcome", "within": "7d", "op": "none"}}` | Messages sent to the contact in this product, filtered by `flow` (slug), `action_type` or `topic` (slug), in the last `within` (`30m`, `12h`, `7d`; absent = ever): `none`, `any`, or `count_lt` with `value` |
 | `{"first_contact": true}` | Nothing was ever sent to the contact in this product (`false`: something was) |
-| `{"lifecycle_state": "engaged"}`, `{"lifecycle_state_not": "churned"}` | The contact's lifecycle state is (is not) this one |
+| `{"lifecycle_state": "engaged"}`, `{"lifecycle_state_not": "gone_quiet"}` | The contact's lifecycle state is (is not) this one |
 | `{"date_unchanged": true}` | Step conditions only: the date a date-triggered membership was enrolled for still equals the contact's date trait (always true on other flows) |
 | `{"event_since_step": "feature_used"}` | Step conditions only: the event happened since the contact reached the step |
-| `{"event": "paid"}`, `{"lifecycle_state_change": {"to": "churned"}}` | Plan exits only: the event happened, or the contact moved to the state, during the enrollment |
+| `{"event": "paid"}`, `{"lifecycle_state_change": {"to": "gone_quiet"}}` | Plan exits only: the event happened, or the contact moved to the state, during the enrollment |
 
 Combine them with `{"all": [...]}` (every one holds), `{"any": [...]}` (at least one) and `{"not": ...}`, nested up to 4 deep. A list where a single condition is expected means `all`: `"condition": [a, b]` is `{"all": [a, b]}`. Plan `exit_conditions` stay a list of which any entry exits the flow; an entry may be a combinator.
 
@@ -181,7 +181,7 @@ An exit condition `{"trait": {"key": "icp_configured", "op": "eq", "value": true
 | `date_traits` | Identify traits that hold dates (`["trial_ends_at", "first_paid_at"]`), indexed for date triggers. Changing the list re-indexes the product's contacts |
 | `activation_events` | Stored for the features that read them |
 | `analytics` | The [analytics sink](WEBHOOKS.md#analytics-sink): `sink` (`statsraven`, `webhook`), `endpoint`, `site_key`, `secret`; `null` removes it |
-| `lifecycle` | Lifecycle thresholds: `activation_events`, `activation_window_days`, `natural_frequency_days`, `at_risk_missed_intervals`, `dormant_days`, `churned_days` (greater than `dormant_days`), `engagement_depth_window_days`, `power_user_percentile` (0 to 1), and `engagement_events` (v0.8.4): the `track` event names that count as activity. Unset or empty, every `track` and `identify` counts; set, only the listed `track` events update last seen, count toward engagement depth and move contacts back to `engaged` (or `churned` to `resurrected`), and `identify` does not count. Every event is still stored and still triggers flows and activation (see [Activity](CONCEPTS.md#activity-and-lifecycle-states)). Unset keys keep their defaults |
+| `lifecycle` | Lifecycle thresholds: `activation_events`, `activation_window_days`, `natural_frequency_days`, `at_risk_missed_intervals`, `dormant_days`, `gone_quiet_days` (greater than `dormant_days`; `churned_days` is its deprecated name and still works, set only one), `engagement_depth_window_days`, `power_user_percentile` (0 to 1), and `engagement_events` (v0.8.4): the `track` event names that count as activity. Unset or empty, every `track` and `identify` counts; set, only the listed `track` events update last seen, count toward engagement depth and move contacts back to `engaged` (or `gone_quiet` to `resurrected`), and `identify` does not count. Every event is still stored and still triggers flows and activation (see [Activity](CONCEPTS.md#activity-and-lifecycle-states)). Unset keys keep their defaults |
 | `llm_daily_token_budget` | LLM tokens the product may use per UTC day; over it, drafts wait (`status_reason = llm_budget`, see [Approvals](APPROVALS.md#value-gate-and-llm-budget-v08)). `null` removes the budget |
 | `approvals` | `{"daily_digest": true}`: one mail a day to the product's owners with the drafts waiting for approval (see [Approvals](APPROVALS.md#reaching-reviewers-v08)) |
 

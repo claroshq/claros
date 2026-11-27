@@ -82,6 +82,8 @@ const LIFECYCLE_STATES = [
   "dormant",
   "churned",
   "resurrected",
+  // New name of churned (deprecation window: the filter maps it to churned).
+  "gone_quiet",
 ] as const;
 
 const ENGAGEMENT_DEPTHS = ["power", "regular", "casual", "minimal"] as const;
@@ -253,7 +255,7 @@ export default function contactsRoutes() {
    *                           it belongs to the sort it came from (400 otherwise)
    *   ?sort=<key>             created (default) | name | joined | last_seen
    *   ?order=<dir>            asc | desc; default desc, name asc
-   *   ?lifecycle_state=<s>    exact match on the seven lifecycle states
+   *   ?lifecycle_state=<s>    exact match on the seven lifecycle states (gone_quiet = churned)
    *   ?engagement_depth=<d>   exact match on power|regular|casual|minimal
    *   ?payment_status=<p>     exact match on free|trial|paid|past_due|cancelled
    *   ?letter=<l>             display name starts with a-z, or "#" for anything else
@@ -334,7 +336,7 @@ export default function contactsRoutes() {
     }
 
     const filter = {
-      lifecycleState: q.lifecycle_state ?? null,
+      lifecycleState: q.lifecycle_state === "gone_quiet" ? "churned" : (q.lifecycle_state ?? null),
       engagementDepth: q.engagement_depth ?? null,
       paymentStatus: q.payment_status ?? null,
       searchPattern: search,

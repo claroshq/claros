@@ -18,6 +18,7 @@ import {
 import { ConditionListEditor } from "./condition-builder.js";
 import { Input } from "./ui/input.js";
 import { Select } from "./ui/select.js";
+import { stateName, storedState } from "../lib/lifecycle-names.js";
 
 export const TRIGGER_TYPE_OPTIONS: ReadonlyArray<{ value: TriggerType; label: string; description: string }> = [
   { value: "lifecycle_transition", label: "Lifecycle transition", description: "Starts when a contact moves between lifecycle states, e.g. engaged to at_risk." },
@@ -45,7 +46,7 @@ const RECENCY_BUCKET_OPTIONS = [
 const LABEL = "mb-1.5 block text-[14px] font-medium text-foreground";
 const HINT = "mt-1.5 text-[13px] text-muted-foreground";
 
-function CheckList({ options, selected, onChange, disabled, idPrefix }: { options: readonly string[]; selected: string[]; onChange: (v: string[]) => void; disabled?: boolean; idPrefix: string }) {
+function CheckList({ options, selected, onChange, disabled, idPrefix, label = (o) => o }: { options: readonly string[]; selected: string[]; onChange: (v: string[]) => void; disabled?: boolean; idPrefix: string; label?: (o: string) => string }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1.5">
       {options.map((o) => (
@@ -58,7 +59,7 @@ function CheckList({ options, selected, onChange, disabled, idPrefix }: { option
             onChange={(e) => onChange(e.target.checked ? [...selected, o] : selected.filter((x) => x !== o))}
             className="rounded border-input"
           />
-          <span className="font-mono text-[13px]">{o}</span>
+          <span className="font-mono text-[13px]">{label(o)}</span>
         </label>
       ))}
     </div>
@@ -125,16 +126,16 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="tc-from" className={LABEL}>From state (optional)</label>
-              <Select id="tc-from" value={str("from")} disabled={disabled} onChange={(e) => set({ from: e.target.value || undefined })}>
+              <Select id="tc-from" value={storedState(str("from"))} disabled={disabled} onChange={(e) => set({ from: e.target.value || undefined })}>
                 <option value="">Any state</option>
-                {LIFECYCLE_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {LIFECYCLE_STATES.map((s) => <option key={s} value={s}>{stateName(s)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor="tc-to" className={LABEL}>To state</label>
-              <Select id="tc-to" value={str("to")} disabled={disabled} onChange={(e) => set({ to: e.target.value })}>
+              <Select id="tc-to" value={storedState(str("to"))} disabled={disabled} onChange={(e) => set({ to: e.target.value })}>
                 <option value="">Select state</option>
-                {LIFECYCLE_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {LIFECYCLE_STATES.map((s) => <option key={s} value={s}>{stateName(s)}</option>)}
               </Select>
             </div>
           </div>
@@ -167,7 +168,7 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
               <>
                 <div>
                   <p className={LABEL}>Lifecycle states</p>
-                  <CheckList options={LIFECYCLE_STATES} selected={(c.lifecycle_states as string[]) ?? []} onChange={(v) => set({ lifecycle_states: v })} disabled={disabled} idPrefix="seg-state" />
+                  <CheckList options={LIFECYCLE_STATES} selected={((c.lifecycle_states as string[]) ?? []).map(storedState)} onChange={(v) => set({ lifecycle_states: v })} disabled={disabled} idPrefix="seg-state" label={stateName} />
                 </div>
                 <div>
                   <p className={LABEL}>Engagement depth (optional)</p>

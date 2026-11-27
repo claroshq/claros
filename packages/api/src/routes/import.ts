@@ -46,6 +46,7 @@ import {
   tenureBucket,
   upcomingTimeTransitions,
   type LifecycleConfig,
+  storedLifecycleState,
 } from "@claros/core";
 import { storeFor, type EventImportItem, type HistoryImportItem, type LifecycleReplayUpdate } from "@claros/store";
 import type { Db } from "../plugins/db.js";
@@ -245,7 +246,7 @@ export default function importRoutes() {
         if (isSegmentTriggerConfig(cfg)) {
           if (firstSeenAt && lastSeenAt && cfg.tenure_bucket === tenureBucket(firstSeenAt, now) && cfg.recency_bucket === recencyBucket(lastSeenAt, now, config.natural_frequency_days)) segmentMatches[k]!++;
         } else if (isLifecycleSegmentTriggerConfig(cfg)) {
-          const stateOk = !cfg.lifecycle_states || cfg.lifecycle_states.includes(state);
+          const stateOk = !cfg.lifecycle_states || cfg.lifecycle_states.map(storedLifecycleState).includes(state);
           const depthOk = !cfg.engagement_depths || (contact.engagementDepth !== null && cfg.engagement_depths.includes(contact.engagementDepth));
           if (stateOk && depthOk) segmentMatches[k]!++;
         }

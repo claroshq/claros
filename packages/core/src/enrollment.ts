@@ -7,6 +7,7 @@
 
 import { createHash } from "node:crypto";
 import type { FlowTriggerType, ReentryPolicy, FlowClass } from "./flow/index.js";
+import { storedLifecycleState } from "./lifecycle/states.js";
 
 // ---------------------------------------------------------------------------
 // Trigger matching
@@ -58,8 +59,10 @@ export function matchesLifecycleTransition(
   const config = flow.triggerConfig as Record<string, unknown> | null;
   if (!config || typeof config !== "object") return false;
   // `from` is optional: absent (or null), any previous state matches.
-  const fromOk = config.from === undefined || config.from === null || config.from === "" || config.from === fromState;
-  return fromOk && config.to === toState;
+  // State names may use gone_quiet, the new name of churned.
+  const name = (v: unknown) => (typeof v === "string" ? storedLifecycleState(v) : v);
+  const fromOk = config.from === undefined || config.from === null || config.from === "" || name(config.from) === fromState;
+  return fromOk && name(config.to) === toState;
 }
 
 /** The event names of an event trigger config: `event` is one name or a list. */

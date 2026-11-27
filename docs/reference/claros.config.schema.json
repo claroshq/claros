@@ -215,6 +215,11 @@
               "minimum": 1,
               "maximum": 3650
             },
+            "gone_quiet_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650
+            },
             "churned_days": {
               "type": "integer",
               "minimum": 1,
@@ -630,11 +635,12 @@
                     "at_risk",
                     "dormant",
                     "churned",
-                    "resurrected"
+                    "resurrected",
+                    "gone_quiet"
                   ]
                 },
                 "minItems": 1,
-                "maxItems": 7
+                "maxItems": 8
               },
               "engagement_depths": {
                 "type": "array",

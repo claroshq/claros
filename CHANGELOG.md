@@ -6,6 +6,14 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Lifecycle: `gone_quiet` is the new name of the `churned` state, and `gone_quiet_days` the new name of `churned_days`. The state means no product activity for that many days; it says nothing about billing, and a paying customer can be in it, which "churned" did not convey. `gone_quiet` is accepted wherever a state is given (flow trigger `from`/`to`, segment `lifecycle_states`, `lifecycle_state`, `lifecycle_state_not`, `lifecycle_state_change` exits, `GET /v1/contacts?lifecycle_state=`) and means the same state; `gone_quiet_days` wins over `churned_days`, and giving both with different values is a config error. The dashboard shows `gone_quiet` everywhere, with a tooltip on the state badge. Stored and returned values are still `churned` in this release. Same on Postgres and D1; no migration. See [Activity and lifecycle states](docs/guide/CONCEPTS.md#activity-and-lifecycle-states).
+
+### Deprecated
+
+- The lifecycle state name `churned` and the setting `churned_days`. The next minor release migrates stored data to `gone_quiet` and the API returns `gone_quiet` in `lifecycle_state`, transitions, analytics and imports; check integrations that compare `lifecycle_state` with `"churned"`. `churned` and `churned_days` stay accepted as input.
+
 ### Fixed
 
 - CLI: `claros deploy` and `claros upgrade` run from a repository checkout always ship the current build (`npm run build`), never an `assets/` folder left over from an earlier `npm pack`, which could deploy an older Worker and dashboard under the new version number. A published package refuses assets stamped for another version.

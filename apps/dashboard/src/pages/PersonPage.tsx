@@ -34,6 +34,7 @@ import { Badge, type BadgeVariant } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
 import { cn } from "../lib/utils.js";
+import { stateHint, stateName } from "../lib/lifecycle-names.js";
 
 function stateVariant(state: ContactDetail["lifecycle_state"]): BadgeVariant {
   switch (state) {
@@ -137,7 +138,7 @@ function transitionCause(metadata: Record<string, unknown> | null): string | nul
 function StateChip({ state }: { state: string }) {
   return (
     <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[12px] text-foreground">
-      {state}
+      {stateName(state)}
     </span>
   );
 }
@@ -330,8 +331,8 @@ export default function PersonPage() {
           <h1 className="font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground">
             {displayName}
           </h1>
-          <Badge variant={stateVariant(contact.lifecycle_state)}>
-            {contact.lifecycle_state}
+          <Badge variant={stateVariant(contact.lifecycle_state)} title={stateHint(contact.lifecycle_state)}>
+            {stateName(contact.lifecycle_state)}
           </Badge>
           {contact.engagement_depth && (
             <span className="text-[14px] text-muted-foreground">
