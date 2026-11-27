@@ -10,9 +10,11 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 - Lifecycle: the API returns `gone_quiet` instead of `churned` wherever it returns a lifecycle state: `lifecycle_state` in `GET /v1/contacts`, `GET /v1/contacts/:id` and the retention-grid contacts, `from_state`/`to_state` in the contact timeline and lifecycle analytics, `distribution` and `per_state` in `GET /v1/analytics/lifecycle`, and the state counts of `POST /v1/import/lifecycle`. The state was deprecated under this name in 0.8.14. Integrations that compare a state with `"churned"` must compare with `"gone_quiet"`. `churned` and `churned_days` are still accepted as input and mean the same state and threshold, so flows and config written with them keep working. The AI drafting context names the state `gone_quiet` too. The database keeps storing `churned` (no migration; see DECISIONS.md 2026-11-27), so an upgrade and a rollback change no data. Same on Postgres and D1. See [Activity and lifecycle states](docs/guide/CONCEPTS.md#activity-and-lifecycle-states).
 
+## [0.8.15] - 2026-11-27
+
 ### Fixed
 
-- Dashboard: the sidebar product switcher lines up with the logo and the navigation (dot on the same axis as the mark and the nav icons) and has a subtle border so it reads as a select.
+- Dashboard: the sidebar product switcher lines up with the logo and the navigation (dot on the same axis as the mark and the nav icons) and has a subtle border so it reads as a select. No migrations.
 
 ## [0.8.14] - 2026-11-27
 
@@ -343,7 +345,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.14...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.15...HEAD
+[0.8.15]: https://github.com/claroshq/claros/compare/v0.8.14...v0.8.15
 [0.8.14]: https://github.com/claroshq/claros/compare/v0.8.13...v0.8.14
 [0.8.13]: https://github.com/claroshq/claros/compare/v0.8.12...v0.8.13
 [0.8.12]: https://github.com/claroshq/claros/compare/v0.8.11...v0.8.12
