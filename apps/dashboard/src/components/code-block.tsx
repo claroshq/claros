@@ -21,7 +21,7 @@ export function CodeBlock({ id, code }: { id: string; code: string }) {
   const { copied, copy } = useCopy();
   return (
     <div className="relative">
-      <pre className="overflow-x-auto rounded-md bg-sunken p-4 font-mono text-[14px] leading-5 text-foreground">
+      <pre className="overflow-x-auto rounded-md bg-sunken p-4 font-mono text-small leading-5 text-foreground">
         {code}
       </pre>
       <Button

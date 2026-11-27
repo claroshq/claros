@@ -40,14 +40,14 @@ export interface EditorEnv {
   disabled: boolean;
 }
 
-const LABEL = "mb-1.5 block text-[16px] font-medium text-foreground";
-const HINT = "mt-1.5 text-[15px] leading-relaxed text-muted-foreground";
+const LABEL = "mb-1.5 block text-body font-medium text-foreground";
+const HINT = "mt-1.5 text-small leading-relaxed text-muted-foreground";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section className="border-t border-border pt-5">
-      <h3 className="text-[17px] font-semibold text-foreground">{title}</h3>
-      {hint && <p className="mt-0.5 text-[15px] text-muted-foreground">{hint}</p>}
+      <h3 className="text-lead font-semibold text-foreground">{title}</h3>
+      {hint && <p className="mt-0.5 text-small text-muted-foreground">{hint}</p>}
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -64,7 +64,7 @@ function Segmented({ value, options, onChange, disabled, label }: { value: strin
           disabled={disabled || o.disabled}
           title={o.title}
           onClick={() => onChange(o.value)}
-          className={`rounded-md px-3 py-1.5 text-[16px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${value === o.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`rounded-md px-3 py-1.5 text-body font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${value === o.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           {o.label}
         </button>
@@ -81,7 +81,7 @@ function Chip({ children, onClick, disabled, title, mono }: { children: React.Re
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`rounded-md border border-border bg-card px-2 py-0.5 text-[15px] text-foreground transition-colors hover:border-border-strong disabled:opacity-50 ${mono ? "font-mono text-[14px]" : ""}`}
+      className={`rounded-md border border-border bg-card px-2 py-0.5 text-small text-foreground transition-colors hover:border-border-strong disabled:opacity-50 ${mono ? "font-mono text-caption" : ""}`}
     >
       {children}
     </button>
@@ -179,7 +179,7 @@ function FixedCopyEditor({
   return (
     <div className="@container space-y-4">
       {sharedWith > 0 && (
-        <p className="rounded-md border border-warning bg-warning-soft px-3 py-2 text-[15px] text-foreground" role="note">
+        <p className="rounded-md border border-warning bg-warning-soft px-3 py-2 text-small text-foreground" role="note">
           This copy is also used by {sharedWith === 1 ? "another flow" : `${sharedWith} other flows`}. Changing it here changes it there too.
         </p>
       )}
@@ -236,7 +236,7 @@ function FixedCopyEditor({
             placeholder={"<p>Hi {{contact.first_name|there}},</p>\n<p>One short paragraph on why this email exists.</p>\n<p>One clear next step.</p>"}
           />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-[15px] text-muted-foreground">Insert:</span>
+            <span className="mr-1 text-small text-muted-foreground">Insert:</span>
             <Chip disabled={d} onClick={() => insert("{{contact.first_name|there}}")} title="{{contact.first_name|there}}">first name</Chip>
             <Chip disabled={d} onClick={() => insert("{{tenant.name}}")} title="{{tenant.name}}">product name</Chip>
             <Chip disabled={d} onClick={() => insert("{{traits.plan|}}")} title="Any trait you send with identify: {{traits.<key>|fallback}}">a trait</Chip>
@@ -248,25 +248,25 @@ function FixedCopyEditor({
             ))}
           </div>
           <p className={HINT}>
-            HTML. <code className="font-mono text-[14px]">{"{{contact.first_name|there}}"}</code> uses &quot;there&quot; when a contact has no first name.
-            {env.links.length === 0 && <> Named links (Settings, Config as code: <code className="font-mono text-[14px]">settings.links</code>) appear here as insert buttons.</>}
+            HTML. <code className="font-mono text-caption">{"{{contact.first_name|there}}"}</code> uses &quot;there&quot; when a contact has no first name.
+            {env.links.length === 0 && <> Named links (Settings, Config as code: <code className="font-mono text-caption">settings.links</code>) appear here as insert buttons.</>}
           </p>
         </div>
         {unknown.length > 0 && (
-          <p className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-[15px] text-foreground" role="alert">
+          <p className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-small text-foreground" role="alert">
             Claros does not know {unknown.map((v) => `{{${v}}}`).join(", ")}, so this email would fail to render. Use contact.first_name, contact.last_name, contact.email, tenant.name, traits.&lt;key&gt;, links.&lt;name&gt; or event.&lt;key&gt;.
           </p>
         )}
         {unknown.length === 0 && noFallback.length > 0 && (
-          <p className="text-[15px] text-muted-foreground" role="note">
-            No fallback for {noFallback.map((v) => `{{${v}}}`).join(", ")}: a contact without that value does not get this email. Add one with <code className="font-mono text-[14px]">|</code>, as in <code className="font-mono text-[14px]">{"{{contact.first_name|there}}"}</code>.
+          <p className="text-small text-muted-foreground" role="note">
+            No fallback for {noFallback.map((v) => `{{${v}}}`).join(", ")}: a contact without that value does not get this email. Add one with <code className="font-mono text-caption">|</code>, as in <code className="font-mono text-caption">{"{{contact.first_name|there}}"}</code>.
           </p>
         )}
         <details className="group">
-          <summary className="cursor-pointer text-[15px] font-medium text-accent-text">Plain-text version (optional)</summary>
+          <summary className="cursor-pointer text-small font-medium text-accent-text">Plain-text version (optional)</summary>
           <Textarea
             aria-label="Plain-text body"
-            className="mt-2 text-[16px]"
+            className="mt-2 text-body"
             rows={6}
             value={copy.body_text ?? ""}
             disabled={d}
@@ -279,12 +279,12 @@ function FixedCopyEditor({
             <Button type="button" size="sm" variant="outline" disabled={d || drafting || !env.canDraftWithAi} onClick={() => void draftWithAi()}>
               {drafting ? "Drafting..." : copy.body_html.trim() ? "Improve with AI" : "Draft with AI"}
             </Button>
-            <span className="text-[15px] text-muted-foreground">
+            <span className="text-small text-muted-foreground">
               {env.canDraftWithAi ? "Fills the subject and body for you to edit. Nothing is saved until you save." : "Save the flow first; the AI drafts from the saved sequence."}
             </span>
           </div>
         )}
-        {draftError && <p className="text-[15px] text-danger" role="alert">{draftError}</p>}
+        {draftError && <p className="text-small text-danger" role="alert">{draftError}</p>}
       </div>
       )}
       {view !== "code" && (
@@ -304,13 +304,13 @@ function FixedCopyEditor({
 function LinkPicker({ value, onChange, links, disabled }: { value: unknown; onChange: (v: string[] | undefined) => void; links: EditorEnv["links"]; disabled: boolean }) {
   const selected = Array.isArray(value) ? (value as string[]) : [];
   if (links.length === 0) {
-    return <p className="text-[15px] text-muted-foreground">No named links yet. Add them under <code className="font-mono text-[14px]">settings.links</code> in your config document so the AI can link to real pages.</p>;
+    return <p className="text-small text-muted-foreground">No named links yet. Add them under <code className="font-mono text-caption">settings.links</code> in your config document so the AI can link to real pages.</p>;
   }
   return (
     <div>
       <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         {links.map((l) => (
-          <label key={l.name} className="flex items-center gap-1.5 text-[16px] text-foreground" title={l.url}>
+          <label key={l.name} className="flex items-center gap-1.5 text-body text-foreground" title={l.url}>
             <input
               type="checkbox"
               checked={selected.includes(l.name)}
@@ -320,7 +320,7 @@ function LinkPicker({ value, onChange, links, disabled }: { value: unknown; onCh
                 onChange(next.length > 0 ? next : undefined);
               }}
             />
-            <span className="font-mono text-[14px]">{l.name}</span>
+            <span className="font-mono text-small">{l.name}</span>
           </label>
         ))}
       </div>
@@ -336,7 +336,7 @@ function AiEditor({ step, onStep, env, stepIndex }: { step: Json; onStep: (patch
   return (
     <div className="space-y-4">
       {!env.hasLlm && (
-        <p className="rounded-md border border-warning bg-warning-soft px-3 py-2 text-[15px] text-foreground" role="note">
+        <p className="rounded-md border border-warning bg-warning-soft px-3 py-2 text-small text-foreground" role="note">
           No LLM provider is configured for this product, so this email cannot be drafted. Add one in Settings, LLM, or switch to &quot;I write it&quot;.
         </p>
       )}
@@ -347,12 +347,12 @@ function AiEditor({ step, onStep, env, stepIndex }: { step: Json; onStep: (patch
           value={instruction}
           disabled={d}
           rows={6}
-          className="text-[17px] leading-relaxed"
+          className="text-lead leading-relaxed"
           onChange={(e) => onStep({ brain_instruction: e.target.value })}
           placeholder="Who is this person at this moment, the one thing you want them to do, and the tone. For example: They signed up yesterday and have not created a project. Name the one step to a first result and link to setup. Three short paragraphs, no feature list."
         />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[15px] text-muted-foreground">Start from an example:</span>
+          <span className="mr-1 text-small text-muted-foreground">Start from an example:</span>
           {INSTRUCTION_EXAMPLES.map((ex) => (
             <Chip key={ex.label} disabled={d} title={ex.text} onClick={() => onStep({ brain_instruction: ex.text })}>
               {ex.label}
@@ -360,15 +360,15 @@ function AiEditor({ step, onStep, env, stepIndex }: { step: Json; onStep: (patch
           ))}
         </div>
         <p className={HINT}>
-          The AI writes a separate draft for each contact from this instruction, their traits and recent events, and your knowledge base. Variables work here too, for example <code className="font-mono text-[14px]">{"{{traits.plan}}"}</code>.
+          The AI writes a separate draft for each contact from this instruction, their traits and recent events, and your knowledge base. Variables work here too, for example <code className="font-mono text-caption">{"{{traits.plan}}"}</code>.
         </p>
       </div>
       <div className="space-y-4 rounded-lg border border-border bg-sunken p-4">
-        <p className="text-[16px] font-semibold text-foreground">What the AI may use</p>
+        <p className="text-body font-semibold text-foreground">What the AI may use</p>
         <div>
           <p className={LABEL}>Links</p>
           <LinkPicker value={step.allowed_links} onChange={(v) => onStep({ allowed_links: v })} links={env.links} disabled={d} />
-          <label className="mt-2 flex items-center gap-2 text-[16px] text-foreground">
+          <label className="mt-2 flex items-center gap-2 text-body text-foreground">
             <input type="checkbox" checked={step.single_cta === true} disabled={d} onChange={(e) => onStep({ single_cta: e.target.checked ? true : undefined })} />
             At most one link (footer and unsubscribe aside)
           </label>
@@ -419,7 +419,7 @@ function ChooseEditor({ step, onStep, env, stepIndex }: { step: Json; onStep: (p
         <Textarea id={`instr-${stepIndex}`} rows={5} value={typeof step.brain_instruction === "string" ? step.brain_instruction : ""} disabled={d} onChange={(e) => onStep({ brain_instruction: e.target.value || undefined })} />
         <p className={HINT}>Only the candidates whose conditions hold are offered; the AI picks one{step.allow_none === false ? "" : " or none"}.</p>
       </div>
-      <label className="flex items-center gap-2 text-[16px] text-foreground">
+      <label className="flex items-center gap-2 text-body text-foreground">
         <input type="checkbox" checked={step.allow_none !== false} disabled={d} onChange={(e) => onStep({ allow_none: e.target.checked ? undefined : false })} />
         The AI may decide to send nothing
       </label>
@@ -470,8 +470,8 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-[22px] font-semibold text-foreground">Email {index + 1}</h2>
-          <p className="mt-0.5 text-[16px] text-muted-foreground">
+          <h2 className="text-heading font-semibold text-foreground">Email {index + 1}</h2>
+          <p className="mt-0.5 text-body text-muted-foreground">
             {isSchedule ? `Sent on slot ${String(step.order)} of the date schedule` : `Sent ${describeDelay(step.delay)} ${index === 0 ? "after the contact enters" : `after email ${index}`}`}
           </p>
         </div>
@@ -498,14 +498,14 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
       </div>
 
       {problems.length > 0 && (
-        <ul className="list-disc rounded-md border border-danger bg-danger-soft py-2 pl-8 pr-3 text-[15px] text-foreground" role="alert">
+        <ul className="list-disc rounded-md border border-danger bg-danger-soft py-2 pl-8 pr-3 text-small text-foreground" role="alert">
           {problems.map((p) => <li key={p}>{p}</li>)}
         </ul>
       )}
 
       <Section title="Who writes it">
         {mode === "choose" ? (
-          <p className="text-[16px] text-muted-foreground">The AI picks one of several candidate emails for each contact (a choose step).</p>
+          <p className="text-body text-muted-foreground">The AI picks one of several candidate emails for each contact (a choose step).</p>
         ) : (
           <>
             <Segmented
@@ -531,7 +531,7 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
           <FixedCopyEditor step={step} copy={copy} onStep={onStep} onCopy={onCopy} env={env} sharedWith={sharedWith} stepIndex={index} />
         )}
         {mode === "fixed" && !copy && (
-          <p className="text-[16px] text-muted-foreground">Loading the copy of template <code className="font-mono text-[14px]">{String(step.template_ref)}</code>...</p>
+          <p className="text-body text-muted-foreground">Loading the copy of template <code className="font-mono text-small">{String(step.template_ref)}</code>...</p>
         )}
         {mode === "ai" && <AiEditor step={step} onStep={onStep} env={env} stepIndex={index} />}
         {mode === "choose" && <ChooseEditor step={step} onStep={onStep} env={env} stepIndex={index} />}
@@ -539,12 +539,12 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
 
       <Section title="When">
         {isSchedule ? (
-          <p className="text-[16px] text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             A date schedule sends on its own dates (the trigger&apos;s offsets). Email {index + 1} serves slot {String(step.order)} and every later slot until the next email takes over.
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-[17px] text-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-lead text-foreground">
               <span>Send</span>
               <Input
                 aria-label="Wait"
@@ -562,7 +562,7 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
               </Select>
               <span>{index === 0 ? "after the contact enters" : `after email ${index} (${previousDelayLabel})`}</span>
             </div>
-            <label className="mt-3 flex items-start gap-2 text-[16px] text-foreground">
+            <label className="mt-3 flex items-start gap-2 text-body text-foreground">
               <input
                 type="checkbox"
                 className="mt-1"
@@ -572,7 +572,7 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
               />
               <span>
                 Send at once, even outside the send window
-                <span className="block text-[15px] text-muted-foreground">For mail the contact is waiting for: a welcome, a receipt, a payment problem.</span>
+                <span className="block text-small text-muted-foreground">For mail the contact is waiting for: a welcome, a receipt, a payment problem.</span>
               </span>
             </label>
           </>
@@ -584,7 +584,7 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
       </Section>
 
       <details className="border-t border-border pt-5">
-        <summary className="cursor-pointer text-[17px] font-semibold text-foreground">Sender and advanced</summary>
+        <summary className="cursor-pointer text-lead font-semibold text-foreground">Sender and advanced</summary>
         <div className="mt-4 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -615,7 +615,7 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
           <ConditionListEditor label="Leave the flow after this email if" value={toConditionList(step.exit_condition)} onChange={(l) => onStep({ exit_condition: l.length > 0 ? l : undefined })} scope="step" disabled={d} />
           <div>
             <label className={LABEL} htmlFor={`action-${index}`}>Internal name</label>
-            <Input id={`action-${index}`} className="max-w-xs font-mono text-[15px]" value={typeof step.action_type === "string" ? step.action_type : ""} disabled={d} onChange={(e) => onStep({ action_type: e.target.value })} />
+            <Input id={`action-${index}`} className="max-w-xs font-mono text-body" value={typeof step.action_type === "string" ? step.action_type : ""} disabled={d} onChange={(e) => onStep({ action_type: e.target.value })} />
             <p className={HINT}>Shown in analytics and the sent log, and used by send-history conditions (&quot;was never sent welcome&quot;).</p>
           </div>
         </div>

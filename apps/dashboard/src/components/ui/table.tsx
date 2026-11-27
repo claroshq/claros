@@ -31,7 +31,7 @@ const Table = React.forwardRef<
     <table
       ref={ref}
       className={cn(
-        "w-full text-[16px]",
+        "w-full text-body",
         framed
           ? "[&_td]:first:pl-5 [&_td]:last:pr-5 [&_th]:first:pl-5 [&_th]:last:pr-5"
           : "[&_td]:first:pl-0 [&_td]:last:pr-0 [&_th]:first:pl-0 [&_th]:last:pr-0",
@@ -85,7 +85,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-11 px-3 text-left align-middle text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "h-11 px-3 text-left align-middle text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground [&:has([role=checkbox])]:pr-0",
       className,
     )}
     {...props}

@@ -38,17 +38,17 @@ function BrandPanel() {
           <path d="M16 12 H128" className="stroke-border-strong" strokeWidth="1.5" strokeDasharray="1 6" strokeLinecap="round" />
           <circle cx="139" cy="12" r="6" className="stroke-accent" strokeWidth="2" />
         </svg>
-        <p className="font-display text-[40px] font-bold leading-[46px] tracking-[-0.02em] text-foreground">
+        <p className="font-display text-page font-bold tracking-[-0.02em] text-foreground">
           Lifecycle email,
           <br />
           compiled.
         </p>
-        <p className="mt-4 max-w-[320px] text-[17px] leading-relaxed text-muted-foreground">
+        <p className="mt-4 max-w-[320px] text-lead leading-relaxed text-muted-foreground">
           Describe the flow in plain language. Claros compiles it into a
           deterministic plan, drafts the emails, and waits for your approval.
         </p>
       </div>
-      <p className="text-[15px] text-subtle-foreground">
+      <p className="text-small text-subtle-foreground">
         Open-source lifecycle email for SaaS.
       </p>
     </div>
@@ -112,18 +112,18 @@ export default function LoginPage() {
 
           {sent ? (
             <div>
-              <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.02em] text-foreground">
+              <h1 className="text-headline font-semibold leading-8 tracking-[-0.02em] text-foreground">
                 Check your inbox
               </h1>
-              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
+              <p className="mt-3 text-lead leading-relaxed text-muted-foreground">
                 A login link has been sent to{" "}
                 <strong className="font-medium text-foreground">{email}</strong>.
                 Click it to sign in. The link expires in 10 minutes.
               </p>
-              <p className="mt-6 text-[17px] text-muted-foreground">
+              <p className="mt-6 text-lead text-muted-foreground">
                 No email? Check your spam folder, or{" "}
                 <button
-                  className="cursor-pointer border-none bg-transparent p-0 text-[17px] text-accent-text underline underline-offset-4"
+                  className="cursor-pointer border-none bg-transparent p-0 text-lead text-accent-text underline underline-offset-4"
                   onClick={() => { setSent(false); setLocalError(null); }}
                 >
                   try again
@@ -133,16 +133,16 @@ export default function LoginPage() {
             </div>
           ) : (
             <div>
-              <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.02em] text-foreground">
+              <h1 className="text-headline font-semibold leading-8 tracking-[-0.02em] text-foreground">
                 Sign in
               </h1>
-              <p className="mt-2 text-[17px] text-muted-foreground">
+              <p className="mt-2 text-lead text-muted-foreground">
                 Enter your email to receive a login link.
               </p>
 
               {sessionExpired && !errorMessage && (
                 <p
-                  className="mt-6 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[17px] text-foreground"
+                  className="mt-6 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-lead text-foreground"
                   role="status"
                 >
                   Your session has expired. Sign in again to continue.
@@ -151,7 +151,7 @@ export default function LoginPage() {
 
               {errorMessage && (
                 <p
-                  className="mt-6 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[17px] text-foreground"
+                  className="mt-6 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-lead text-foreground"
                   role="alert"
                 >
                   {errorMessage}
@@ -160,7 +160,7 @@ export default function LoginPage() {
 
               <form onSubmit={handleSubmit} noValidate className="mt-8">
                 <label
-                  className="mb-1.5 block text-[16px] font-medium text-foreground"
+                  className="mb-1.5 block text-body font-medium text-foreground"
                   htmlFor="email"
                 >
                   Email

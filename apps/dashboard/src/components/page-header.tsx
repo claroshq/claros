@@ -24,15 +24,15 @@ export function PageHeader({ eyebrow, title, subtitle, actions }: PageHeaderProp
     <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-[14px] font-semibold uppercase leading-4 tracking-[0.07em] text-accent-text">
+          <p className="text-caption font-semibold uppercase leading-4 tracking-[0.07em] text-accent-text">
             {eyebrow}
           </p>
         )}
-        <h1 className="mt-2 font-display text-[32px] leading-[38px] font-bold tracking-[-0.03em] text-foreground sm:text-[40px] sm:leading-[46px]">
+        <h1 className="mt-2 font-display text-page font-bold tracking-[-0.03em] text-foreground">
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-2.5 text-[18px] leading-[26px] text-muted-foreground">
+          <p className="mt-2.5 text-title text-muted-foreground">
             {subtitle}
           </p>
         )}

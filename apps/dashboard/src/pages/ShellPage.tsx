@@ -167,7 +167,7 @@ export default function ShellPage({ me }: ShellPageProps) {
             className={group.heading ? "mt-6 space-y-[3px]" : "space-y-[3px]"}
           >
             {group.heading && (
-              <p className="mb-2 px-3 text-[12px] font-semibold uppercase leading-4 tracking-[0.06em] text-subtle-foreground">
+              <p className="mb-2 px-3 text-micro font-semibold uppercase leading-4 tracking-[0.06em] text-subtle-foreground">
                 {group.heading}
               </p>
             )}
@@ -179,7 +179,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   <span
                     key={item.path}
                     aria-disabled="true"
-                    className="flex h-10 items-center gap-3 rounded-md px-3 text-[16px] text-subtle-foreground select-none"
+                    className="flex h-10 items-center gap-3 rounded-md px-3 text-body text-subtle-foreground select-none"
                   >
                     <Icon size={18} strokeWidth={1.75} />
                     {item.label}
@@ -195,7 +195,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   to={item.path}
                   className={({ isActive }) =>
                     [
-                      "group flex h-10 items-center gap-3 rounded-md px-3 text-[16px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "group flex h-10 items-center gap-3 rounded-md px-3 text-body transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "is-active bg-selected font-semibold text-foreground"
                         : "font-medium text-muted-foreground hover:bg-sunken hover:text-foreground",
@@ -211,7 +211,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   {badge && (
                     <span
                       aria-label={`${badge} waiting`}
-                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-[14px] font-semibold tabular-nums text-accent-text"
+                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-caption font-semibold tabular-nums text-accent-text"
                     >
                       {badge}
                     </span>
@@ -226,12 +226,12 @@ export default function ShellPage({ me }: ShellPageProps) {
       {/* Footer: appearance, identity, session */}
       <div className="shrink-0 space-y-3 border-t border-border px-3 pb-4 pt-4">
         <div className="flex items-center justify-between px-3">
-          <span className="text-[15px] font-medium text-muted-foreground">Theme</span>
+          <span className="text-small font-medium text-muted-foreground">Theme</span>
           <ThemeToggle />
         </div>
         <div className="flex items-center gap-1 rounded-md pl-3">
           <span
-            className="min-w-0 flex-1 truncate text-[16px] text-muted-foreground"
+            className="min-w-0 flex-1 truncate text-body text-muted-foreground"
             title={me.user.email}
           >
             {me.user.email}

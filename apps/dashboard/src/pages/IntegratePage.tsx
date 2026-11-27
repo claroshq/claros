@@ -70,7 +70,7 @@ function SectionHeading({
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent-text">
         <Icon size={16} strokeWidth={1.5} />
       </span>
-      <h2 className="text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
+      <h2 className="text-heading font-semibold tracking-[-0.015em] text-foreground">
         {title}
       </h2>
     </div>
@@ -102,32 +102,32 @@ function FirstEventCard() {
           <Skeleton className="h-4 w-40" />
         </div>
       ) : waiting ? (
-        <p className="mt-3 text-[16px] text-muted-foreground">
+        <p className="mt-3 text-body text-muted-foreground">
           Send an event with the snippet or curl command below. This panel
           checks every few seconds and confirms the moment one arrives.
         </p>
       ) : (
         <div className="mt-4 space-y-2">
-          <p className="text-[16px] text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             Latest event received. Your integration is working.
           </p>
-          <dl className="grid grid-cols-[96px_1fr] gap-y-1.5 text-[16px]">
+          <dl className="grid grid-cols-[96px_1fr] gap-y-1.5 text-body">
             <dt className="text-muted-foreground">Type</dt>
-            <dd className="font-mono text-[14px] text-foreground">{status.last_event!.type}</dd>
+            <dd className="font-mono text-small text-foreground">{status.last_event!.type}</dd>
             {status.last_event!.event_name && (
               <>
                 <dt className="text-muted-foreground">Event</dt>
-                <dd className="font-mono text-[14px] text-foreground">{status.last_event!.event_name}</dd>
+                <dd className="font-mono text-small text-foreground">{status.last_event!.event_name}</dd>
               </>
             )}
             <dt className="text-muted-foreground">User</dt>
-            <dd className="font-mono text-[14px] text-foreground">{status.last_event!.user_id}</dd>
+            <dd className="font-mono text-small text-foreground">{status.last_event!.user_id}</dd>
             <dt className="text-muted-foreground">Received</dt>
-            <dd className="font-mono text-[14px] text-foreground">
+            <dd className="font-mono text-small text-foreground">
               {formatTimestamp(status.last_event!.received_at)}
             </dd>
             <dt className="text-muted-foreground">Last 24h</dt>
-            <dd className="font-mono text-[14px] text-foreground">
+            <dd className="font-mono text-small text-foreground">
               {status.events_last_24h} {status.events_last_24h === 1 ? "event" : "events"}
             </dd>
           </dl>
@@ -181,14 +181,14 @@ function SnippetCard({ publishableKey, rawKey, onCreateKey, creating }: {
   return (
     <section className="rounded-lg border border-border bg-card shadow-card p-6">
       <SectionHeading icon={Code2} title="Browser snippet" />
-      <p className="mt-1 text-[16px] text-muted-foreground">
+      <p className="mt-1 text-body text-muted-foreground">
         Paste this into your site's HTML, before the closing body tag. It
         identifies a user and tracks an event.
       </p>
 
       {publishableKey === null ? (
         <div className="mt-4 rounded-md border border-dashed border-border-strong p-4">
-          <p className="text-[16px] text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             You need a publishable key first. Publishable keys are safe to
             embed in a web page: they can write events and nothing else.
           </p>
@@ -202,19 +202,19 @@ function SnippetCard({ publishableKey, rawKey, onCreateKey, creating }: {
           <div className="mt-4">
             <CodeBlock id="snippet" code={snippet} />
           </div>
-          <p className="mt-3 text-[16px] text-muted-foreground">
+          <p className="mt-3 text-body text-muted-foreground">
             The snippet sends events without a CORS preflight and survives
             page unloads. It can only write events, never read your data.
           </p>
           {!rawKey && publishableKey && (
-            <p className="mt-2 text-[16px] text-muted-foreground">
+            <p className="mt-2 text-body text-muted-foreground">
               Paste the publishable key you saved at creation (
-              <span className="font-mono text-[14px]">{publishableKey.prefix}...</span>
+              <span className="font-mono text-small">{publishableKey.prefix}...</span>
               ) into the init line, or create a new publishable key below to
               get a snippet with the key already in it.
             </p>
           )}
-          <p className="mt-5 text-[16px] font-medium text-foreground">
+          <p className="mt-5 text-body font-medium text-foreground">
             Or send one with curl
           </p>
           <div className="mt-2">
@@ -241,15 +241,15 @@ function CreatedKeyBanner({ created, onDismiss }: { created: CreatedIngestKey; o
     <div ref={ref} role="status" className="rounded-md border border-success bg-success-soft p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[16px] font-medium text-foreground">
+          <p className="text-body font-medium text-foreground">
             {created.kind === "publishable" ? "Publishable" : created.kind === "admin" ? "Admin" : "Secret"} key created
           </p>
-          <p className="mt-1 text-[16px] text-foreground">
+          <p className="mt-1 text-body text-foreground">
             Copy it now. For your security it is stored as a hash and will
             never be shown again.
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <code className="rounded-md bg-card px-3 py-2 font-mono text-[14px] text-foreground">
+            <code className="rounded-md bg-card px-3 py-2 font-mono text-small text-foreground">
               {created.key}
             </code>
             <Button variant="secondary" size="sm" onClick={() => copy("newkey", created.key)}>
@@ -302,11 +302,11 @@ function OriginsEditor({ apiKey }: { apiKey: IngestKey }) {
     <div className="py-2">
       <label
         htmlFor={`origins-${apiKey.id}`}
-        className="mb-1.5 block text-[16px] font-medium text-foreground"
+        className="mb-1.5 block text-body font-medium text-foreground"
       >
         Allowed origins
       </label>
-      <p className="mb-2 text-[16px] text-muted-foreground">
+      <p className="mb-2 text-body text-muted-foreground">
         One origin per line, for example https://app.example.com. Browsers on
         other origins are rejected. Leave empty to allow any origin.
       </p>
@@ -316,10 +316,10 @@ function OriginsEditor({ apiKey }: { apiKey: IngestKey }) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="https://app.example.com"
-        className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-[14px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-small text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       {update.isError && (
-        <p className="mt-2 text-[16px] text-danger">
+        <p className="mt-2 text-body text-danger">
           {update.error instanceof Error ? update.error.message : "Could not save origins."}
         </p>
       )}
@@ -380,7 +380,7 @@ function KeysCard({
       <div className="flex items-start justify-between">
         <div>
           <SectionHeading icon={KeyRound} title="API keys" />
-          <p className="mt-1 text-[16px] text-muted-foreground">
+          <p className="mt-1 text-body text-muted-foreground">
             Publishable keys go in web pages. Secret keys go in your backend
             and never in browser code.
           </p>
@@ -424,13 +424,13 @@ function KeysCard({
 
       {adminOpen && (
         <div className="mt-4 rounded-md border border-border bg-secondary p-4">
-          <p className="text-[16px] text-foreground">
+          <p className="text-body text-foreground">
             Admin keys call the management API (config, suppressions, approvals)
             from your backend or CI. Owners only. Pick the scopes it needs.
           </p>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
             {ADMIN_KEY_SCOPES.map((scope) => (
-              <label key={scope} className="flex items-center gap-2 text-[16px] text-foreground">
+              <label key={scope} className="flex items-center gap-2 text-body text-foreground">
                 <input
                   type="checkbox"
                   checked={adminScopes.has(scope)}
@@ -444,7 +444,7 @@ function KeysCard({
                   }
                   className="h-4 w-4 accent-(--accent-deep)"
                 />
-                <span className="font-mono text-[14px]">{scope}</span>
+                <span className="font-mono text-small">{scope}</span>
               </label>
             ))}
           </div>
@@ -453,7 +453,7 @@ function KeysCard({
               value={adminLabel}
               onChange={(e) => setAdminLabel(e.target.value)}
               placeholder="Label (e.g. CI deploy)"
-              className="h-8 w-64 rounded-md border border-border bg-card px-2.5 text-[16px] text-foreground"
+              className="h-8 w-64 rounded-md border border-border bg-card px-2.5 text-body text-foreground"
             />
             <Button size="sm" onClick={createAdminKey} disabled={create.isPending || adminScopes.size === 0}>
               Create admin key
@@ -463,13 +463,13 @@ function KeysCard({
       )}
 
       {create.isError && (
-        <p className="mt-3 text-[16px] text-danger">
+        <p className="mt-3 text-body text-danger">
           {create.error instanceof Error ? create.error.message : "Could not create the key."}
         </p>
       )}
 
       {keys.length === 0 ? (
-        <p className="mt-6 text-[16px] text-muted-foreground">
+        <p className="mt-6 text-body text-muted-foreground">
           No keys yet. Create a publishable key for the browser snippet, or a
           secret key for server-side sending.
         </p>
@@ -491,7 +491,7 @@ function KeysCard({
               {keys.map((k) => (
                 <Fragment key={k.id}>
                   <TableRow>
-                    <TableCell className="font-mono text-[14px] text-muted-foreground">
+                    <TableCell className="font-mono text-small text-muted-foreground">
                       {k.prefix}...
                     </TableCell>
                     <TableCell>
@@ -499,12 +499,12 @@ function KeysCard({
                         {k.kind}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-[16px] text-foreground">
+                    <TableCell className="text-body text-foreground">
                       {k.label ?? <span className="text-subtle-foreground">-</span>}
                     </TableCell>
-                    <TableCell className="text-[16px] text-muted-foreground">
+                    <TableCell className="text-body text-muted-foreground">
                       {k.kind === "admin" ? (
-                        <span className="font-mono text-[14px]">{(k.scopes ?? []).join(", ")}</span>
+                        <span className="font-mono text-caption">{(k.scopes ?? []).join(", ")}</span>
                       ) : k.kind !== "publishable" ? (
                         <span className="text-subtle-foreground">-</span>
                       ) : k.allowed_origins.length === 0 ? (
@@ -513,7 +513,7 @@ function KeysCard({
                         k.allowed_origins.length
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-[14px] text-muted-foreground">
+                    <TableCell className="font-mono text-small text-muted-foreground">
                       {formatTimestamp(k.last_used_at)}
                     </TableCell>
                     <TableCell>
@@ -629,14 +629,14 @@ function TestEventCard({ secretKey }: { secretKey: string | null }) {
   return (
     <section className="rounded-lg border border-border bg-card shadow-card p-6">
       <SectionHeading icon={Send} title="Send a test event" />
-      <p className="mt-2 text-[16px] text-muted-foreground">
-        Send a real <code className="rounded bg-sunken px-1 text-[15px]">signed_up</code> event
+      <p className="mt-2 text-body text-muted-foreground">
+        Send a real <code className="rounded bg-sunken px-1 text-small">signed_up</code> event
         through the ingestion API using your secret key. If you have a welcome
         flow active, this triggers it and sends an email to the address below.
       </p>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <label htmlFor="test-email" className="mb-1.5 block text-[16px] font-medium text-foreground">
+          <label htmlFor="test-email" className="mb-1.5 block text-body font-medium text-foreground">
             Recipient email
           </label>
           <Input
@@ -654,7 +654,7 @@ function TestEventCard({ secretKey }: { secretKey: string | null }) {
       </div>
       {result && (
         <div
-          className={`mt-3 rounded-md border px-3.5 py-2.5 text-[16px] ${
+          className={`mt-3 rounded-md border px-3.5 py-2.5 text-body ${
             result.ok
               ? "border-success bg-success-soft text-foreground"
               : "border-danger bg-danger-soft text-foreground"
@@ -718,7 +718,7 @@ export default function IntegratePage() {
         ) : activeSecret && !rawSecret ? (
           <section className="rounded-lg border border-border bg-card shadow-card p-6">
             <SectionHeading icon={Send} title="Send a test event" />
-            <p className="mt-2 text-[16px] text-muted-foreground">
+            <p className="mt-2 text-body text-muted-foreground">
               Create a secret key to send a test event through the real API.
               The key is shown once at creation and used to send the event.
             </p>
@@ -730,7 +730,7 @@ export default function IntegratePage() {
         ) : !activeSecret ? (
           <section className="rounded-lg border border-border bg-card shadow-card p-6">
             <SectionHeading icon={Send} title="Send a test event" />
-            <p className="mt-2 text-[16px] text-muted-foreground">
+            <p className="mt-2 text-body text-muted-foreground">
               Create a secret key to send a test event through the real API.
             </p>
             <Button size="sm" className="mt-3" onClick={createSecretForTest} disabled={create.isPending}>

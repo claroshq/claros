@@ -65,9 +65,9 @@ export default function InstanceKeysSettings() {
         <>
           {list.length > 0 && (
             <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full text-left text-[16px]">
+              <table className="w-full text-left text-body">
                 <thead>
-                  <tr className="bg-sunken text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  <tr className="bg-sunken text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     <th className="px-4 py-2">Key</th>
                     <th className="px-4 py-2">Scopes</th>
                     <th className="px-4 py-2">Last used</th>
@@ -79,7 +79,7 @@ export default function InstanceKeysSettings() {
                     <tr key={k.id}>
                       <td className="px-4 py-2.5">
                         <p className="text-foreground">{k.label ?? "Unnamed key"}</p>
-                        <p className="font-mono text-[14px] text-muted-foreground">{k.prefix}...</p>
+                        <p className="font-mono text-caption text-muted-foreground">{k.prefix}...</p>
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
@@ -88,7 +88,7 @@ export default function InstanceKeysSettings() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-[15px] text-muted-foreground">
+                      <td className="px-4 py-2.5 text-small text-muted-foreground">
                         {k.last_used_at ? formatDate(k.last_used_at) : "never"}
                       </td>
                       <td className="px-4 py-2.5 text-right">
@@ -116,8 +116,8 @@ export default function InstanceKeysSettings() {
 
           {raw && (
             <div className="mt-4 rounded-md border border-border bg-sunken p-3">
-              <p className="text-[15px] text-foreground">Copy this key now. It is not shown again.</p>
-              <p className="mt-1 break-all font-mono text-[14px] text-foreground">{raw}</p>
+              <p className="text-small text-foreground">Copy this key now. It is not shown again.</p>
+              <p className="mt-1 break-all font-mono text-small text-foreground">{raw}</p>
               <Button size="sm" variant="outline" className="mt-2" onClick={() => setRaw(null)}>
                 Done
               </Button>
@@ -131,17 +131,17 @@ export default function InstanceKeysSettings() {
               create.mutate();
             }}
           >
-            <h3 className="text-[16px] font-medium text-foreground">Create an instance key</h3>
+            <h3 className="text-body font-medium text-foreground">Create an instance key</h3>
             <div className="mt-3 flex flex-col gap-2">
               {all.map((s) => (
-                <label key={s} className="flex items-center gap-2 text-[16px] text-foreground">
+                <label key={s} className="flex items-center gap-2 text-body text-foreground">
                   <input
                     type="checkbox"
                     checked={scopes.includes(s)}
                     onChange={(e) => setScopes((cur) => (e.target.checked ? [...cur, s] : cur.filter((x) => x !== s)))}
                   />
-                  <span className="font-mono text-[14px]">{s}</span>
-                  <span className="text-[15px] text-muted-foreground">{SCOPE_HELP[s] ?? ""}</span>
+                  <span className="font-mono text-small">{s}</span>
+                  <span className="text-small text-muted-foreground">{SCOPE_HELP[s] ?? ""}</span>
                 </label>
               ))}
             </div>
@@ -157,7 +157,7 @@ export default function InstanceKeysSettings() {
                 {create.isPending ? "Creating..." : "Create key"}
               </Button>
             </div>
-            {error && <p className="mt-2 text-[15px] text-danger">{error}</p>}
+            {error && <p className="mt-2 text-small text-danger">{error}</p>}
           </form>
         </>
       )}

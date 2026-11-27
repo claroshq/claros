@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard: one named type scale (`text-micro`, `caption`, `small`, `body`, `lead`, `title`, `heading`, `headline`, `display`, `page`) replaces about 900 hard-coded pixel sizes, so type is tuned in one place (BRAND.md section 4). It walks back 0.13.0's second pass, which read as bold and oversized: body text is 15px at weight 400 with antialiasing again, page titles 32px, record titles 28px. The wider 1440px column, the darker text colors and the table fixes stay.
+
 ## [0.13.0] - 2026-11-27
 
 ### Upgrade

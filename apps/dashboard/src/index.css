@@ -62,7 +62,7 @@
   /* Text. --fg-subtle is for placeholders and disabled labels only, never
    * for content the user must read. */
   --fg:        oklch(0.205 0.013 264);
-  --fg-muted:  oklch(0.34 0.024 264);
+  --fg-muted:  oklch(0.36 0.024 264);
   --fg-subtle: oklch(0.46 0.022 264);
 
   /* Brand accent: signal cyan (heritage logo hue). Used for links, focus,
@@ -235,6 +235,22 @@
   --shadow-overlay: var(--overlay-shadow);
   --shadow-card: var(--card-shadow);
 
+  /* TYPE SCALE: the one standard for the product (and, one step up at the
+   * reading sizes, for claros.org). Components use these names only, never
+   * text-[Npx]. Values follow common product-UI practice (Material 3,
+   * Carbon): 15px body on a 22px line, a ~1.07-1.25 step ratio, weights
+   * 400 / 500 / 600 (700 only for Bricolage titles). See BRAND.md section 4. */
+  --text-micro: 12px;    --text-micro--line-height: 16px;
+  --text-caption: 13px;  --text-caption--line-height: 18px;
+  --text-small: 14px;    --text-small--line-height: 20px;
+  --text-body: 15px;     --text-body--line-height: 22px;
+  --text-lead: 16px;     --text-lead--line-height: 24px;
+  --text-title: 17px;    --text-title--line-height: 24px;
+  --text-heading: 20px;  --text-heading--line-height: 28px;
+  --text-headline: 24px; --text-headline--line-height: 30px;
+  --text-display: 28px;  --text-display--line-height: 34px;
+  --text-page: 32px;     --text-page--line-height: 38px;
+
   --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
   --font-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", system-ui, sans-serif;
   --font-brand: "Quicksand Variable", "Instrument Sans Variable", system-ui, sans-serif;
@@ -254,9 +270,8 @@ body {
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 16px;
-  /* Instrument Sans at 400 reads thin on macOS at UI sizes; 450 keeps
-   * body copy solid without looking bold. Headings set their own weight. */
-  font-weight: 450;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
   margin: 0;
   padding: 0;
   overscroll-behavior: none;

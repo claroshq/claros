@@ -147,7 +147,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
       role="alert"
     >
-      <p className="text-[17px] text-foreground">
+      <p className="text-lead text-foreground">
         Failed to load flows: {message}
       </p>
       <Button variant="outline" size="sm" onClick={onRetry}>
@@ -243,7 +243,7 @@ export default function FlowsPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">{actionError}</p>
+          <p className="text-lead text-foreground">{actionError}</p>
         </div>
       )}
 
@@ -310,13 +310,13 @@ export default function FlowsPage() {
                       {flow.compile_status ?? "not compiled"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-[14px] text-muted-foreground">
+                  <TableCell className="font-mono text-small text-muted-foreground">
                     {flow.trigger_type}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {flow.approval_mode}
                   </TableCell>
-                  <TableCell className="hidden whitespace-nowrap text-right font-mono text-[14px] text-muted-foreground 2xl:table-cell">
+                  <TableCell className="hidden whitespace-nowrap text-right font-mono text-small text-muted-foreground 2xl:table-cell">
                     {formatDate(flow.created_at)}
                   </TableCell>
                   <TableCell

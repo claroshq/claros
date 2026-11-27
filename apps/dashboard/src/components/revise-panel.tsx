@@ -80,8 +80,8 @@ export function RevisePanel({
     <section aria-label="Revise with AI" className="mt-6 overflow-hidden rounded-lg border border-border bg-card shadow-card">
       <header className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <Sparkles className="size-4 text-accent-text" aria-hidden />
-        <h3 className="text-[16px] font-semibold text-foreground">Revise with AI</h3>
-        <span className="truncate text-[15px] text-muted-foreground">
+        <h3 className="text-body font-semibold text-foreground">Revise with AI</h3>
+        <span className="truncate text-small text-muted-foreground">
           Say what should change. The AI rewrites this draft and it comes back here for review.
         </span>
       </header>
@@ -95,13 +95,13 @@ export function RevisePanel({
               <React.Fragment key={`${turn.at}-${i}`}>
                 <li className="flex justify-end">
                   <div className="max-w-[85%] rounded-lg rounded-br-sm bg-secondary px-3.5 py-2">
-                    <p className="whitespace-pre-wrap text-[16px] leading-relaxed text-foreground">{turn.instruction}</p>
-                    <p className="mt-1 text-right font-mono text-[12px] text-subtle-foreground">{timeAgo(turn.at)}</p>
+                    <p className="whitespace-pre-wrap text-body leading-relaxed text-foreground">{turn.instruction}</p>
+                    <p className="mt-1 text-right font-mono text-micro text-subtle-foreground">{timeAgo(turn.at)}</p>
                   </div>
                 </li>
                 <li
                   ref={last ? threadEnd : undefined}
-                  className="flex items-center gap-2 text-[15px] text-muted-foreground"
+                  className="flex items-center gap-2 text-small text-muted-foreground"
                   aria-live={last ? "polite" : undefined}
                 >
                   {pending ? (
@@ -158,14 +158,14 @@ export function RevisePanel({
                   : "For example: there is no /mcp page, link to the docs instead, and keep it shorter."
             }
             aria-label="Instruction for the AI"
-            className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent py-1 text-[16px] leading-relaxed text-foreground placeholder:text-subtle-foreground focus:outline-none disabled:cursor-not-allowed"
+            className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent py-1 text-body leading-relaxed text-foreground placeholder:text-subtle-foreground focus:outline-none disabled:cursor-not-allowed"
           />
           <Button type="submit" size="sm" disabled={!canSend} aria-label="Send to the AI">
             {busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ArrowUp aria-hidden />}
             Revise
           </Button>
         </div>
-        <p className="mt-1.5 flex justify-between gap-3 px-0.5 text-[14px] text-subtle-foreground">
+        <p className="mt-1.5 flex justify-between gap-3 px-0.5 text-caption text-subtle-foreground">
           <span>Enter sends, Shift+Enter adds a line. Links, facts and writing rules of the product still apply.</span>
           {trimmed.length > REVISION_MAX_CHARS * 0.8 && (
             <span className={cn("font-mono", tooLong && "text-danger")}>

@@ -114,22 +114,22 @@ function QueueItem({ message, flowName, active, checked, onPreview, onToggleChec
       >
         <span
           className={cn(
-            "block truncate text-[16px] font-medium",
+            "block truncate text-body font-medium",
             active ? "text-accent-text" : "text-foreground",
           )}
         >
           {contactLabel(message)}
         </span>
-        <span className="mt-0.5 block truncate text-[15px] text-foreground">
+        <span className="mt-0.5 block truncate text-small text-foreground">
           {message.flow?.class === "critical" && (
-            <span className="mr-1.5 rounded-sm bg-danger-soft px-1 text-[12px] font-medium text-danger">critical</span>
+            <span className="mr-1.5 rounded-sm bg-danger-soft px-1 text-micro font-medium text-danger">critical</span>
           )}
           {DRAFTING_STATUSES.has(message.status) && (
-            <span className="mr-1.5 rounded-sm bg-accent-soft px-1 text-[12px] font-medium text-accent-text">revising</span>
+            <span className="mr-1.5 rounded-sm bg-accent-soft px-1 text-micro font-medium text-accent-text">revising</span>
           )}
           {message.subject ?? "(no subject)"}
         </span>
-        <span className="mt-0.5 block truncate text-[14px] text-muted-foreground">
+        <span className="mt-0.5 block truncate text-caption text-muted-foreground">
           {flowName ?? "Unknown flow"}
           {message.flow_step_order !== null && ` · step ${message.flow_step_order}`}
           {" · "}
@@ -159,13 +159,13 @@ function DraftBody({ message }: { message: Message }) {
   }
   if (message.body_text) {
     return (
-      <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-4 font-mono text-[14px] text-foreground">
+      <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-4 font-mono text-small text-foreground">
         {message.body_text}
       </pre>
     );
   }
   return (
-    <p className="rounded-md border border-border bg-card p-4 text-[16px] text-muted-foreground">
+    <p className="rounded-md border border-border bg-card p-4 text-body text-muted-foreground">
       This draft has no body content.
     </p>
   );
@@ -222,15 +222,15 @@ function FailedSection() {
   return (
     <details className="group mt-10 rounded-lg border border-border bg-card shadow-card">
       <summary className="flex cursor-pointer select-none items-center gap-3 px-6 py-4">
-        <span className="text-[17px] font-medium text-foreground">Needs attention</span>
+        <span className="text-lead font-medium text-foreground">Needs attention</span>
         <Badge variant="danger">{items.length} failed</Badge>
         <span className="flex-1" />
-        <span className="text-[15px] text-muted-foreground transition-transform duration-(--dur-fast) group-open:rotate-90">
+        <span className="text-small text-muted-foreground transition-transform duration-(--dur-fast) group-open:rotate-90">
           &rsaquo;
         </span>
       </summary>
       <div className="border-t border-border px-6 pb-6">
-        <p className="mt-4 text-[16px] text-muted-foreground">
+        <p className="mt-4 text-body text-muted-foreground">
           These messages stopped permanently. The reason is recorded on each;
           fix the cause, then retry generation failures.
         </p>
@@ -240,16 +240,16 @@ function FailedSection() {
             return (
               <li key={m.id} className="flex items-start justify-between gap-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-[16px] font-medium text-foreground">
+                  <p className="text-body font-medium text-foreground">
                     {flowNames.get(m.flow_id) ?? "Unknown flow"}
-                    <span className="ml-2 text-[15px] text-muted-foreground">
+                    <span className="ml-2 text-small text-muted-foreground">
                       to {contactLabel(m)}
                     </span>
                   </p>
-                  <p className="mt-0.5 text-[16px] text-muted-foreground">
+                  <p className="mt-0.5 text-body text-muted-foreground">
                     {m.brain_reasoning ?? "Send failed permanently after retries."}
                   </p>
-                  <p className="mt-0.5 font-mono text-[14px] text-subtle-foreground">
+                  <p className="mt-0.5 font-mono text-small text-subtle-foreground">
                     {formatDate(m.updated_at)}
                   </p>
                 </div>
@@ -268,7 +268,7 @@ function FailedSection() {
           })}
         </ul>
         {retry.isError && (
-          <p className="mt-3 text-[16px] text-danger">
+          <p className="mt-3 text-body text-danger">
             {retry.error instanceof Error ? retry.error.message : "Retry failed."}
           </p>
         )}
@@ -296,10 +296,10 @@ function ApprovedSection() {
   return (
     <details className="group mt-6 rounded-lg border border-border bg-card shadow-card">
       <summary className="flex cursor-pointer select-none items-center gap-3 px-6 py-4">
-        <span className="text-[17px] font-medium text-foreground">Approved, not sent yet</span>
+        <span className="text-lead font-medium text-foreground">Approved, not sent yet</span>
         <Badge variant="neutral">{items.length}</Badge>
         <span className="flex-1" />
-        <span className="text-[15px] text-muted-foreground transition-transform duration-(--dur-fast) group-open:rotate-90">
+        <span className="text-small text-muted-foreground transition-transform duration-(--dur-fast) group-open:rotate-90">
           &rsaquo;
         </span>
       </summary>
@@ -308,8 +308,8 @@ function ApprovedSection() {
           {items.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-4 py-3">
               <div className="min-w-0">
-                <p className="truncate text-[16px] font-medium text-foreground">{m.subject ?? "(no subject)"}</p>
-                <p className="mt-0.5 truncate text-[15px] text-muted-foreground">
+                <p className="truncate text-body font-medium text-foreground">{m.subject ?? "(no subject)"}</p>
+                <p className="mt-0.5 truncate text-small text-muted-foreground">
                   to {contactLabel(m)}{m.waiting_reason ? ` · ${m.waiting_reason}` : ""}
                 </p>
               </div>
@@ -324,7 +324,7 @@ function ApprovedSection() {
             </li>
           ))}
         </ul>
-        {error && <p className="mt-3 text-[16px] text-muted-foreground" role="status">{error}</p>}
+        {error && <p className="mt-3 text-body text-muted-foreground" role="status">{error}</p>}
       </div>
     </details>
   );
@@ -349,21 +349,21 @@ function DraftEditor({ message, onDone }: { message: Message; onDone: (notice: s
   }
   return (
     <div className="mt-5 space-y-3">
-      <label className="block text-[15px] font-medium text-muted-foreground">
+      <label className="block text-small font-medium text-muted-foreground">
         Subject
         <input
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          className="mt-1 h-9 w-full rounded-md border border-border bg-card px-3 text-[16px] text-foreground"
+          className="mt-1 h-9 w-full rounded-md border border-border bg-card px-3 text-body text-foreground"
         />
       </label>
-      <label className="block text-[15px] font-medium text-muted-foreground">
+      <label className="block text-small font-medium text-muted-foreground">
         Body (Markdown)
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={14}
-          className="mt-1 w-full rounded-md border border-border bg-card p-3 font-mono text-[14px] text-foreground"
+          className="mt-1 w-full rounded-md border border-border bg-card p-3 font-mono text-small text-foreground"
         />
       </label>
       <div className="flex gap-2">
@@ -422,7 +422,7 @@ function MoreActions({
   }
 
   const item =
-    "flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-[16px] text-foreground transition-colors duration-(--dur-fast) hover:bg-hover disabled:pointer-events-none disabled:text-muted-foreground";
+    "flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-body text-foreground transition-colors duration-(--dur-fast) hover:bg-hover disabled:pointer-events-none disabled:text-muted-foreground";
 
   return (
     <div ref={root} className="relative">
@@ -445,7 +445,7 @@ function MoreActions({
           <button type="button" role="menuitem" className={item} onClick={() => run(() => onRedraft())}>
             <span>
               <span className="block font-medium">Redraft from scratch</span>
-              <span className="block text-[15px] text-muted-foreground">Discard this draft and let the AI write a new one.</span>
+              <span className="block text-small text-muted-foreground">Discard this draft and let the AI write a new one.</span>
             </span>
           </button>
           <form
@@ -455,7 +455,7 @@ function MoreActions({
               if (validAction) run(() => onRedraft(actionType.trim()));
             }}
           >
-            <label htmlFor="redraft-action" className="block text-[16px] font-medium text-foreground">
+            <label htmlFor="redraft-action" className="block text-body font-medium text-foreground">
               Redraft as another action
             </label>
             <div className="mt-1.5 flex gap-2">
@@ -464,19 +464,19 @@ function MoreActions({
                 value={actionType}
                 onChange={(e) => setActionType(e.target.value)}
                 placeholder="tip_trick"
-                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2.5 font-mono text-[14px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2.5 font-mono text-small text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
               <Button type="submit" size="sm" variant="secondary" disabled={!validAction}>
                 Redraft
               </Button>
             </div>
-            <p className="mt-1 text-[14px] text-subtle-foreground">An action type of the flow, lowercase with underscores.</p>
+            <p className="mt-1 text-caption text-subtle-foreground">An action type of the flow, lowercase with underscores.</p>
           </form>
           <div className="my-1 border-t border-border" />
           <button type="button" role="menuitem" className={cn(item, "text-danger")} onClick={() => run(onExclude)}>
             <span>
               <span className="block font-medium">Exclude person</span>
-              <span className="block text-[15px] text-muted-foreground">Suppress the address and cancel every unsent message to them.</span>
+              <span className="block text-small text-muted-foreground">Suppress the address and cancel every unsent message to them.</span>
             </span>
           </button>
         </div>
@@ -720,9 +720,9 @@ export default function ApprovalsPage() {
       />
 
       {(waitingForBudget.data ?? 0) > 0 && (
-        <p className="mb-4 rounded-md border border-border bg-muted px-4 py-3 text-[16px] text-foreground" role="status">
+        <p className="mb-4 rounded-md border border-border bg-muted px-4 py-3 text-body text-foreground" role="status">
           {waitingForBudget.data} {waitingForBudget.data === 1 ? "draft waits" : "drafts wait"} for tomorrow&apos;s LLM budget
-          (status reason <code className="font-mono text-[14px]">llm_budget</code>): the product&apos;s daily token budget
+          (status reason <code className="font-mono text-small">llm_budget</code>): the product&apos;s daily token budget
           (settings.llm_daily_token_budget) is spent. They are drafted after midnight UTC.
         </p>
       )}
@@ -734,7 +734,7 @@ export default function ApprovalsPage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">
+          <p className="text-lead text-foreground">
             Failed to load the queue:{" "}
             {queue.error instanceof Error ? queue.error.message : "Unknown error"}
           </p>
@@ -766,12 +766,12 @@ export default function ApprovalsPage() {
                 className="h-4 w-4 shrink-0 cursor-pointer accent-(--accent-deep) disabled:cursor-default"
               />
               {checkedIds.size === 0 ? (
-                <span className="text-[15px] text-muted-foreground">
+                <span className="text-small text-muted-foreground">
                   Select drafts to act on many at once
                 </span>
               ) : (
                 <>
-                  <span className="text-[15px] font-medium text-foreground">
+                  <span className="text-small font-medium text-foreground">
                     {checkedIds.size} selected
                   </span>
                   <span className="flex-1" />
@@ -828,10 +828,10 @@ export default function ApprovalsPage() {
           <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h2 className="text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
+                  <h2 className="text-heading font-semibold tracking-[-0.015em] text-foreground">
                     {selected.subject ?? "(no subject)"}
                   </h2>
-                  <p className="mt-1 text-[16px] text-muted-foreground">
+                  <p className="mt-1 text-body text-muted-foreground">
                     {"to "}
                     <span className="text-foreground">{contactLabel(selected)}</span>
                     {selected.contact.email && selected.contact.name && (
@@ -842,7 +842,7 @@ export default function ApprovalsPage() {
                     {selected.flow_step_order !== null &&
                       ` · step ${selected.flow_step_order}`}
                     {" · "}
-                    <span className="font-mono text-[14px]">
+                    <span className="font-mono text-small">
                       {formatDate(selected.created_at)}
                     </span>
                   </p>
@@ -850,17 +850,17 @@ export default function ApprovalsPage() {
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                   {selected.flow?.class === "critical" && <Badge variant="danger">critical</Badge>}
                   {selected.brain_action_type && (
-                    <span className="rounded-full bg-sunken px-2.5 py-1 font-mono text-[14px] text-muted-foreground">
+                    <span className="rounded-full bg-sunken px-2.5 py-1 font-mono text-caption text-muted-foreground">
                       {selected.brain_action_type}
                     </span>
                   )}
                   {selected.edited_at && (
-                    <span className="text-[14px] text-muted-foreground">edited</span>
+                    <span className="text-caption text-muted-foreground">edited</span>
                   )}
                   {drafting ? (
                     <Badge variant="accent" pulse>revising</Badge>
                   ) : (selected.revisions?.length ?? 0) > 0 ? (
-                    <span className="text-[14px] text-muted-foreground">
+                    <span className="text-caption text-muted-foreground">
                       revised {selected.revisions!.length}x
                     </span>
                   ) : null}
@@ -883,11 +883,11 @@ export default function ApprovalsPage() {
 
               {selected.original && !editing && (
                 <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
-                  <summary className="cursor-pointer select-none text-[16px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                  <summary className="cursor-pointer select-none text-body font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
                     As drafted
                   </summary>
-                  <p className="mt-2 text-[16px] font-medium text-foreground">{selected.original.subject}</p>
-                  <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[14px] text-muted-foreground">
+                  <p className="mt-2 text-body font-medium text-foreground">{selected.original.subject}</p>
+                  <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-small text-muted-foreground">
                     {selected.original.body_text}
                   </pre>
                 </details>
@@ -895,10 +895,10 @@ export default function ApprovalsPage() {
 
               {selected.brain_reasoning && (
                 <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
-                  <summary className="cursor-pointer select-none text-[16px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                  <summary className="cursor-pointer select-none text-body font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
                     Why the AI wrote it this way
                   </summary>
-                  <p className="mt-2 whitespace-pre-wrap text-[16px] leading-relaxed text-muted-foreground">
+                  <p className="mt-2 whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
                     {selected.brain_reasoning}
                   </p>
                 </details>
@@ -906,19 +906,19 @@ export default function ApprovalsPage() {
 
               {selected.choose && (
                 <details open className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
-                  <summary className="cursor-pointer select-none text-[16px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                  <summary className="cursor-pointer select-none text-body font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
                     Why this action (choose step)
                   </summary>
-                  <p className="mt-2 text-[16px] text-foreground">
-                    Picked <code className="font-mono text-[14px]">{selected.choose.choice}</code>
+                  <p className="mt-2 text-body text-foreground">
+                    Picked <code className="font-mono text-small">{selected.choose.choice}</code>
                     {selected.choose.forced ? " (forced by a reviewer)" : ""}: {selected.choose.reason}
                   </p>
-                  {selected.choose.warning && <p className="mt-1 text-[16px] text-foreground">Warning: {selected.choose.warning}</p>}
-                  <p className="mt-2 text-[15px] text-muted-foreground">
+                  {selected.choose.warning && <p className="mt-1 text-body text-foreground">Warning: {selected.choose.warning}</p>}
+                  <p className="mt-2 text-small text-muted-foreground">
                     Eligible: {selected.choose.eligible.length > 0 ? selected.choose.eligible.join(", ") : "none"}
                   </p>
                   {selected.choose.filtered_out.length > 0 && (
-                    <ul className="mt-1 text-[15px] text-muted-foreground">
+                    <ul className="mt-1 text-small text-muted-foreground">
                       {selected.choose.filtered_out.map((f) => (
                         <li key={f.action_type}>
                           {f.action_type}: {f.reason}
@@ -931,19 +931,19 @@ export default function ApprovalsPage() {
 
               {selected.opening_line && (
                 <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
-                  <summary className="cursor-pointer select-none text-[16px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                  <summary className="cursor-pointer select-none text-body font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
                     AI opening line
                   </summary>
-                  <p className="mt-2 text-[16px] leading-relaxed text-foreground">{selected.opening_line}</p>
+                  <p className="mt-2 text-body leading-relaxed text-foreground">{selected.opening_line}</p>
                 </details>
               )}
 
               {selected.context_snapshot && (
                 <details className="group mt-4 rounded-md border border-border bg-card px-4 py-3">
-                  <summary className="cursor-pointer select-none text-[16px] font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                  <summary className="cursor-pointer select-none text-body font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
                     Context data used
                   </summary>
-                  <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[14px] text-muted-foreground">
+                  <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-small text-muted-foreground">
                     {JSON.stringify(selected.context_snapshot, null, 2)}
                   </pre>
                 </details>
@@ -951,7 +951,7 @@ export default function ApprovalsPage() {
 
               {notice && (
                 <p
-                  className="mt-4 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[16px] text-foreground"
+                  className="mt-4 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-body text-foreground"
                   role="status"
                 >
                   {notice}
@@ -983,9 +983,9 @@ export default function ApprovalsPage() {
                 <Button variant="ghost" onClick={() => setEditing((v) => !v)} disabled={actionPending}>
                   {editing ? "Close editor" : "Edit"}
                 </Button>
-                <span className="min-w-0 flex-1 text-[15px] text-muted-foreground">
+                <span className="min-w-0 flex-1 text-small text-muted-foreground">
                   Approval queues it to send. Rejection is final.{" "}
-                  <span className="whitespace-nowrap font-mono text-[14px] text-subtle-foreground">j/k a r e /</span>
+                  <span className="whitespace-nowrap font-mono text-caption text-subtle-foreground">j/k a r e /</span>
                 </span>
                 <MoreActions
                   disabled={actionPending}
@@ -1004,7 +1004,7 @@ export default function ApprovalsPage() {
       <FailedSection />
 
       {totalWaiting > 0 && (
-        <p className="mt-8 text-[15px] text-subtle-foreground">
+        <p className="mt-8 text-small text-subtle-foreground">
           Flows with approval mode "auto" skip this queue. Approval mode is
           set per flow in the flow editor.
         </p>

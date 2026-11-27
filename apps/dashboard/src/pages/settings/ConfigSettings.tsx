@@ -39,11 +39,11 @@ export default function ConfigSettings() {
       configured={null}
     >
       <div className="space-y-4">
-        <p className="text-[16px] leading-relaxed text-muted-foreground">
+        <p className="text-body leading-relaxed text-muted-foreground">
           The export holds the current configuration{product ? ` of ${product}` : ""} without secrets (webhook, analytics
           and data source secrets stay on the server). Edit it, then preview and apply it:
         </p>
-        <pre className="overflow-x-auto rounded-md border border-border bg-sunken p-4 font-mono text-[14px] text-foreground">
+        <pre className="overflow-x-auto rounded-md border border-border bg-sunken p-4 font-mono text-small text-foreground">
 {`npx @claroshq/claros apply -f claros.config.json --dry-run
 npx @claroshq/claros apply -f claros.config.json`}
         </pre>

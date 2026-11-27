@@ -11,8 +11,8 @@ import { Input } from "./ui/input.js";
 import { Select } from "./ui/select.js";
 import { Textarea } from "./ui/textarea.js";
 
-const LABEL = "mb-1 block text-[15px] font-medium text-foreground";
-const HINT = "mt-1 text-[14px] text-muted-foreground";
+const LABEL = "mb-1 block text-small font-medium text-foreground";
+const HINT = "mt-1 text-caption text-muted-foreground";
 
 export function Field({ label, hint, children, className }: { label: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
@@ -34,7 +34,7 @@ export function NamesInput({ value, onChange, placeholder, disabled, label }: { 
   return (
     <Input
       aria-label={label}
-      className="h-9 text-[15px]"
+      className="h-9 text-small"
       value={raw}
       placeholder={placeholder}
       disabled={disabled}
@@ -56,9 +56,9 @@ export function ContextList({ value, onChange, disabled, sources = [] }: { value
       <datalist id={listId}>{sources.map((s) => <option key={s} value={s} />)}</datalist>
       {items.map((c, i) => (
         <div key={i} className="flex flex-wrap items-center gap-2">
-          <Input aria-label="Data source" list={listId} className="h-8 w-36 text-[15px]" placeholder="source" value={text(c.source)} disabled={disabled} onChange={(e) => set(items.map((x, j) => (j === i ? { ...x, source: e.target.value } : x)))} />
-          <Input aria-label="Mode" className="h-8 w-32 text-[15px]" placeholder="mode" value={text(c.mode)} disabled={disabled} onChange={(e) => set(items.map((x, j) => (j === i ? { ...x, mode: e.target.value || undefined } : x)))} />
-          <Input aria-label="Limit" type="number" min={1} max={100} className="h-8 w-24 text-[15px]" placeholder="limit" value={text(c.limit)} disabled={disabled} onChange={(e) => set(items.map((x, j) => (j === i ? { ...x, limit: e.target.value === "" ? undefined : Number(e.target.value) } : x)))} />
+          <Input aria-label="Data source" list={listId} className="h-8 w-36 text-small" placeholder="source" value={text(c.source)} disabled={disabled} onChange={(e) => set(items.map((x, j) => (j === i ? { ...x, source: e.target.value } : x)))} />
+          <Input aria-label="Mode" className="h-8 w-32 text-small" placeholder="mode" value={text(c.mode)} disabled={disabled} onChange={(e) => set(items.map((x, j) => (j === i ? { ...x, mode: e.target.value || undefined } : x)))} />
+          <Input aria-label="Limit" type="number" min={1} max={100} className="h-8 w-24 text-small" placeholder="limit" value={text(c.limit)} disabled={disabled} onChange={(e) => set(items.map((x, j) => (j === i ? { ...x, limit: e.target.value === "" ? undefined : Number(e.target.value) } : x)))} />
           <Button type="button" size="sm" variant="ghost" className="h-8" disabled={disabled} onClick={() => set(items.filter((_, j) => j !== i))}>Remove</Button>
         </div>
       ))}
@@ -76,13 +76,13 @@ export function KbSelectFields({ value, onChange, disabled, categories = [] }: {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <datalist id={listId}>{categories.map((c) => <option key={c} value={c} />)}</datalist>
-      <Input aria-label="KB category" list={listId} className="h-8 w-36 text-[15px]" placeholder="category" value={text(kb.category)} disabled={disabled} onChange={(e) => onChange({ ...kb, category: e.target.value })} />
-      <Select aria-label="KB pick" className="h-8 w-40 text-[15px]" value={text(kb.pick) || "oldest_unused"} disabled={disabled} onChange={(e) => onChange({ ...kb, pick: e.target.value })}>
+      <Input aria-label="KB category" list={listId} className="h-8 w-36 text-small" placeholder="category" value={text(kb.category)} disabled={disabled} onChange={(e) => onChange({ ...kb, category: e.target.value })} />
+      <Select aria-label="KB pick" className="h-8 w-40 text-small" value={text(kb.pick) || "oldest_unused"} disabled={disabled} onChange={(e) => onChange({ ...kb, pick: e.target.value })}>
         <option value="oldest_unused">oldest unused</option>
         <option value="best_match">best match</option>
       </Select>
-      <Input aria-label="Tags from trait" className="h-8 w-40 text-[15px]" placeholder="tags from trait" value={text(kb.tags_any_from_trait)} disabled={disabled} onChange={(e) => onChange({ ...kb, tags_any_from_trait: e.target.value || undefined })} />
-      <label className="flex items-center gap-1.5 text-[15px] text-foreground">
+      <Input aria-label="Tags from trait" className="h-8 w-40 text-small" placeholder="tags from trait" value={text(kb.tags_any_from_trait)} disabled={disabled} onChange={(e) => onChange({ ...kb, tags_any_from_trait: e.target.value || undefined })} />
+      <label className="flex items-center gap-1.5 text-small text-foreground">
         <input type="checkbox" checked={kb.exclude_used !== false} disabled={disabled} onChange={(e) => onChange({ ...kb, exclude_used: e.target.checked ? undefined : false })} />
         never the same entry twice
       </label>
@@ -97,21 +97,21 @@ export function CandidateCard({ value, onChange, onRemove, disabled }: { value: 
     <div className="space-y-3 rounded-md border border-border bg-sunken p-3">
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Action type">
-          <Input aria-label="Candidate action type" className="h-8 w-44 text-[15px]" value={text(value.action_type)} placeholder="tip_trick" disabled={disabled} onChange={(e) => set({ action_type: e.target.value })} />
+          <Input aria-label="Candidate action type" className="h-8 w-44 text-small" value={text(value.action_type)} placeholder="tip_trick" disabled={disabled} onChange={(e) => set({ action_type: e.target.value })} />
         </Field>
         <Field label="Cooldown">
-          <Input aria-label="Cooldown" className="h-8 w-24 text-[15px]" value={text(value.cooldown)} placeholder="14d" disabled={disabled} onChange={(e) => set({ cooldown: e.target.value || undefined })} />
+          <Input aria-label="Cooldown" className="h-8 w-24 text-small" value={text(value.cooldown)} placeholder="14d" disabled={disabled} onChange={(e) => set({ cooldown: e.target.value || undefined })} />
         </Field>
         <Field label="Template (fixed copy)">
-          <Input aria-label="Candidate template" className="h-8 w-40 text-[15px]" value={text(value.template_ref)} placeholder="template slug" disabled={disabled} onChange={(e) => set({ template_ref: e.target.value || undefined })} />
+          <Input aria-label="Candidate template" className="h-8 w-40 text-small" value={text(value.template_ref)} placeholder="template slug" disabled={disabled} onChange={(e) => set({ template_ref: e.target.value || undefined })} />
         </Field>
         <Field label="Eyebrow">
-          <Input aria-label="Candidate eyebrow" className="h-8 w-36 text-[15px]" value={text(value.eyebrow)} maxLength={60} disabled={disabled} onChange={(e) => set({ eyebrow: e.target.value || undefined })} />
+          <Input aria-label="Candidate eyebrow" className="h-8 w-36 text-small" value={text(value.eyebrow)} maxLength={60} disabled={disabled} onChange={(e) => set({ eyebrow: e.target.value || undefined })} />
         </Field>
         <Button type="button" size="sm" variant="ghost" className="ml-auto h-8" disabled={disabled} onClick={onRemove}>Remove candidate</Button>
       </div>
       <Field label="Instruction (default: the step's)">
-        <Textarea aria-label="Candidate instruction" className="min-h-16 text-[15px]" value={text(value.brain_instruction)} disabled={disabled} onChange={(e) => set({ brain_instruction: e.target.value || undefined })} />
+        <Textarea aria-label="Candidate instruction" className="min-h-16 text-small" value={text(value.brain_instruction)} disabled={disabled} onChange={(e) => set({ brain_instruction: e.target.value || undefined })} />
       </Field>
       <Field label="Allowed links" hint="Names from settings.links, comma separated.">
         <NamesInput label="Candidate allowed links" value={value.allowed_links} onChange={(v) => set({ allowed_links: v })} placeholder="dashboard_url" disabled={disabled} />

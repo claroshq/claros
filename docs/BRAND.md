@@ -94,7 +94,7 @@ Rules:
 | `--border` | oklch(0.87 0.011 260) | oklch(0.335 0.013 264) | decorative container edges |
 | `--border-strong` | oklch(0.6 0.016 262) | oklch(0.53 0.015 264) | control boundaries (3:1+) |
 | `--fg` | oklch(0.205 0.013 264) | oklch(0.945 0.005 264) | primary text |
-| `--fg-muted` | oklch(0.34 0.024 264) | oklch(0.715 0.014 264) | secondary text (11:1+ on cards in light) |
+| `--fg-muted` | oklch(0.36 0.024 264) | oklch(0.715 0.014 264) | secondary text (10:1+ on cards in light) |
 | `--fg-subtle` | oklch(0.46 0.022 264) | oklch(0.63 0.014 264) | small de-emphasized text, timestamps, placeholders, disabled labels |
 | `--accent` | oklch(0.6 0.13 225) | oklch(0.78 0.12 220) | signal cyan: dots, chips, the mark |
 | `--accent-text` | oklch(0.45 0.12 240) | oklch(0.8 0.11 222) | links, active text (4.5:1+) |
@@ -158,21 +158,34 @@ Fonts (self-hosted via fontsource, licences in `public/fonts-license.txt`):
 - Data: **JetBrains Mono Variable**. Mono is for machine data: IDs,
   timestamps, event names, trigger types, code. Never for prose.
 
-### Scale
+### Scale (the standard)
 
-| Step | Size / leading | Font / weight | Tracking | Use |
-|---|---|---|---|---|
-| Display | 40 / 46 | Bricolage 700 | -0.02em | login brand panel headline |
-| Page title | 40 / 46 (32 / 38 below sm) | Bricolage 700 | -0.03em | one per page, top of content (PageHeader) |
-| Detail title | 34 / 40 | Bricolage 700 | -0.025em | title of a record page (person, flow, entry, sent mail) |
-| Metric | 40 / 46 (32 / 38 below sm) | Instrument 600, tabular | -0.03em | KPI numbers on Home and Analytics |
-| Section title | 22 / 30 | Instrument 600 | -0.015em | headings between card groups, large card titles |
-| Card title | 18 / 26 | Instrument 600 | -0.01em | the name of a card or panel, sentence case |
-| Emphasis | 17 / 26 | Instrument 600 | 0 | list item titles, empty-state headings |
-| Body | 16-17 / 24-26 | Instrument 450 | 0 | default UI text, descriptions, forms |
-| Small | 15-16 / 22-24 | Instrument 450/500 | 0 | nav (16), table cells (16), secondary lines (15) |
-| Micro | 12 / 16 | Instrument 600 | +0.06em, uppercase | table headers, nav group labels, eyebrows (13) |
-| Mono data | 14-15 / 22 | JetBrains Mono 450 | 0 | IDs, emails, event names, trigger types |
+One named scale, defined once as `@theme --text-*` tokens in
+`apps/dashboard/src/index.css` and used by name everywhere (`text-body`,
+`text-title`, ...). Components never write `text-[Npx]` or pixel
+`leading-[...]`: a size change is made here and nowhere else. The values
+follow common product-UI practice (Material 3, IBM Carbon): a 15px body on
+a 22px line, steps of roughly 1.07 to 1.25, three weights (400 body, 500
+emphasis and nav, 600 titles; 700 only for Bricolage). claros.org uses the
+same names one step up at reading sizes (section 15).
+
+| Token | Size / line | Typical weight | Use |
+|---|---|---|---|
+| `text-micro` | 12 / 16 | 600, +0.06em, uppercase | table headers, nav group labels, eyebrows |
+| `text-caption` | 13 / 18 | 400 | timestamps, hints, footnotes, small chips |
+| `text-small` | 14 / 20 | 400/500 | secondary lines, badges, mono data, small buttons |
+| `text-body` | 15 / 22 | 400 | default UI text, table cells, nav, inputs, buttons |
+| `text-lead` | 16 / 24 | 400/600 | page subtitles, list item titles, empty-state text |
+| `text-title` | 17 / 24 | 600, -0.01em | card titles |
+| `text-heading` | 20 / 28 | 600, -0.015em | headings between card groups, draft subjects |
+| `text-headline` | 24 / 30 | 600/700 | large numbers inside panels |
+| `text-display` | 28 / 34 | Bricolage 700, -0.02em | record page titles (person, flow, entry) |
+| `text-page` | 32 / 38 | Bricolage 700, -0.03em | the page title (PageHeader), metrics in Instrument 600 tabular |
+
+Body text is weight 400 with `-webkit-font-smoothing: antialiased`. A pass
+in 2026-11 tried 450 without antialiasing and 16px cells; it read as bold
+and oversized and was reverted. Readability comes from color
+(`--fg-muted` 0.36) and surfaces, not from weight.
 
 Rules:
 
@@ -190,11 +203,6 @@ Rules:
 5. Uppercase exists only in micro labels. Never uppercase a sentence.
 6. Mono is for machine data only. Prose that happens to sit next to data
    ("vs the week before", "last event 1h ago", relative times) is sans.
-7. The 2026-11 revision raised the whole scale two steps (body 14 -> 16,
-   cells 13 -> 16, micro 11 -> 12, page title 28 -> 40) and the base
-   weight to 450 without `-webkit-font-smoothing: antialiased`: the old
-   scale read as small, thin and pale on a 1512px laptop screen. Do not
-   drift back below it.
 
 ## 5. Spacing, radii, borders, elevation
 
@@ -276,7 +284,7 @@ both canvases (measured below).
 
 ## 9. Data density
 
-- Tables: 16px cells, ~52px row rhythm, 12px micro-label headers, 1px
+- Tables: `text-body` cells, ~52px row rhythm, 12px micro-label headers, 1px
   `--border` separators, `--bg-hover` row hover. A table standing on the
   canvas is framed (white card, edge, card shadow); a table inside a card
   passes `framed={false}`. No zebra striping (zebra adds a surface per row
@@ -419,7 +427,7 @@ Usage:
   comparable product puts it. (This replaces an earlier version of this
   rule that prescribed a 64px header with a right-aligned cluster; the
   header did no work proportional to its cost.)
-- Nav items: 40px tall, 16px at weight 500, 18px icons in `--fg-subtle`,
+- Nav items: 40px tall, `text-body` at weight 500, 18px icons in `--fg-subtle`,
   8px radius. Active item: the `--selected` fill (neutral slate-blue tint,
   not cyan) with `--fg` text at weight 600 and the icon in accent-text.
   Groups after the first carry a 12px micro label (Build, Monitor, Setup)
@@ -586,3 +594,26 @@ Notes:
   "OK" or "Submit".
 - No em dashes in UI copy, comments, or docs. Use hyphens.
 - No emoji.
+
+## 15. claros.org
+
+The marketing site follows this document; its tokens live in
+`claros-web/src/styles/global.css` and mirror section 3 (light and dark).
+Type uses the same scale names as section 4, as `--fs-*` custom
+properties, one step up at reading sizes because pages are read, not
+scanned:
+
+| Token | Size | Use |
+|---|---|---|
+| `--fs-micro` | 12px (0.75rem) | eyebrows, table headers |
+| `--fs-caption` | 14px (0.875rem) | captions, footnotes, code in prose |
+| `--fs-small` | 15px (0.9375rem) | secondary copy, nav, buttons |
+| `--fs-body` | 17px (1.0625rem) | body copy |
+| `--fs-lead` | 20px (1.25rem) | lead paragraphs, card titles |
+| `--fs-heading` | 24px (1.5rem) | sub-section headings |
+| `--fs-headline` | 32px (2rem) | page titles of inner pages |
+| `--fs-display` | 40px (2.5rem) | section titles |
+| `--fs-page` | 56px (3.5rem) | the landing hero, once |
+
+Body weight 400 with antialiasing, as in the product. Site CSS uses the
+`--fs-*` names only, never a literal font size.

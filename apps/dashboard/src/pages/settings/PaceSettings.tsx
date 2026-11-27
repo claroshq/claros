@@ -119,14 +119,14 @@ export default function PaceSettings() {
       )}
 
       {saved && !open && (
-        <p className="mt-3 text-[15px] text-success" role="status">Saved.</p>
+        <p className="mt-3 text-small text-success" role="status">Saved.</p>
       )}
 
       {open && (
         <form onSubmit={handleSubmit} noValidate className="mt-2 space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label htmlFor="th-daily" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-daily" className="mb-1.5 block text-body font-medium text-foreground">
                 Max per contact per day
               </label>
               <Input
@@ -138,10 +138,10 @@ export default function PaceSettings() {
                 onChange={(e) => { setMaxPerDay(e.target.value); setSaved(false); }}
                 disabled={put.isPending}
               />
-              <p className="mt-1 text-[14px] text-muted-foreground">0 = no limit, 100 = max</p>
+              <p className="mt-1 text-caption text-muted-foreground">0 = no limit, 100 = max</p>
             </div>
             <div>
-              <label htmlFor="th-weekly" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-weekly" className="mb-1.5 block text-body font-medium text-foreground">
                 Max per contact per week
               </label>
               <Input
@@ -153,10 +153,10 @@ export default function PaceSettings() {
                 onChange={(e) => { setMaxPerWeek(e.target.value); setSaved(false); }}
                 disabled={put.isPending}
               />
-              <p className="mt-1 text-[14px] text-muted-foreground">0 = no limit, 500 = max</p>
+              <p className="mt-1 text-caption text-muted-foreground">0 = no limit, 500 = max</p>
             </div>
             <div>
-              <label htmlFor="th-interval" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-interval" className="mb-1.5 block text-body font-medium text-foreground">
                 Minimum gap (hours)
               </label>
               <Input
@@ -168,13 +168,13 @@ export default function PaceSettings() {
                 onChange={(e) => { setMinInterval(e.target.value); setSaved(false); }}
                 disabled={put.isPending}
               />
-              <p className="mt-1 text-[14px] text-muted-foreground">0 = no minimum, 168 = 1 week</p>
+              <p className="mt-1 text-caption text-muted-foreground">0 = no minimum, 168 = 1 week</p>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label htmlFor="th-window-start" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-window-start" className="mb-1.5 block text-body font-medium text-foreground">
                 Window start
               </label>
               <Input
@@ -186,7 +186,7 @@ export default function PaceSettings() {
               />
             </div>
             <div>
-              <label htmlFor="th-window-end" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-window-end" className="mb-1.5 block text-body font-medium text-foreground">
                 Window end
               </label>
               <Input
@@ -198,7 +198,7 @@ export default function PaceSettings() {
               />
             </div>
             <div>
-              <label htmlFor="th-batch" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-batch" className="mb-1.5 block text-body font-medium text-foreground">
                 Batch size per tick
               </label>
               <Input
@@ -214,10 +214,10 @@ export default function PaceSettings() {
           </div>
 
           <div>
-            <label className="mb-2 block text-[16px] font-medium text-foreground">Send days</label>
+            <label className="mb-2 block text-body font-medium text-foreground">Send days</label>
             <div className="flex flex-wrap gap-2">
               {dayOptions.map((day) => (
-                <label key={day.value} className="flex items-center gap-1.5 text-[16px] text-foreground">
+                <label key={day.value} className="flex items-center gap-1.5 text-body text-foreground">
                   <input
                     type="checkbox"
                     checked={windowDays.includes(day.value)}
@@ -233,7 +233,7 @@ export default function PaceSettings() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="th-tz-mode" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="th-tz-mode" className="mb-1.5 block text-body font-medium text-foreground">
                 Timezone for send window
               </label>
               <Select
@@ -248,7 +248,7 @@ export default function PaceSettings() {
             </div>
             {timezoneMode === "tenant_fixed" && (
               <div>
-                <label htmlFor="th-tenant-tz" className="mb-1.5 block text-[16px] font-medium text-foreground">
+                <label htmlFor="th-tenant-tz" className="mb-1.5 block text-body font-medium text-foreground">
                   Tenant timezone
                 </label>
                 <Input

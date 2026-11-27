@@ -73,20 +73,20 @@ const TEMPLATES_KEY = ["email-templates"] as const;
 function VariableReference({ variables }: { variables: readonly string[] }) {
   return (
     <div className="rounded-md border border-border bg-sunken p-3">
-      <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+      <p className="mb-2 text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         Available variables
       </p>
       <div className="flex flex-wrap gap-1.5">
         {variables.map((v) => (
           <code
             key={v}
-            className="rounded border border-border bg-card px-2 py-0.5 font-mono text-[14px] text-foreground"
+            className="rounded border border-border bg-card px-2 py-0.5 font-mono text-caption text-foreground"
           >
             {`{{${v}}}`}
           </code>
         ))}
       </div>
-      <p className="mt-2 text-[12px] text-muted-foreground">
+      <p className="mt-2 text-micro text-muted-foreground">
         Use the pipe syntax for fallbacks: {"{{contact.first_name|there}}"}
       </p>
     </div>
@@ -143,7 +143,7 @@ function TemplateEditor({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <h3 className="text-[18px] font-semibold text-foreground">{template.name}</h3>
+        <h3 className="text-title font-semibold text-foreground">{template.name}</h3>
         <Badge variant="muted">{template.slug}</Badge>
         {template.category && <Badge variant="neutral">{template.category}</Badge>}
       </div>
@@ -152,7 +152,7 @@ function TemplateEditor({
 
       <form onSubmit={handleSave} className="space-y-4" noValidate>
         <div>
-          <label className="mb-1.5 block text-[16px] font-medium text-foreground">
+          <label className="mb-1.5 block text-body font-medium text-foreground">
             Subject line
           </label>
           <Input
@@ -164,21 +164,21 @@ function TemplateEditor({
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label className="text-[16px] font-medium text-foreground">
+            <label className="text-body font-medium text-foreground">
               Body (HTML)
             </label>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={() => setPreviewMode("html")}
-                className={`rounded px-2 py-1 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${previewMode === "html" ? "bg-selected font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`rounded px-2 py-1 text-caption transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${previewMode === "html" ? "bg-selected font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 Code
               </button>
               <button
                 type="button"
                 onClick={() => setPreviewMode("text")}
-                className={`rounded px-2 py-1 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${previewMode === "text" ? "bg-selected font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`rounded px-2 py-1 text-caption transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${previewMode === "text" ? "bg-selected font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 Plain text
               </button>
@@ -191,7 +191,7 @@ function TemplateEditor({
               onChange={(e) => { setBodyHtml(e.target.value); setSaved(false); }}
               disabled={mutation.isPending}
               rows={14}
-              className="font-mono text-[14px]"
+              className="font-mono text-small"
             />
           ) : (
             <Textarea
@@ -207,7 +207,7 @@ function TemplateEditor({
         {/* Live preview. Template HTML is tenant-authored content: it
             renders in a sandboxed frame, never in the dashboard DOM. */}
         <div>
-          <p className="mb-1.5 text-[16px] font-medium text-foreground">Preview</p>
+          <p className="mb-1.5 text-body font-medium text-foreground">Preview</p>
           <iframe
             sandbox=""
             referrerPolicy="no-referrer"
@@ -218,7 +218,7 @@ function TemplateEditor({
         </div>
 
         {error && (
-          <p className="rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[16px] text-foreground">
+          <p className="rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-body text-foreground">
             {error}
           </p>
         )}
@@ -228,7 +228,7 @@ function TemplateEditor({
             {mutation.isPending ? "Saving..." : "Save template"}
           </Button>
           {saved && (
-            <span className="text-[16px] text-muted-foreground" role="status">Saved.</span>
+            <span className="text-body text-muted-foreground" role="status">Saved.</span>
           )}
         </div>
       </form>
@@ -294,7 +294,7 @@ export default function TemplatesPage() {
               type="button"
               onClick={() => setSelectedId(t.id)}
               className={[
-                "w-full rounded-md px-3 py-2 text-left text-[15px] transition-colors",
+                "w-full rounded-md px-3 py-2 text-left text-small transition-colors",
                 (selected?.id === t.id)
                   ? "bg-selected font-semibold text-foreground"
                   : "text-muted-foreground hover:bg-sunken hover:text-foreground",

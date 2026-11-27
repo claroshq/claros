@@ -28,7 +28,7 @@ import { Select } from "./ui/select.js";
 import { Textarea } from "./ui/textarea.js";
 import { stateName, canonicalState } from "../lib/lifecycle-names.js";
 
-const SMALL = "h-8 text-[15px]";
+const SMALL = "h-8 text-small";
 
 const TRAIT_OP_LABELS: Record<string, string> = {
   eq: "is",
@@ -111,8 +111,8 @@ export function ConditionEditor({ value, onChange, onRemove, scope, depth = 1, d
         {(kind === "event_since_step" || kind === "event") && (
           <Input aria-label="Event name" className={`${SMALL} w-56`} value={String(inner ?? "")} placeholder="event_name" disabled={disabled} onChange={(e) => set(e.target.value)} />
         )}
-        {kind === "date_unchanged" && <span className="text-[15px] text-muted-foreground">the enrolled date still equals the trait</span>}
-        {kind === null && <span className="font-mono text-[14px] text-muted-foreground">{JSON.stringify(value)}</span>}
+        {kind === "date_unchanged" && <span className="text-small text-muted-foreground">the enrolled date still equals the trait</span>}
+        {kind === null && <span className="font-mono text-caption text-muted-foreground">{JSON.stringify(value)}</span>}
 
         {onRemove && (
           <Button type="button" size="sm" variant="ghost" className="ml-auto h-8" disabled={disabled} onClick={onRemove}>
@@ -290,10 +290,10 @@ export function ConditionListEditor({ value, onChange, scope, label, hint, disab
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="text-[15px] font-medium text-foreground">{label}</p>
+        <p className="text-small font-medium text-foreground">{label}</p>
         <button
           type="button"
-          className="text-[14px] text-accent-text hover:underline"
+          className="text-caption text-accent-text hover:underline"
           disabled={disabled}
           onClick={() => {
             if (json === null) {
@@ -307,12 +307,12 @@ export function ConditionListEditor({ value, onChange, scope, label, hint, disab
           {json === null ? "Edit as JSON" : "Back to the form"}
         </button>
       </div>
-      {hint && <p className="mb-1.5 text-[14px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="mb-1.5 text-caption text-muted-foreground">{hint}</p>}
       {json !== null ? (
         <div>
           <Textarea
             aria-label={`${label} as JSON`}
-            className="min-h-28 font-mono text-[14px]"
+            className="min-h-28 font-mono text-caption"
             value={json}
             disabled={disabled}
             onChange={(e) => {
@@ -328,12 +328,12 @@ export function ConditionListEditor({ value, onChange, scope, label, hint, disab
               }
             }}
           />
-          {jsonError && <p className="mt-1 text-[14px] text-danger">{jsonError}</p>}
+          {jsonError && <p className="mt-1 text-caption text-danger">{jsonError}</p>}
         </div>
       ) : (
         <>
           <ConditionItems items={value} onChange={onChange} scope={scope} depth={1} disabled={disabled} />
-          {value.length > 0 && <p className="mt-1.5 text-[14px] text-muted-foreground">Reads: {anyOf ? value.map((c) => `(${summarizeCondition(c)})`).join(" or ") : summarizeCondition(value)}</p>}
+          {value.length > 0 && <p className="mt-1.5 text-caption text-muted-foreground">Reads: {anyOf ? value.map((c) => `(${summarizeCondition(c)})`).join(" or ") : summarizeCondition(value)}</p>}
         </>
       )}
     </div>

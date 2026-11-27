@@ -94,25 +94,25 @@ function SetupCheckItem({ check }: { check: SetupCheck }) {
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "text-[16px] leading-[24px]",
+              "text-body",
               check.done ? "text-muted-foreground" : "text-foreground",
             )}
           >
             {check.label}
           </span>
           {check.fixLocation === "env" && !check.done && (
-            <span className="rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-muted-foreground">
+            <span className="rounded bg-sunken px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
               env file
             </span>
           )}
         </div>
-        <p className="mt-0.5 text-[15px] leading-[22px] text-muted-foreground">
+        <p className="mt-0.5 text-small text-muted-foreground">
           {check.reason}
         </p>
         {!check.done && check.linkTo && (
           <Link
             to={check.linkTo}
-            className="mt-1 inline-block text-[15px] text-accent-text underline underline-offset-4"
+            className="mt-1 inline-block text-small text-accent-text underline underline-offset-4"
           >
             {check.linkLabel}
           </Link>
@@ -152,18 +152,18 @@ function SetupTier({
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             <h3 className={cn(
-              "text-[17px] text-foreground",
+              "text-lead text-foreground",
               prominent ? "font-semibold" : "font-medium",
             )}>{title}</h3>
             {allDone ? (
               <Badge variant="success">Done</Badge>
             ) : (
-              <span className="text-[14px] text-muted-foreground">
+              <span className="text-caption text-muted-foreground">
                 {doneCount}/{checks.length}
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[15px] text-muted-foreground">{description}</p>
+          <p className="mt-0.5 text-small text-muted-foreground">{description}</p>
         </div>
         <span className="ml-3 shrink-0 text-muted-foreground">
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -228,18 +228,18 @@ function LibrarySection({
         <div>
           <div className="flex items-center gap-2">
             <Mail size={16} className="text-accent-text" />
-            <h3 className="text-[17px] font-medium text-foreground">
+            <h3 className="text-lead font-medium text-foreground">
               {libraryFlow.name}
             </h3>
             {isActive && <Badge variant="success">Active</Badge>}
             {alreadyInstalled && !isActive && <Badge variant="neutral">Installed</Badge>}
           </div>
-          <p className="mt-1 text-[15px] text-muted-foreground">
+          <p className="mt-1 text-small text-muted-foreground">
             {libraryFlow.description}
           </p>
-          <p className="mt-2 text-[15px] text-muted-foreground">
+          <p className="mt-2 text-small text-muted-foreground">
             {libraryFlow.emails} emails over 3 days, triggered by a{" "}
-            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-[14px]">
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-caption">
               {libraryFlow.trigger}
             </code>
             {" "}event. No LLM required.
@@ -252,7 +252,7 @@ function LibrarySection({
         <button
           type="button"
           onClick={() => setShowEmails(!showEmails)}
-          className="flex items-center gap-1.5 text-[15px] text-accent-text hover:underline"
+          className="flex items-center gap-1.5 text-small text-accent-text hover:underline"
         >
           {showEmails ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           {showEmails ? "Hide emails" : "Preview the emails"}
@@ -265,17 +265,17 @@ function LibrarySection({
                 className="rounded-md border border-border bg-background p-4"
               >
                 <div className="flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sunken text-[12px] font-medium text-muted-foreground">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sunken text-micro font-medium text-muted-foreground">
                     {i + 1}
                   </span>
-                  <span className="text-[16px] font-medium text-foreground">
+                  <span className="text-body font-medium text-foreground">
                     {t.name}
                   </span>
-                  <span className="text-[14px] text-muted-foreground">
+                  <span className="text-caption text-muted-foreground">
                     {i === 0 ? "Immediate" : i === 1 ? "After 1 day" : "After 3 days"}
                   </span>
                 </div>
-                <p className="mt-1.5 pl-7 text-[15px] text-muted-foreground">
+                <p className="mt-1.5 pl-7 text-small text-muted-foreground">
                   Subject: {t.subject}
                 </p>
               </div>
@@ -304,19 +304,19 @@ function LibrarySection({
           </Link>
         )}
         {isActive && !hasTransport && (
-          <p className="text-[15px] text-warning">
+          <p className="text-small text-warning">
             Flow is active but no transport is configured - emails cannot be delivered yet.
           </p>
         )}
         {isActive && hasTransport && (
-          <p className="text-[15px] text-success">
+          <p className="text-small text-success">
             Active and ready to send when a contact fires the trigger event.
           </p>
         )}
       </div>
 
       {install.isError && (
-        <p className="mt-3 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[15px] text-foreground">
+        <p className="mt-3 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-small text-foreground">
           {install.error instanceof Error ? install.error.message : "Install failed."}
         </p>
       )}
@@ -346,8 +346,8 @@ function SetupBanner({
   return (
     <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border bg-card shadow-card p-5 sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1">
-        <p className="text-[17px] font-medium text-foreground">Finish setup</p>
-        <p className="mt-0.5 text-[15px] text-muted-foreground">
+        <p className="text-lead font-medium text-foreground">Finish setup</p>
+        <p className="mt-0.5 text-small text-muted-foreground">
           {doneCount} of {totalCount} requirements met. The remaining items
           unlock everything this install can do.
         </p>
@@ -495,10 +495,10 @@ function SetupHome({
       {(!checks.encryptionKey || !checks.signingKey) && (
         <div className="mb-5 flex items-start gap-2.5 rounded-md border border-warning bg-warning-soft px-4 py-3">
           <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
-          <p className="text-[15px] text-foreground">
+          <p className="text-small text-foreground">
             Some items require environment variables set before the container
             starts and cannot be changed from the dashboard. Edit your{" "}
-            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-[14px]">.env</code>
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-caption">.env</code>
             {" "}file or Docker Compose config and restart.
           </p>
         </div>
@@ -528,7 +528,7 @@ function SetupHome({
 
         {/* Library section - the fastest path to real behavior */}
         <div className="pt-2">
-          <h2 className="mb-4 text-[22px] font-semibold leading-7 tracking-[-0.015em] text-foreground">
+          <h2 className="mb-4 text-heading font-semibold leading-7 tracking-[-0.015em] text-foreground">
             Fastest path to a working install
           </h2>
           <LibrarySection
