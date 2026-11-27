@@ -63,14 +63,14 @@ export default function KbNewPage() {
       <div className="mb-8">
         <Link
           to="/kb"
-          className="text-[14px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
+          className="text-[15px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
         >
           &larr; Knowledge Base
         </Link>
-        <h1 className="mt-2 font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground">
+        <h1 className="mt-2 font-display text-[34px] font-bold leading-[40px] tracking-[-0.025em] text-foreground">
           New entry
         </h1>
-        <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-muted-foreground">
+        <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
           Something true about your product the AI should write from: a
           playbook, a pricing fact, a voice guide. Write it like you would
           explain it to a new teammate - the AI drafts emails from this
@@ -83,13 +83,13 @@ export default function KbNewPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[15px] text-foreground">{error}</p>
+          <p className="text-[16px] text-foreground">{error}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
         <div>
-          <label htmlFor="kb-title" className="mb-1.5 block text-[14px] font-medium text-foreground">
+          <label htmlFor="kb-title" className="mb-1.5 block text-[15px] font-medium text-foreground">
             Title <span className="text-danger" aria-hidden="true">*</span>
           </label>
           <Input
@@ -102,21 +102,21 @@ export default function KbNewPage() {
           />
         </div>
         <div>
-          <label htmlFor="kb-content" className="mb-1.5 block text-[14px] font-medium text-foreground">
+          <label htmlFor="kb-content" className="mb-1.5 block text-[15px] font-medium text-foreground">
             Content <span className="text-danger" aria-hidden="true">*</span>
           </label>
           <Textarea
             id="kb-content"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="min-h-72 font-mono text-[13px]"
+            className="min-h-72 font-mono text-[14px]"
             placeholder={"Write or paste the material here.\n\nMarkdown works: headings, lists, bold. Keep it factual - the closer this reads to truth, the better the drafts."}
             disabled={busy}
             required
           />
         </div>
         <div>
-          <label htmlFor="kb-category" className="mb-1.5 block text-[14px] font-medium text-foreground">
+          <label htmlFor="kb-category" className="mb-1.5 block text-[15px] font-medium text-foreground">
             Category <span className="font-normal text-muted-foreground">(optional, used by a step's kb_select)</span>
           </label>
           <Input
@@ -128,7 +128,7 @@ export default function KbNewPage() {
             disabled={busy}
           />
         </div>
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-[14px] text-foreground">
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-[15px] text-foreground">
           <input
             type="checkbox"
             checked={pinned}

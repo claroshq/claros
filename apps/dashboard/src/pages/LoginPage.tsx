@@ -43,12 +43,12 @@ function BrandPanel() {
           <br />
           compiled.
         </p>
-        <p className="mt-4 max-w-[320px] text-[15px] leading-relaxed text-muted-foreground">
+        <p className="mt-4 max-w-[320px] text-[16px] leading-relaxed text-muted-foreground">
           Describe the flow in plain language. Claros compiles it into a
           deterministic plan, drafts the emails, and waits for your approval.
         </p>
       </div>
-      <p className="text-[13px] text-subtle-foreground">
+      <p className="text-[14px] text-subtle-foreground">
         Open-source lifecycle email for SaaS.
       </p>
     </div>
@@ -98,13 +98,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex h-full min-h-screen overflow-y-auto overscroll-contain bg-background">
+    <div className="flex h-full min-h-screen overflow-y-auto overscroll-contain bg-card">
       <BrandPanel />
 
       <div className="relative flex flex-1 items-center justify-center p-6">
         <ThemeToggle className="absolute right-6 top-6" />
 
-        <div className="w-full max-w-[360px]">
+        <div className="w-full max-w-[380px]">
           {/* Compact lockup for narrow viewports where the panel is hidden. */}
           <div className="mb-10 lg:hidden">
             <BrandLockup markSize={24} />
@@ -112,18 +112,18 @@ export default function LoginPage() {
 
           {sent ? (
             <div>
-              <h1 className="text-xl font-semibold tracking-[-0.015em] text-foreground">
+              <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.02em] text-foreground">
                 Check your inbox
               </h1>
-              <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+              <p className="mt-3 text-[16px] leading-relaxed text-muted-foreground">
                 A login link has been sent to{" "}
                 <strong className="font-medium text-foreground">{email}</strong>.
                 Click it to sign in. The link expires in 10 minutes.
               </p>
-              <p className="mt-6 text-[15px] text-muted-foreground">
+              <p className="mt-6 text-[16px] text-muted-foreground">
                 No email? Check your spam folder, or{" "}
                 <button
-                  className="cursor-pointer border-none bg-transparent p-0 text-[15px] text-accent-text underline underline-offset-4"
+                  className="cursor-pointer border-none bg-transparent p-0 text-[16px] text-accent-text underline underline-offset-4"
                   onClick={() => { setSent(false); setLocalError(null); }}
                 >
                   try again
@@ -133,16 +133,16 @@ export default function LoginPage() {
             </div>
           ) : (
             <div>
-              <h1 className="text-xl font-semibold tracking-[-0.015em] text-foreground">
+              <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.02em] text-foreground">
                 Sign in
               </h1>
-              <p className="mt-2 text-[15px] text-muted-foreground">
+              <p className="mt-2 text-[16px] text-muted-foreground">
                 Enter your email to receive a login link.
               </p>
 
               {sessionExpired && !errorMessage && (
                 <p
-                  className="mt-6 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[15px] text-foreground"
+                  className="mt-6 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[16px] text-foreground"
                   role="status"
                 >
                   Your session has expired. Sign in again to continue.
@@ -151,7 +151,7 @@ export default function LoginPage() {
 
               {errorMessage && (
                 <p
-                  className="mt-6 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[15px] text-foreground"
+                  className="mt-6 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[16px] text-foreground"
                   role="alert"
                 >
                   {errorMessage}
@@ -160,7 +160,7 @@ export default function LoginPage() {
 
               <form onSubmit={handleSubmit} noValidate className="mt-8">
                 <label
-                  className="mb-1.5 block text-[14px] font-medium text-foreground"
+                  className="mb-1.5 block text-[15px] font-medium text-foreground"
                   htmlFor="email"
                 >
                   Email

@@ -14,13 +14,13 @@ import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
 import { Textarea } from "../ui/textarea.js";
 
-const HINT = "mt-1.5 text-[13px] leading-relaxed text-muted-foreground";
+const HINT = "mt-1.5 text-[14px] leading-relaxed text-muted-foreground";
 
 function PanelHead({ title, sub }: { title: string; sub: string }) {
   return (
     <div className="mb-5">
-      <h2 className="text-[19px] font-semibold text-foreground">{title}</h2>
-      <p className="mt-0.5 text-[14px] text-muted-foreground">{sub}</p>
+      <h2 className="text-[20px] font-semibold text-foreground">{title}</h2>
+      <p className="mt-0.5 text-[15px] text-muted-foreground">{sub}</p>
     </div>
   );
 }
@@ -58,7 +58,7 @@ export function TriggerPanel({
         </p>
       )}
       {problems.length > 0 && (
-        <ul className="mt-4 list-disc pl-5 text-[13px] text-danger" role="alert">
+        <ul className="mt-4 list-disc pl-5 text-[14px] text-danger" role="alert">
           {problems.map((p) => <li key={p}>{p}</li>)}
         </ul>
       )}
@@ -88,13 +88,13 @@ export function ExitsPanel({
       <ConditionListEditor label="Stop when any of these is true" value={exits} onChange={onChange} scope="exit" anyOf disabled={disabled} />
       {!disabled && suggestions.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[13px] text-muted-foreground">Add a common one:</span>
+          <span className="mr-1 text-[14px] text-muted-foreground">Add a common one:</span>
           {suggestions.map((s) => (
             <button
               key={s.label}
               type="button"
               onClick={() => onChange([...exits, s.cond])}
-              className="rounded-md border border-border bg-card px-2 py-0.5 text-[13px] text-foreground hover:border-border-strong"
+              className="rounded-md border border-border bg-card px-2 py-0.5 text-[14px] text-foreground hover:border-border-strong"
             >
               {s.label}
             </button>
@@ -143,7 +143,7 @@ export function PromptPanel({
     <div>
       <PanelHead title="The prompt" sub="Describe the flow in your own words. Compiling turns it into the emails on the left, which you can then read and adjust." />
       {locked && (
-        <p className="mb-3 rounded-md border border-border bg-secondary px-3 py-2 text-[14px] text-muted-foreground" role="note">
+        <p className="mb-3 rounded-md border border-border bg-secondary px-3 py-2 text-[15px] text-muted-foreground" role="note">
           The prompt is locked while the flow is active. Pause the flow to change it. The emails themselves stay editable.
         </p>
       )}
@@ -151,7 +151,7 @@ export function PromptPanel({
         aria-label="Prompt"
         value={prompt}
         rows={8}
-        className="text-[15px] leading-relaxed"
+        className="text-[16px] leading-relaxed"
         disabled={disabled || locked}
         onChange={(e) => onChange(e.target.value)}
         placeholder="When someone signs up on the free plan, welcome them right away. If they have not created a project after a day, show them the two-minute setup. Two days later, send one tip. Stop as soon as they upgrade."
@@ -163,17 +163,17 @@ export function PromptPanel({
             {compiling ? "Compiling..." : flow.compile_status === "ready" ? "Compile again" : "Compile"}
           </Button>
           <Badge variant={badge.variant} pulse={flow.compile_status === "pending"}>{badge.label}</Badge>
-          <span className="text-[13px] text-muted-foreground">
+          <span className="text-[14px] text-muted-foreground">
             {!hasLlm ? "Compiling needs an LLM provider (Settings, LLM)." : promptDirty ? "Save the prompt first, then compile." : "Compiling replaces the emails with the ones the prompt describes."}
           </span>
         </div>
       )}
       {flow?.compile_status === "failed" && flow.compile_error && (
-        <p className="mt-3 whitespace-pre-wrap break-words rounded-md border border-danger bg-danger-soft px-3 py-2 font-mono text-[13px] text-foreground" role="alert">
+        <p className="mt-3 whitespace-pre-wrap break-words rounded-md border border-danger bg-danger-soft px-3 py-2 font-mono text-[14px] text-foreground" role="alert">
           {flow.compile_error}
         </p>
       )}
-      {compileError && <p className="mt-3 rounded-md border border-danger bg-danger-soft px-3 py-2 text-[14px] text-foreground" role="alert">{compileError}</p>}
+      {compileError && <p className="mt-3 rounded-md border border-danger bg-danger-soft px-3 py-2 text-[15px] text-foreground" role="alert">{compileError}</p>}
     </div>
   );
 }
@@ -183,8 +183,8 @@ function Choice({ name, checked, onChange, title, children, disabled }: { name: 
     <label className={`mt-2 flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition-colors ${checked ? "border-accent bg-accent-soft/50" : "border-border hover:border-border-strong"} ${disabled ? "cursor-not-allowed opacity-70" : ""}`}>
       <input type="radio" name={name} className="mt-1" checked={checked} disabled={disabled} onChange={onChange} />
       <span className="min-w-0">
-        <span className="block text-[15px] font-semibold text-foreground">{title}</span>
-        {children && <span className="block text-[13px] leading-relaxed text-muted-foreground">{children}</span>}
+        <span className="block text-[16px] font-semibold text-foreground">{title}</span>
+        {children && <span className="block text-[14px] leading-relaxed text-muted-foreground">{children}</span>}
       </span>
     </label>
   );
@@ -193,7 +193,7 @@ function Choice({ name, checked, onChange, title, children, disabled }: { name: 
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="border-t border-border pt-5 first:border-t-0 first:pt-0">
-      <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+      <h3 className="text-[16px] font-semibold text-foreground">{title}</h3>
       <div className="mt-1">{children}</div>
     </section>
   );
@@ -218,7 +218,7 @@ export function DeliverySettings({
   const d = disabled;
   const sendable = topics.filter((t) => !t.mirror_only);
   return (
-    <div className="max-w-3xl space-y-6 rounded-xl border border-border bg-card p-6">
+    <div className="max-w-3xl space-y-6 rounded-xl border border-border bg-card shadow-card p-6">
       <SettingsSection title="Review before sending">
         <Choice name="approval" disabled={d} checked={draft.approval_mode === "require"} onChange={() => onChange({ approval_mode: "require" })} title="I approve each email">
           Every message waits in Approvals until someone approves it. Recommended while a flow is new, and for AI-drafted mail.
@@ -275,10 +275,10 @@ export function DeliverySettings({
         </Choice>
         {draft.flow_class === "nurture" && (
           <div className="mt-4">
-            <label htmlFor="flow-priority" className="block text-[14px] font-medium text-foreground">Priority among nurture flows</label>
+            <label htmlFor="flow-priority" className="block text-[15px] font-medium text-foreground">Priority among nurture flows</label>
             <div className="mt-1.5 flex flex-wrap items-center gap-3">
               <Input id="flow-priority" type="number" className="w-24" value={String(draft.priority)} disabled={d} onChange={(e) => onChange({ priority: Number.isInteger(Number(e.target.value)) ? Number(e.target.value) : draft.priority })} />
-              <span className="text-[13px] text-muted-foreground">When two nurture flows want the same contact, the higher number wins.</span>
+              <span className="text-[14px] text-muted-foreground">When two nurture flows want the same contact, the higher number wins.</span>
             </div>
           </div>
         )}
@@ -286,7 +286,7 @@ export function DeliverySettings({
 
       <SettingsSection title="Can a contact go through it again?">
         {(draft.trigger.type === "date_property" || draft.trigger.type === "date_schedule") && (
-          <p className="mt-1 text-[13px] text-muted-foreground">Date flows enroll once per date value; this setting does not apply to them.</p>
+          <p className="mt-1 text-[14px] text-muted-foreground">Date flows enroll once per date value; this setting does not apply to them.</p>
         )}
         <Choice name="reentry" disabled={d} checked={draft.reentry_policy === "once"} onChange={() => onChange({ reentry_policy: "once" })} title="Only once">
           Right for welcome and onboarding.
@@ -320,9 +320,9 @@ export function DeliverySettings({
       </SettingsSection>
 
       {flow && (
-        <p className="border-t border-border pt-5 text-[13px] text-muted-foreground">
-          ID <code className="font-mono text-[12px]">{flow.id}</code>
-          {flow.slug && <> · config slug <code className="font-mono text-[12px]">{flow.slug}</code></>} · created {new Date(flow.created_at).toLocaleDateString()} · updated {new Date(flow.updated_at).toLocaleString()}
+        <p className="border-t border-border pt-5 text-[14px] text-muted-foreground">
+          ID <code className="font-mono text-[13px]">{flow.id}</code>
+          {flow.slug && <> · config slug <code className="font-mono text-[13px]">{flow.slug}</code></>} · created {new Date(flow.created_at).toLocaleDateString()} · updated {new Date(flow.updated_at).toLocaleString()}
         </p>
       )}
     </div>

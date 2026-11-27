@@ -40,7 +40,9 @@ What this deliberately is not:
 - Not dense everywhere. Dense where the user scans data, spacious where the
   user thinks.
 - Not flat everywhere either. Surfaces are drawn with 1px lines and surface
-  steps; shadows exist only for overlays. Cards do not float.
+  steps. Cards sit on the canvas as sheets: a 1px edge plus a hairline
+  contact shadow in light. Real elevation (soft, offset shadows) is for
+  overlays only.
 
 ## 2. Themes
 
@@ -69,11 +71,14 @@ Rules:
    from this. Where a tint is needed, define a solid token (`-soft`
    variants) and measure it.
 3. Dark theme raises surfaces by making them lighter (`--bg` 0.205 ->
-   `--bg-raised` 0.232). Light theme grounds them by making them greyer
-   (`--bg` 0.992 canvas - the marketing white from claros-web, white
-   raised cards; sidebar is `--bg-sunken` 0.95, so the order is sidebar
-   < canvas < card, ratio sidebar/canvas ~1.13). Never invert these
-   directions.
+   `--bg-raised` 0.232) and recesses the sidebar (`--bg-sidebar` =
+   `--bg-sunken` 0.165). Light theme grounds the canvas instead: `--bg` is
+   a cool grey (0.963), and cards and the sidebar are white
+   (`--bg-raised`, `--bg-sidebar`), the sidebar split off by a 1px rule.
+   The earlier near-white canvas (0.992) left cards at 1.02:1 against the
+   page, so cards, sidebar and content read as one pale sheet; white on
+   grey (1.11:1 plus edge and contact shadow) is what makes the layout
+   legible. Never invert these directions.
 
 ## 3. Color
 
@@ -81,14 +86,16 @@ Rules:
 
 | Token | Light | Dark | Role |
 |---|---|---|---|
-| `--bg` | oklch(0.992 0.002 264) | oklch(0.205 0.01 264) | page canvas (marketing white) |
-| `--bg-raised` | oklch(1 0 0) | oklch(0.232 0.011 264) | cards, hover surfaces |
-| `--bg-sunken` | oklch(0.95 0.003 264) | oklch(0.165 0.009 264) | recessed panels (sidebar in light), disabled fills |
-| `--border` | oklch(0.846 0.007 264) | oklch(0.335 0.013 264) | decorative container edges |
-| `--border-strong` | oklch(0.62 0.014 264) | oklch(0.53 0.015 264) | control boundaries (3:1+) |
-| `--fg` | oklch(0.24 0.014 264) | oklch(0.945 0.005 264) | primary text |
-| `--fg-muted` | oklch(0.452 0.016 264) | oklch(0.715 0.014 264) | secondary text (4.5:1+) |
-| `--fg-subtle` | oklch(0.53 0.015 264) | oklch(0.6 0.014 264) | small de-emphasized text, placeholders, disabled labels |
+| `--bg` | oklch(0.963 0.005 258) | oklch(0.205 0.01 264) | page canvas (cool grey in light) |
+| `--bg-raised` | oklch(1 0 0) | oklch(0.232 0.011 264) | cards, inputs, panels |
+| `--bg-sidebar` | = `--bg-raised` | = `--bg-sunken` | shell sidebar and mobile top bar |
+| `--bg-hover` | oklch(0.975 0.004 258) | oklch(0.262 0.012 264) | row and quiet-control hover wash on cards |
+| `--bg-sunken` | oklch(0.95 0.005 258) | oklch(0.165 0.009 264) | recessed wells, chips, segmented tracks, disabled fills |
+| `--border` | oklch(0.87 0.011 260) | oklch(0.335 0.013 264) | decorative container edges |
+| `--border-strong` | oklch(0.6 0.016 262) | oklch(0.53 0.015 264) | control boundaries (3:1+) |
+| `--fg` | oklch(0.205 0.013 264) | oklch(0.945 0.005 264) | primary text |
+| `--fg-muted` | oklch(0.38 0.024 264) | oklch(0.715 0.014 264) | secondary text (9:1+ in light) |
+| `--fg-subtle` | oklch(0.5 0.022 264) | oklch(0.63 0.014 264) | small de-emphasized text, timestamps, placeholders, disabled labels |
 | `--accent` | oklch(0.6 0.13 225) | oklch(0.78 0.12 220) | signal cyan: dots, chips, the mark |
 | `--accent-text` | oklch(0.45 0.12 240) | oklch(0.8 0.11 222) | links, active text (4.5:1+) |
 | `--accent-fg` | oklch(0.2 0.03 240) | oklch(0.2 0.04 240) | text on accent fills |
@@ -99,14 +106,14 @@ Rules:
 | `--pop-text` | oklch(0.48 0.19 35) | oklch(0.76 0.16 40) | positive deltas, pop text (4.5:1+) |
 | `--pop-fg` | oklch(0.97 0.01 35) | oklch(0.21 0.04 35) | text on pop fills |
 | `--pop-soft` | oklch(0.93 0.04 35) | oklch(0.35 0.07 38) | pop chip surfaces |
-| `--success` / `-soft` | oklch(0.5 0.11 185) / oklch(0.93 0.025 185) | oklch(0.755 0.13 185) / oklch(0.3 0.045 185) | working as intended |
+| `--success` / `-soft` | oklch(0.47 0.1 185) / oklch(0.93 0.025 185) | oklch(0.755 0.13 185) / oklch(0.3 0.045 185) | working as intended |
 | `--warning` / `-soft` | oklch(0.47 0.1 72) / oklch(0.935 0.025 80) | oklch(0.8 0.11 82) / oklch(0.31 0.04 82) | needs attention, in progress |
-| `--danger` / `-soft` | oklch(0.52 0.18 27) / oklch(0.935 0.025 27) | oklch(0.72 0.15 27) / oklch(0.31 0.05 27) | broken |
-| `--danger-fill` | oklch(0.52 0.18 27) | oklch(0.55 0.17 27) | destructive button fill |
+| `--danger` / `-soft` | oklch(0.5 0.18 27) / oklch(0.935 0.025 27) | oklch(0.72 0.15 27) / oklch(0.31 0.05 27) | broken |
+| `--danger-fill` | oklch(0.5 0.18 27) | oklch(0.55 0.17 27) | destructive button fill |
 | `--chart-positive` / `--chart-negative` | oklch(0.72 0.08 185) / oklch(0.74 0.09 27) | oklch(0.8 0.07 185) / oklch(0.8 0.08 27) | direction-split chart bars: pastel step between the semantic `-soft` surfaces and the full tones |
 | `--product-dot-l` / `--product-dot-c` | 0.62 / 0.13 | 0.74 / 0.12 | product identity dot in the sidebar switcher: `oklch(l c hue)`, hue from a fixed set (225, 255, 285, 315, 345, 140, 110) picked per product id, clear of the semantic and coral hues so it never reads as a status |
 | `--skeleton` | oklch(0.935 0.004 264) | oklch(0.30 0.012 264) | loading placeholders |
-| `--selected` | oklch(0.93 0.012 255) | oklch(0.335 0.028 250) | selected state: active nav, selected rows. Neutral slate-blue, quieter than `--accent-soft` |
+| `--selected` | oklch(0.935 0.016 252) | oklch(0.335 0.028 250) | selected state: active nav, selected rows. Neutral slate-blue, quieter than `--accent-soft` |
 | `--ring` | = `--accent` | = `--accent` | focus rings |
 
 ### Roles
@@ -155,38 +162,51 @@ Fonts (self-hosted via fontsource, licences in `public/fonts-license.txt`):
 
 | Step | Size / leading | Font / weight | Tracking | Use |
 |---|---|---|---|---|
-| Display | 40 / 46 | Bricolage 700 | -0.02em | login brand panel headline only |
-| Page title | 28 / 34 | Bricolage 700 | -0.02em | one per page, top of content |
-| Section title | 20 / 28 | Instrument 600 | -0.015em | card titles, form headings |
-| Emphasis | 15 / 24 | Instrument 500 | 0 | empty-state headings |
-| Body | 14 / 22 | Instrument 400 | 0 | default UI text, forms |
-| Small | 13 / 20 | Instrument 400/500 | 0 | nav, table cells, secondary text |
-| Micro | 11 / 16 | Instrument 600 | +0.06em, uppercase | table headers, eyebrows |
-| Mono data | 12-13 / 20 | JetBrains Mono 400 | 0 | IDs, dates, trigger types |
+| Display | 40 / 46 | Bricolage 700 | -0.02em | login brand panel headline |
+| Page title | 40 / 46 (32 / 38 below sm) | Bricolage 700 | -0.03em | one per page, top of content (PageHeader) |
+| Detail title | 34 / 40 | Bricolage 700 | -0.025em | title of a record page (person, flow, entry, sent mail) |
+| Metric | 40 / 46 (32 / 38 below sm) | Instrument 600, tabular | -0.03em | KPI numbers on Home and Analytics |
+| Section title | 20 / 28 | Instrument 600 | -0.015em | headings between card groups, large card titles |
+| Card title | 17 / 24 | Instrument 600 | -0.01em | the name of a card or panel, sentence case |
+| Emphasis | 16 / 24 | Instrument 600 | 0 | list item titles, empty-state headings |
+| Body | 15-16 / 24 | Instrument 400 | 0 | default UI text, descriptions, forms |
+| Small | 14-15 / 20-22 | Instrument 400/500 | 0 | nav (15), table cells (15), secondary lines (14) |
+| Micro | 12 / 16 | Instrument 600 | +0.06em, uppercase | table headers, nav group labels, eyebrows (13) |
+| Mono data | 13-14 / 20 | JetBrains Mono 400 | 0 | IDs, emails, event names, trigger types |
 
 Rules:
 
 1. One page title per page, and it is the focal point: eyebrow micro label
    above it (accent-text), one-line muted subtitle below, primary action
-   top right. Nothing else on the page uses Bricolage or 20px+ type except
-   section titles inside cards.
-2. Tracking is negative only at 20px and above. Never letterspace body text.
-3. Weight contrast, not size-only contrast: headings 600/700, emphasis 500,
+   top right. Nothing else on the page uses Bricolage; metrics and section
+   titles are the only other 20px+ type.
+2. Cards are named in sentence case (Card title), not with micro labels.
+   Uppercase micro labels flattened every card into the same grey caption
+   and left nothing to scan by; they stay for table headers, nav group
+   labels and eyebrows.
+3. Tracking is negative only at 17px and above. Never letterspace body text.
+4. Weight contrast, not size-only contrast: headings 600/700, emphasis 500,
    body 400. Do not set headings in 400 at a big size.
-4. Uppercase exists only in micro labels. Never uppercase a sentence.
-5. The old 16px mono floor is retired. Mono data renders at 12-13px at
-   measured contrast; the floor existed to prop up a muted-gray palette
-   that no longer exists.
+5. Uppercase exists only in micro labels. Never uppercase a sentence.
+6. Mono is for machine data only. Prose that happens to sit next to data
+   ("vs the week before", "last event 1h ago", relative times) is sans.
+7. The 2026-11 revision raised the whole scale one step (body 14 -> 15,
+   cells 13 -> 15, micro 11 -> 12, page title 28 -> 40): the old scale
+   read as small and pale on a 1440px screen. Do not drift back below it.
 
 ## 5. Spacing, radii, borders, elevation
 
 Spacing uses the Tailwind 4px scale with these conventions:
 
-- Page padding: 32px (`px-8 py-8`). Content column: `max-w-6xl mx-auto`.
-- Page header to content: 32px (`mb-8`).
-- Between sections: 24px. Between form fields: 16-20px. Inside cards: 24px.
-- Table cell padding: 12px vertical, 12px horizontal (`py-3 px-3`).
-- Sidebar width 240px, header height 64px.
+- Page padding: 64px x 56px at lg (`lg:px-16 lg:py-14`), 32px x 40px at sm,
+  16px x 28px on phones. Content column: `max-w-6xl mx-auto`.
+- Page header to content: 40px (`mb-10`).
+- Between sections: 40px. Between cards in a column or grid: 20px. Between
+  form fields: 16-20px. Inside cards: 24px (card header rows 16px x 24px).
+- Table cell padding: 14px vertical, 12px horizontal (`py-3.5 px-3`), first
+  and last columns inset 20px in a framed table.
+- List rows inside cards: 52-60px.
+- Sidebar width 264px, lockup band 64px, nav items 40px.
 
 Radii: `--radius-sm` 6px (small chips, toggle segments), `--radius-md` 8px
 (buttons, inputs, banners), `--radius-lg` 12px (cards, panels). Status
@@ -194,11 +214,12 @@ badges and dots are fully round. Do not introduce other radii.
 
 Borders and elevation:
 
-- Structure is drawn with 1px `--border` lines and surface steps. Cards do
-  not float: no shadows on cards, tables, or static panels.
-- Shadows exist only for overlays (dropdowns, dialogs): the single
-  `--shadow-overlay` token (`shadow-overlay` utility). If it is not an
-  overlay, it does not get a shadow.
+- Structure is drawn with 1px `--border` lines and surface steps.
+- Cards, framed tables and the product switcher carry `shadow-card`
+  (`--card-shadow`): a 1px, 6% contact shadow in light, none in dark. It
+  is what separates a white sheet from the grey canvas without a heavy
+  border; it never grows into a soft, offset shadow.
+- Overlays (dropdowns, dialogs) use `shadow-overlay`. Nothing carries both.
 - `--border` is decorative (container edges, table separators).
   `--border-strong` is the boundary of interactive controls (inputs,
   outline buttons) and is measured at 3:1+ against the canvas. This split
@@ -251,11 +272,15 @@ both canvases (measured below).
 
 ## 9. Data density
 
-- Tables: 13px cells, 44px row rhythm, micro-label headers, 1px `--border`
-  separators, hover raises the row to `--bg-raised`. No outer frame, no
-  zebra striping (zebra adds a surface per row and still loses to
-  whitespace plus hover).
-- Numeric and machine columns are mono 12px muted. Identifiers and dates
+- Tables: 15px cells, ~52px row rhythm, 12px micro-label headers, 1px
+  `--border` separators, `--bg-hover` row hover. A table standing on the
+  canvas is framed (white card, edge, card shadow); a table inside a card
+  passes `framed={false}`. No zebra striping (zebra adds a surface per row
+  and still loses to whitespace plus hover).
+- Lists that are not tables (approval queue, knowledge base groups,
+  activity feeds) live in a card too, with `divide-y` rows.
+- Machine columns are mono 13-14px muted; counts are sans, tabular,
+  semibold. Identifiers and dates
   right-align when the column is numeric or temporal.
 - Status columns use dot badges, so four status columns in one row stay
   scannable. The old filled pills made every row a traffic light.
@@ -280,12 +305,13 @@ pairs added to `scripts/contrast.mjs`.
   `outline` (border-strong boundary), `secondary` (raised surface with
   border), `ghost` (quiet chrome actions like Sign out), `destructive`
   (`--danger-fill` with white text), `link` (accent text). Sizes `sm`
-  (32px), `default` (36px), `lg` (40px), `icon`. Disabled state is a solid
+  (36px, 14px text), `default` (40px, 15px), `lg` (44px), `icon` (40px). Disabled state is a solid
   `--bg-sunken` fill with muted text: never opacity. The old disabled style
   (accent at 50% opacity) rendered as a muddy olive and failed AA; that is
   why this rule exists.
-- **Input / Select / Textarea**: 36px fields (textarea grows), page-canvas
-  fill, `--border-strong` boundary, focus ring per section 8. Select is a
+- **Input / Select / Textarea**: 40px fields at 15px (textarea grows),
+  white `--bg-raised` fill (never the grey canvas, which reads as
+  disabled), `--border-strong` boundary, focus ring per section 8. Select is a
   styled native element: no custom listbox. Placeholders are
   `--fg-subtle`; labels live outside the field, always visible.
 - **Table**: see section 9.
@@ -380,7 +406,8 @@ Usage:
 
 ## 12. Layout
 
-- Shell: a single chrome column. The 240px sidebar carries the brand lockup
+- Shell: a single chrome column. The 264px sidebar (white in light,
+  recessed in dark, a 1px `--border` rule on its right edge) carries the brand lockup
   at the top, navigation in the middle, and a footer with the theme toggle,
   the signed-in user, and sign out. There is no horizontal header: it would
   spend the scarce axis (vertical space in a data-dense tool) to hold three
@@ -388,8 +415,11 @@ Usage:
   comparable product puts it. (This replaces an earlier version of this
   rule that prescribed a 64px header with a right-aligned cluster; the
   header did no work proportional to its cost.)
-- Nav items: 13-14px, 16px icons, 8px radius. Active item: the `--selected`
-  fill (neutral slate-blue tint, not cyan) with `--fg` text at weight 600.
+- Nav items: 40px tall, 15px at weight 500, 18px icons in `--fg-subtle`,
+  8px radius. Active item: the `--selected` fill (neutral slate-blue tint,
+  not cyan) with `--fg` text at weight 600 and the icon in accent-text.
+  Groups after the first carry a 12px micro label (Build, Monitor, Setup)
+  instead of a bare divider: past a dozen items, labels scan faster.
   Never a one-sided border or edge indicator bar (the user has rejected
   that pattern explicitly; it applies product-wide). The brand lockup above
   the nav sits on the page canvas (no band or card of its own), padded so
@@ -397,7 +427,7 @@ Usage:
   Disabled destinations render in `--fg-subtle` and are not focusable.
 - The sidebar footer is separated by a 1px `--border` line. The user email
   truncates; sign out is a quiet icon button, not a primary action.
-- Pages: one title (28px Bricolage, the focal point), one eyebrow micro
+- Pages: one title (40px Bricolage, the focal point), one eyebrow micro
   label above it, one-line muted subtitle, primary action top right,
   content in a `max-w-6xl` column. The header block renders in every state
   of the page.
@@ -407,15 +437,15 @@ Usage:
   metadata. The primary surface of the page leads the main column.
 - Multi-section pages (Settings) are sub-routes with a persistent in-page
   nav, never one long scroll with anchor links. The in-page nav mirrors
-  the shell nav (240px column, 14px items with 16px icons, `--selected`
-  active fill, sticky with its own scroll), groups its items under 11px
-  micro labels, and may carry a small warning dot on sections that need
+  the shell nav (240px column, 40px items at 15px with 18px icons,
+  `--selected` active fill, white hover, sticky with its own scroll),
+  groups its items under 12px micro labels, and may carry a small warning dot on sections that need
   attention. Each sub-page is its own URL, so setup hints anywhere in the
   app deep-link to the exact section.
-- Login: split screen. Brand panel (44%, `--bg-sunken`) carries the only
-  display typography in the app plus the flow motif (a node entering a
-  dashed path that resolves into a ring: a contact entering a compiled
-  plan). The form side is deliberately quiet.
+- Login: split screen. Brand panel (44%, `--bg-sunken`) carries the
+  display headline plus the flow motif (a node entering a dashed path that
+  resolves into a ring: a contact entering a compiled plan). The form side
+  is white and deliberately quiet.
 
 ## 13. Accessibility: measured contrast
 
@@ -432,39 +462,52 @@ modifier, and no blended backdrop.
 
 | Pair | Ratio | Required | Verdict |
 |---|---|---|---|
-| body text on bg | 16.08 | 4.5 | PASS |
-| body text on raised | 16.46 | 4.5 | PASS |
-| muted text on bg | 7.21 | 4.5 | PASS |
-| muted text on raised | 7.38 | 4.5 | PASS |
-| subtle text on bg | 5.16 | 4.5 | PASS |
-| subtle text on sunken (badge, footer) | 4.56 | 4.5 | PASS |
-| subtle dot on sunken (badge dot) | 4.56 | 3.0 | PASS |
-| accent text (link) on bg | 7.04 | 4.5 | PASS |
+| body text on bg | 16.10 | 4.5 | PASS |
+| body text on raised | 17.92 | 4.5 | PASS |
+| muted text on bg | 9.00 | 4.5 | PASS |
+| muted text on raised | 10.02 | 4.5 | PASS |
+| subtle text (placeholder) on bg | 5.39 | 3 | PASS |
+| subtle text on raised (timestamps on cards) | 6.00 | 4.5 | PASS |
+| border vs bg (card edge on canvas, decorative) | 1.33 | n/a | decorative |
+| raised vs bg (card off canvas, decorative) | 1.11 | n/a | decorative |
+| subtle text on sunken (badge/login footer) | 5.19 | 3 | PASS |
+| subtle dot on sunken (badge dot) | 5.19 | 3 | PASS |
+| accent text (link) on bg | 6.48 | 4.5 | PASS |
 | accent text on accent-soft | 5.91 | 4.5 | PASS |
-| muted text on accent-soft | 6.05 | 4.5 | PASS |
-| muted text on sunken (chips) | 6.38 | 4.5 | PASS |
+| fg on selected (active nav) | 14.82 | 4.5 | PASS |
+| muted text on accent-soft (queue item meta) | 8.22 | 4.5 | PASS |
+| muted text on sunken (chips) | 8.66 | 4.5 | PASS |
+| fg on sunken (active nav) | 15.49 | 4.5 | PASS |
+| bg on fg (active nav block) | 16.10 | 4.5 | PASS |
 | warning text on raised (badge on card) | 6.97 | 4.5 | PASS |
-| success text on success-soft (badge) | 4.66 | 4.5 | PASS |
+| success text on success-soft (badge) | 5.18 | 4.5 | PASS |
 | warning text on warning-soft (banner) | 5.75 | 4.5 | PASS |
 | accent-fg on accent (filled chip) | 4.84 | 4.5 | PASS |
-| primary button (deep-fg on deep fill) | 6.43 | 4.5 | PASS |
-| accent dot on bg (status) | 3.65 | 3.0 | PASS |
-| pop-text on bg (positive delta) | 6.99 | 4.5 | PASS |
+| primary button: deep-fg on deep fill | 6.43 | 4.5 | PASS |
+| accent dot on bg (status) | 3.35 | 3 | PASS |
+| pop-text on bg (positive delta) | 6.43 | 4.5 | PASS |
 | pop-fg on pop (filled pop) | 4.90 | 4.5 | PASS |
 | pop-text on pop-soft (pop chip) | 5.72 | 4.5 | PASS |
-| fg on pop-soft (pop chip fallback) | 13.16 | 4.5 | PASS |
-| success text on bg | 5.55 | 4.5 | PASS |
-| warning text on bg | 6.81 | 4.5 | PASS |
-| danger text on bg | 5.90 | 4.5 | PASS |
-| danger text on danger-soft (banner) | 4.95 | 4.5 | PASS |
-| body text on danger-soft (banner) | 13.48 | 4.5 | PASS |
-| body text on warning-soft (banner) | 13.58 | 4.5 | PASS |
-| white text on danger-fill (button) | 6.04 | 4.5 | PASS |
-| input boundary (border-strong vs bg) | 3.56 | 3.0 | PASS |
-| focus ring (accent vs bg) | 3.65 | 3.0 | PASS |
-| status dots (success/warning/danger vs bg) | 5.55 / 6.81 / 5.90 | 3.0 | PASS |
-| disabled text (fg at 60% on bg, composited) | 4.34 | 3.0 advisory | PASS |
-| card edge (border vs raised) | 1.60 | n/a decorative | container edge, not a control boundary |
+| fg on pop-soft (pop chip fallback) | 14.33 | 4.5 | PASS |
+| success text on bg | 5.67 | 4.5 | PASS |
+| warning text on bg | 6.26 | 4.5 | PASS |
+| danger text on bg | 5.92 | 4.5 | PASS |
+| danger text on danger-soft (banner) | 5.40 | 4.5 | PASS |
+| body text on danger-soft (banner) | 14.68 | 4.5 | PASS |
+| body text on warning-soft (banner) | 14.79 | 4.5 | PASS |
+| body text on success-soft (grid cell) | 14.72 | 4.5 | PASS |
+| muted text on success-soft (grid cell meta) | 8.23 | 4.5 | PASS |
+| muted text on warning-soft (grid cell meta) | 8.27 | 4.5 | PASS |
+| muted text on danger-soft (grid cell meta) | 8.21 | 4.5 | PASS |
+| white text on danger-fill (button) | 6.59 | 4.5 | PASS |
+| border vs bg (input boundary) | 3.55 | 3 | PASS |
+| border vs raised (card edge, decorative, 1.4.11 n/a) | 1.48 | n/a | decorative |
+| focus ring (accent) vs bg | 3.35 | 3 | PASS |
+| status dot success vs bg | 5.67 | 3 | PASS |
+| status dot warning vs bg | 6.26 | 3 | PASS |
+| status dot danger vs bg | 5.92 | 3 | PASS |
+| fg at 60% on bg (disabled) | 4.52 | 3 | PASS |
+| raised at 50% on bg (row hover) | 1.06 | n/a | decorative |
 
 ### Dark theme
 
@@ -474,35 +517,48 @@ modifier, and no blended backdrop.
 | body text on raised | 14.31 | 4.5 | PASS |
 | muted text on bg | 7.09 | 4.5 | PASS |
 | muted text on raised | 6.65 | 4.5 | PASS |
-| subtle text on bg | 4.54 | 4.5 | PASS |
-| subtle text on sunken (badge, footer) | 4.88 | 4.5 | PASS |
-| subtle dot on sunken (badge dot) | 4.88 | 3.0 | PASS |
+| subtle text (placeholder) on bg | 5.12 | 3 | PASS |
+| subtle text on raised (timestamps on cards) | 4.80 | 4.5 | PASS |
+| border vs bg (card edge on canvas, decorative) | 1.49 | n/a | decorative |
+| raised vs bg (card off canvas, decorative) | 1.07 | n/a | decorative |
+| subtle text on sunken (badge/login footer) | 5.51 | 3 | PASS |
+| subtle dot on sunken (badge dot) | 5.51 | 3 | PASS |
 | accent text (link) on bg | 9.87 | 4.5 | PASS |
 | accent text on accent-soft | 6.65 | 4.5 | PASS |
-| muted text on accent-soft | 4.78 | 4.5 | PASS |
+| fg on selected (active nav) | 10.18 | 4.5 | PASS |
+| muted text on accent-soft (queue item meta) | 4.78 | 4.5 | PASS |
 | muted text on sunken (chips) | 7.63 | 4.5 | PASS |
+| fg on sunken (active nav) | 16.41 | 4.5 | PASS |
+| bg on fg (active nav block) | 15.25 | 4.5 | PASS |
 | warning text on raised (badge on card) | 8.93 | 4.5 | PASS |
 | success text on success-soft (badge) | 6.47 | 4.5 | PASS |
 | warning text on warning-soft (banner) | 7.01 | 4.5 | PASS |
 | accent-fg on accent (filled chip) | 9.33 | 4.5 | PASS |
-| primary button (deep-fg on deep fill) | 7.54 | 4.5 | PASS |
-| accent dot on bg (status) | 9.25 | 3.0 | PASS |
+| primary button: deep-fg on deep fill | 7.54 | 4.5 | PASS |
+| accent dot on bg (status) | 9.25 | 3 | PASS |
 | pop-text on bg (positive delta) | 7.70 | 4.5 | PASS |
 | pop-fg on pop (filled pop) | 6.76 | 4.5 | PASS |
 | pop-text on pop-soft (pop chip) | 5.00 | 4.5 | PASS |
 | fg on pop-soft (pop chip fallback) | 9.90 | 4.5 | PASS |
-| success text on bg | 8.67 | 4.5 | PASS |
+| success text on bg | 8.68 | 4.5 | PASS |
 | warning text on bg | 9.52 | 4.5 | PASS |
 | danger text on bg | 6.78 | 4.5 | PASS |
 | danger text on danger-soft (banner) | 5.08 | 4.5 | PASS |
 | body text on danger-soft (banner) | 11.43 | 4.5 | PASS |
 | body text on warning-soft (banner) | 11.23 | 4.5 | PASS |
+| body text on success-soft (grid cell) | 11.38 | 4.5 | PASS |
+| muted text on success-soft (grid cell meta) | 5.29 | 4.5 | PASS |
+| muted text on warning-soft (grid cell meta) | 5.22 | 4.5 | PASS |
+| muted text on danger-soft (grid cell meta) | 5.31 | 4.5 | PASS |
 | white text on danger-fill (button) | 5.28 | 4.5 | PASS |
-| input boundary (border-strong vs bg) | 3.39 | 3.0 | PASS |
-| focus ring (accent vs bg) | 9.25 | 3.0 | PASS |
-| status dots (success/warning/danger vs bg) | 8.67 / 9.52 / 6.78 | 3.0 | PASS |
-| disabled text (fg at 60% on bg, composited) | 6.15 | 3.0 advisory | PASS |
-| card edge (border vs raised) | 1.40 | n/a decorative | container edge, not a control boundary |
+| border vs bg (input boundary) | 3.39 | 3 | PASS |
+| border vs raised (card edge, decorative, 1.4.11 n/a) | 1.40 | n/a | decorative |
+| focus ring (accent) vs bg | 9.25 | 3 | PASS |
+| status dot success vs bg | 8.68 | 3 | PASS |
+| status dot warning vs bg | 9.52 | 3 | PASS |
+| status dot danger vs bg | 6.78 | 3 | PASS |
+| fg at 60% on bg (disabled) | 6.15 | 3 | PASS |
+| raised at 50% on bg (row hover) | 1.03 | n/a | decorative |
 
 Notes:
 
@@ -510,7 +566,8 @@ Notes:
   rows are held to the full 4.5 normal-text bar anyway, because muted badge
   text and footer lines are content the user reads. The earlier values
   (light 4.22, dark 4.44 on some surfaces) failed that bar and the token
-  was corrected (light 0.552 -> 0.53, dark 0.585 -> 0.60).
+  was corrected (light 0.552 -> 0.53, dark 0.585 -> 0.60). Timestamps on
+  cards then exposed dark subtle-on-raised at 4.26; dark moved to 0.63.
 - Card edges are container decoration, not control boundaries, so WCAG
   1.4.11 does not apply to them. Control boundaries use `--border-strong`
   and are measured above.

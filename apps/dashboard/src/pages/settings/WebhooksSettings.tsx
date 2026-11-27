@@ -26,7 +26,7 @@ import { Skeleton } from "../../components/ui/skeleton.js";
 import { Badge, type BadgeVariant } from "../../components/ui/badge.js";
 import { Section, FormError, Notice, errorMessage } from "./shared.js";
 
-const LABEL = "mb-1.5 block text-[14px] font-medium text-foreground";
+const LABEL = "mb-1.5 block text-[15px] font-medium text-foreground";
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 function formatDateTime(iso: string | null): string {
@@ -45,11 +45,11 @@ function SecretOnce({ secret, onDismiss }: { secret: string; onDismiss: () => vo
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-3 rounded-md border border-warning bg-warning-soft px-4 py-3" role="status">
-      <p className="text-[14px] text-foreground">
+      <p className="text-[15px] text-foreground">
         Signing secret. Copy it now: it is not shown again.
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <code className="break-all rounded bg-card px-2 py-1 font-mono text-[13px] text-foreground">{secret}</code>
+        <code className="break-all rounded bg-card px-2 py-1 font-mono text-[14px] text-foreground">{secret}</code>
         <Button
           type="button"
           size="sm"
@@ -84,7 +84,7 @@ function EventPicker({
   return (
     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
       {all.map((ev) => (
-        <label key={ev} htmlFor={`${idPrefix}-${ev}`} className="flex items-center gap-2 text-[14px] text-foreground">
+        <label key={ev} htmlFor={`${idPrefix}-${ev}`} className="flex items-center gap-2 text-[15px] text-foreground">
           <input
             id={`${idPrefix}-${ev}`}
             type="checkbox"
@@ -93,7 +93,7 @@ function EventPicker({
             onChange={(e) => onChange(e.target.checked ? [...selected, ev] : selected.filter((x) => x !== ev))}
             className="rounded border-input"
           />
-          <span className="font-mono text-[13px]">{ev}</span>
+          <span className="font-mono text-[14px]">{ev}</span>
         </label>
       ))}
     </div>
@@ -105,11 +105,11 @@ function Deliveries({ slug }: { slug: string }) {
   if (isLoading) return <Skeleton className="mt-3 h-20 w-full" />;
   if (error || !data) return <FormError message={error ? errorMessage(error) : "Deliveries could not be loaded."} />;
   if (data.deliveries.length === 0) {
-    return <p className="mt-3 text-[14px] text-muted-foreground">No deliveries yet.</p>;
+    return <p className="mt-3 text-[15px] text-muted-foreground">No deliveries yet.</p>;
   }
   return (
     <div className="mt-3 overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-left text-[13px]">
+      <table className="w-full text-left text-[14px]">
         <thead className="bg-sunken text-muted-foreground">
           <tr>
             <th className="px-3 py-2 font-medium">Event</th>
@@ -183,13 +183,13 @@ function EndpointRow({ endpoint, allEvents }: { endpoint: WebhookEndpoint; allEv
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[14px] font-medium text-foreground">{endpoint.slug}</span>
+            <span className="font-mono text-[15px] font-medium text-foreground">{endpoint.slug}</span>
             {endpoint.read_only && <Badge variant="muted">analytics sink</Badge>}
             <Badge variant={endpoint.enabled ? "success" : "muted"}>{endpoint.enabled ? "enabled" : "disabled"}</Badge>
           </div>
-          <p className="mt-0.5 break-all text-[13px] text-muted-foreground">{endpoint.url}</p>
+          <p className="mt-0.5 break-all text-[14px] text-muted-foreground">{endpoint.url}</p>
           {!endpoint.read_only && (
-            <p className="mt-1 text-[13px] text-muted-foreground">
+            <p className="mt-1 text-[14px] text-muted-foreground">
               {endpoint.events.length} event{endpoint.events.length === 1 ? "" : "s"}
               {endpoint.events.includes("message.pending_approval")
                 ? `, approval pings batched every ${endpoint.batch_interval_minutes} min`
@@ -299,7 +299,7 @@ function NewWebhookForm({ allEvents, onDone }: { allEvents: string[]; onDone: ()
   if (secret) {
     return (
       <div className="mt-4">
-        <p className="text-[14px] text-foreground">
+        <p className="text-[15px] text-foreground">
           Webhook <span className="font-mono">{slug}</span> created.
         </p>
         <SecretOnce secret={secret} onDismiss={onDone} />
@@ -367,7 +367,7 @@ export default function WebhooksSettings() {
         </ul>
       )}
       {data.webhooks.length === 0 && !adding && (
-        <p className="mt-4 text-[14px] text-muted-foreground">No webhooks yet.</p>
+        <p className="mt-4 text-[15px] text-muted-foreground">No webhooks yet.</p>
       )}
       {adding && <NewWebhookForm allEvents={data.events} onDone={() => setAdding(false)} />}
     </Section>

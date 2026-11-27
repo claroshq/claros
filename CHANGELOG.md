@@ -6,6 +6,14 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard: a visual revision of the light theme and of type and spacing in both themes. The canvas is now a cool grey with white cards (a 1px edge and a hairline contact shadow) and a white sidebar split off by a 1px rule, so cards, chrome and content separate; before, cards sat at 1.02:1 against a near-white page. Text is darker (secondary text from 7.4:1 to 10:1 on cards) and the type scale moved up one step (body and table cells 15px, page titles 40px, micro labels 12px). Cards are named in sentence case instead of uppercase micro labels; Home and Analytics metrics are 40px tabular numbers with sans captions. Spacing is wider (page padding 64px, 40px between sections) and controls are 40px tall. Tables, the approval queue and knowledge base groups sit in cards; the sidebar groups its items under Build, Monitor and Setup. Home's recent activity folds a run of knowledge base edits into one row with the titles listed. The brand lockup is unchanged. No API change, no migration.
+
+### Fixed
+
+- Dashboard: row hover on cards was invisible (white on white); rows now take a hover wash. Dark theme timestamps on cards measured 4.26:1 and now pass 4.5:1.
+
 ## [0.12.0] - 2026-11-27
 
 ### Upgrade

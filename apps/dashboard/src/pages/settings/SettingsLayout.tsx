@@ -109,7 +109,7 @@ export default function SettingsLayout() {
           <div className="flex gap-6 overflow-x-auto pb-1 lg:flex-col lg:gap-6 lg:overflow-visible lg:pb-0">
             {groups.map((group) => (
               <div key={group.label} className="shrink-0">
-                <p className="mb-1.5 hidden px-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-subtle-foreground lg:block">
+                <p className="mb-2 hidden px-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-subtle-foreground lg:block">
                   {group.label}
                 </p>
                 <div className="flex gap-1 lg:flex-col">
@@ -119,14 +119,14 @@ export default function SettingsLayout() {
                       to={item.to}
                       className={({ isActive }) =>
                         cn(
-                          "flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "flex h-10 items-center gap-3 whitespace-nowrap rounded-md px-3 text-[15px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           isActive
-                            ? "bg-selected font-medium text-foreground"
-                            : "text-muted-foreground hover:bg-sunken hover:text-foreground",
+                            ? "bg-selected font-semibold text-foreground"
+                            : "font-medium text-muted-foreground hover:bg-card hover:text-foreground",
                         )
                       }
                     >
-                      <item.icon size={16} strokeWidth={1.5} className="shrink-0" />
+                      <item.icon size={18} strokeWidth={1.75} className="shrink-0" />
                       {item.label}
                       {item.warn && (
                         <span

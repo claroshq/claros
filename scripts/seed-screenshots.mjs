@@ -17,6 +17,7 @@
  * The script tags every row it creates with a recognizable marker:
  *   - contacts.properties = { _seeder: "screenshots" }
  *   - flows.description starts with "[seeder]"
+ *   - kb_entries.source = "seeder"
  * On re-run or --purge it deletes only rows matching these markers.
  *
  * Safety: refuses to execute when DATABASE_URL does not point at
@@ -571,6 +572,8 @@ async function main() {
     "DELETE FROM retention_grid_snapshots WHERE tenant_id = $1 AND snapshot_date >= $2",
     [tenantId, "2026-05-01"]
   );
+
+  await query("DELETE FROM kb_entries WHERE tenant_id = $1 AND source = 'seeder'", [tenantId]);
 
   console.log("  Purge complete.");
 
@@ -1221,6 +1224,30 @@ async function main() {
     }
   }
   console.log(`  Created ${snapshotCount} retention grid snapshot rows.`);
+
+  // =========================================================================
+  // Knowledge base: the facts drafts read, so the KB screens are not empty.
+  // embedding_status stays null (no LLM here); retrieval is not exercised.
+  // =========================================================================
+  const KB = [
+    ["Plans and pricing", "Pricing", ["pricing", "plans"], 2, "Three plans: Starter, Team and Business. Every plan includes unlimited projects; Team adds shared workspaces and SSO is on Business. Annual billing saves two months."],
+    ["Trial length and what happens after", "Pricing", ["trial"], 5, "Trials last 14 days with every Team feature on. When a trial ends without a card, the workspace becomes read-only for 30 days and nothing is deleted."],
+    ["Cancellation and refunds", "Policies", ["billing", "policy"], 9, "Customers cancel from Settings > Billing at any time. Monthly plans stop at the end of the period; annual plans are refunded pro rata within the first 30 days."],
+    ["Connecting a data source", "Product", ["onboarding"], 1, "Postgres, MySQL, BigQuery and Snowflake connect from the Sources page with a read-only user. Most teams connect their first source in under five minutes."],
+    ["Inviting teammates", "Product", ["onboarding", "teams"], 3, "Owners invite teammates by email from Settings > Team. Invites expire after seven days and can be resent."],
+    ["Security and data residency", "Policies", ["security"], 12, "Data is encrypted at rest and in transit. EU customers can pin their workspace to the Frankfurt region at signup."],
+    ["Voice and tone for customer email", "Voice", ["writing"], 4, "Write like a helpful colleague: short sentences, one clear ask, no exclamation marks, no discount unless the flow says so. Sign off with the first name of the account owner."],
+    ["Common questions after week one", "Support", ["faq"], 6, "The three questions new teams ask most: how to schedule a report, how to share a dashboard outside the workspace, and where to find the audit log."],
+  ];
+  for (const [title, category, tags, ageDays, content] of KB) {
+    const at = daysAgo(ageDays);
+    await query(
+      `INSERT INTO kb_entries (tenant_id, title, content, content_type, source, tags, category, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, 'markdown', 'seeder', $4, $5, true, $6, $6)`,
+      [tenantId, title, content, tags, category, iso(at)]
+    );
+  }
+  console.log(`  Created ${KB.length} knowledge base entries.`);
 
   // =========================================================================
   // Summary

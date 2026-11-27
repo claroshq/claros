@@ -57,7 +57,7 @@ function ChecklistItem({
       </span>
       <span
         className={cn(
-          "text-[14px]",
+          "text-[15px]",
           done ? "text-muted-foreground" : "text-foreground",
         )}
       >
@@ -185,13 +185,13 @@ export function SetupChecklist({
   }
 
   return (
-    <div className="mb-8 rounded-lg border border-border bg-card p-6">
+    <div className="mb-8 rounded-lg border border-border bg-card shadow-card p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-[16px] font-medium text-foreground">
+          <h2 className="text-[17px] font-medium text-foreground">
             Finish setting up
           </h2>
-          <p className="mt-1 text-[14px] text-muted-foreground">
+          <p className="mt-1 text-[15px] text-muted-foreground">
             {doneCount === 0
               ? "This install cannot compile, send, or legally deliver email yet, and no events are arriving. Four things fix that."
               : doneCount < totalCount
@@ -204,7 +204,7 @@ export function SetupChecklist({
           onClick={onDismiss}
           title="Dismiss"
           aria-label="Dismiss setup checklist"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X size={16} strokeWidth={1.5} />
         </button>
@@ -219,7 +219,7 @@ export function SetupChecklist({
             action={
               <Link
                 to={c.to}
-                className="text-[14px] text-accent-text underline underline-offset-4"
+                className="text-[15px] text-accent-text underline underline-offset-4"
               >
                 {c.linkLabel}
               </Link>
@@ -230,10 +230,10 @@ export function SetupChecklist({
 
       {showTemplates && (
         <div className="mt-5 border-t border-border pt-5">
-          <p className="text-[14px] font-medium text-foreground">
+          <p className="text-[15px] font-medium text-foreground">
             Start from a template
           </p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
+          <p className="mt-1 text-[15px] text-muted-foreground">
             A business-model template installs a set of draft flows matched
             to how your SaaS charges. They are drafts: nothing sends until
             you compile and activate them.
@@ -266,13 +266,13 @@ export function SetupChecklist({
             </Button>
           </div>
           {templateId && (
-            <p className="mt-2 text-[13px] text-muted-foreground">
+            <p className="mt-2 text-[14px] text-muted-foreground">
               {(templates.data?.templates ?? []).find((t) => t.id === templateId)?.description}
             </p>
           )}
           {templateNote && (
             <p
-              className="mt-3 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground"
+              className="mt-3 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[15px] text-foreground"
               role="status"
             >
               {templateNote}
@@ -283,7 +283,7 @@ export function SetupChecklist({
               className="mt-3 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5"
               role="alert"
             >
-              <p className="text-[14px] text-foreground">{templateError}</p>
+              <p className="text-[15px] text-foreground">{templateError}</p>
             </div>
           )}
         </div>

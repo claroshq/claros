@@ -52,7 +52,7 @@ export function Pagination({
       aria-label="Pagination"
       className={cn("flex flex-wrap items-center justify-between gap-3", className)}
     >
-      <p className="text-[13px] text-muted-foreground tabular-nums">
+      <p className="text-[14px] text-muted-foreground tabular-nums">
         {first.toLocaleString("en-US")}-{last.toLocaleString("en-US")} of{" "}
         {total.toLocaleString("en-US")} {noun}
       </p>
@@ -72,7 +72,7 @@ export function Pagination({
             p === null ? (
               <span
                 key={`gap-${i}`}
-                className="w-8 text-center text-[14px] text-subtle-foreground"
+                className="w-8 text-center text-[15px] text-subtle-foreground"
                 aria-hidden
               >
                 ...

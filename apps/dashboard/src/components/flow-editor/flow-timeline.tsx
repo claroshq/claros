@@ -34,7 +34,7 @@ function Dot({ children, dashed }: { children: ReactNode; dashed?: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={`absolute left-0 top-2.5 z-10 flex h-[26px] w-[26px] items-center justify-center rounded-full border-2 bg-background font-mono text-[12px] text-muted-foreground ${dashed ? "border-dashed border-border-strong" : "border-border-strong"}`}
+      className={`absolute left-0 top-2.5 z-10 flex h-[26px] w-[26px] items-center justify-center rounded-full border-2 bg-background font-mono text-[13px] text-muted-foreground ${dashed ? "border-dashed border-border-strong" : "border-border-strong"}`}
     >
       {children}
     </span>
@@ -44,7 +44,7 @@ function Dot({ children, dashed }: { children: ReactNode; dashed?: boolean }) {
 function Problems({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <span className="ml-auto inline-flex items-center gap-1 text-[12px] font-medium text-danger">
+    <span className="ml-auto inline-flex items-center gap-1 text-[13px] font-medium text-danger">
       <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
       {count === 1 ? "1 thing to fix" : `${count} things to fix`}
     </span>
@@ -79,14 +79,14 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
       <li className="relative pl-10">
         <Dot>&#9656;</Dot>
         <button type="button" className={cardClass(selected === "trigger")} aria-current={selected === "trigger"} onClick={() => onSelect("trigger")}>
-          <span className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
             Starts when
             <Problems count={problemsAt("trigger")} />
           </span>
-          <span className="mt-0.5 block text-[14px] font-semibold text-foreground">
+          <span className="mt-0.5 block text-[15px] font-semibold text-foreground">
             {summarizeTrigger(draft.trigger.type, { ...draft.trigger.config, where: [] })}
           </span>
-          {where.length > 0 && <span className="mt-0.5 block text-[13px] text-muted-foreground">only if {summarizeCondition(where)}</span>}
+          {where.length > 0 && <span className="mt-0.5 block text-[14px] text-muted-foreground">only if {summarizeCondition(where)}</span>}
         </button>
       </li>
 
@@ -94,8 +94,8 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
         <li className="relative mt-3 pl-10">
           <Dot>&#8801;</Dot>
           <button type="button" className={cardClass(selected === "prompt")} aria-current={selected === "prompt"} onClick={() => onSelect("prompt")}>
-            <span className="text-[12px] font-medium text-muted-foreground">Described in a prompt</span>
-            <span className="mt-0.5 line-clamp-2 block text-[13px] text-foreground">{draft.prompt || "No prompt yet"}</span>
+            <span className="text-[13px] font-medium text-muted-foreground">Described in a prompt</span>
+            <span className="mt-0.5 line-clamp-2 block text-[14px] text-foreground">{draft.prompt || "No prompt yet"}</span>
           </button>
         </li>
       )}
@@ -106,7 +106,7 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
         const cond = toConditionList(step.condition);
         return (
           <Fragment key={`${String(step.order)}-${i}`}>
-          <li className="py-2 pl-10 text-[13px] text-muted-foreground">
+          <li className="py-2 pl-10 text-[14px] text-muted-foreground">
               {isSchedule ? (
                 <>on slot {String(step.order)} of the schedule</>
               ) : (
@@ -120,15 +120,15 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
           <li className="relative pl-10">
             <Dot>{i + 1}</Dot>
             <button type="button" className={cardClass(selected === i)} aria-current={selected === i} onClick={() => onSelect(i)}>
-              <span className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
-                <span className={`rounded px-1.5 py-px text-[11px] font-medium ${mode === "fixed" ? "bg-sunken text-muted-foreground" : "bg-accent-soft text-accent-text"}`}>
+              <span className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
+                <span className={`rounded px-1.5 py-px text-[12px] font-medium ${mode === "fixed" ? "bg-sunken text-muted-foreground" : "bg-accent-soft text-accent-text"}`}>
                   {mode === "fixed" ? "Your copy" : mode === "choose" ? "AI picks" : "AI drafted"}
                 </span>
                 {cond.length > 0 && <span className="truncate">only if {summarizeCondition(cond)}</span>}
                 <Problems count={problemsAt(i)} />
               </span>
-              <span className="mt-1 block truncate text-[14px] font-semibold text-foreground">{title}</span>
-              {sub && <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{sub}</span>}
+              <span className="mt-1 block truncate text-[15px] font-semibold text-foreground">{title}</span>
+              {sub && <span className="mt-0.5 block truncate text-[14px] text-muted-foreground">{sub}</span>}
             </button>
           </li>
           </Fragment>
@@ -140,7 +140,7 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
           <button
             type="button"
             onClick={() => onAdd("fixed")}
-            className="flex-1 rounded-lg border border-dashed border-border-strong px-3 py-2 text-[14px] font-medium text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
+            className="flex-1 rounded-lg border border-dashed border-border-strong px-3 py-2 text-[15px] font-medium text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
           >
             + Email I write
           </button>
@@ -149,7 +149,7 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
             onClick={() => onAdd("ai")}
             disabled={!canAddAi}
             title={canAddAi ? undefined : "AI-drafted emails need an LLM provider (Settings, LLM)."}
-            className="flex-1 rounded-lg border border-dashed border-border-strong px-3 py-2 text-[14px] font-medium text-muted-foreground transition-colors hover:border-solid hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 rounded-lg border border-dashed border-border-strong px-3 py-2 text-[15px] font-medium text-muted-foreground transition-colors hover:border-solid hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
             + Email the AI drafts
           </button>
@@ -159,11 +159,11 @@ export function FlowTimeline({ draft, selected, onSelect, copyOf, sample, proble
       <li className="relative mt-4 pl-10">
         <Dot dashed>&#9632;</Dot>
         <button type="button" className={cardClass(selected === "exits")} aria-current={selected === "exits"} onClick={() => onSelect("exits")}>
-          <span className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
             Stops early when
             <Problems count={problemsAt("exits")} />
           </span>
-          <span className="mt-0.5 block text-[14px] font-semibold text-foreground">
+          <span className="mt-0.5 block text-[15px] font-semibold text-foreground">
             {draft.exits.length === 0 ? "Never; it ends after the last email" : draft.exits.map((e) => summarizeCondition(e)).join(" or ")}
           </span>
         </button>

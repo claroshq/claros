@@ -89,7 +89,7 @@ export function CreateProductForm({
           {create.isPending ? "Creating..." : submitLabel}
         </Button>
       </div>
-      {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
+      {error && <p className="mt-2 text-[14px] text-danger">{error}</p>}
     </form>
   );
 }

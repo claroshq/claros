@@ -77,11 +77,11 @@ export function RevisePanel({
   }
 
   return (
-    <section aria-label="Revise with AI" className="mt-6 overflow-hidden rounded-lg border border-border bg-card">
+    <section aria-label="Revise with AI" className="mt-6 overflow-hidden rounded-lg border border-border bg-card shadow-card">
       <header className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <Sparkles className="size-4 text-accent-text" aria-hidden />
-        <h3 className="text-[14px] font-semibold text-foreground">Revise with AI</h3>
-        <span className="truncate text-[13px] text-muted-foreground">
+        <h3 className="text-[15px] font-semibold text-foreground">Revise with AI</h3>
+        <span className="truncate text-[14px] text-muted-foreground">
           Say what should change. The AI rewrites this draft and it comes back here for review.
         </span>
       </header>
@@ -95,13 +95,13 @@ export function RevisePanel({
               <React.Fragment key={`${turn.at}-${i}`}>
                 <li className="flex justify-end">
                   <div className="max-w-[85%] rounded-lg rounded-br-sm bg-secondary px-3.5 py-2">
-                    <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground">{turn.instruction}</p>
-                    <p className="mt-1 text-right font-mono text-[11px] text-subtle-foreground">{timeAgo(turn.at)}</p>
+                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">{turn.instruction}</p>
+                    <p className="mt-1 text-right font-mono text-[12px] text-subtle-foreground">{timeAgo(turn.at)}</p>
                   </div>
                 </li>
                 <li
                   ref={last ? threadEnd : undefined}
-                  className="flex items-center gap-2 text-[13px] text-muted-foreground"
+                  className="flex items-center gap-2 text-[14px] text-muted-foreground"
                   aria-live={last ? "polite" : undefined}
                 >
                   {pending ? (
@@ -131,7 +131,7 @@ export function RevisePanel({
       >
         <div
           className={cn(
-            "flex items-end gap-2 rounded-md border border-input bg-background py-1.5 pl-3 pr-1.5 transition-[border-color,box-shadow] duration-(--dur-fast)",
+            "flex items-end gap-2 rounded-md border border-input bg-card py-1.5 pl-3 pr-1.5 transition-[border-color,box-shadow] duration-(--dur-fast)",
             "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-background",
             busy && "bg-sunken",
           )}
@@ -158,14 +158,14 @@ export function RevisePanel({
                   : "For example: there is no /mcp page, link to the docs instead, and keep it shorter."
             }
             aria-label="Instruction for the AI"
-            className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent py-1 text-[14px] leading-relaxed text-foreground placeholder:text-subtle-foreground focus:outline-none disabled:cursor-not-allowed"
+            className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent py-1 text-[15px] leading-relaxed text-foreground placeholder:text-subtle-foreground focus:outline-none disabled:cursor-not-allowed"
           />
           <Button type="submit" size="sm" disabled={!canSend} aria-label="Send to the AI">
             {busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ArrowUp aria-hidden />}
             Revise
           </Button>
         </div>
-        <p className="mt-1.5 flex justify-between gap-3 px-0.5 text-[12px] text-subtle-foreground">
+        <p className="mt-1.5 flex justify-between gap-3 px-0.5 text-[13px] text-subtle-foreground">
           <span>Enter sends, Shift+Enter adds a line. Links, facts and writing rules of the product still apply.</span>
           {trimmed.length > REVISION_MAX_CHARS * 0.8 && (
             <span className={cn("font-mono", tooLong && "text-danger")}>
