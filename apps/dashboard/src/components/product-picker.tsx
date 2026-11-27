@@ -113,13 +113,13 @@ function ProductCard({
         <span className="min-w-0 flex-1">
           <span
             className={cn(
-              "block truncate text-[16px] font-semibold leading-6",
+              "block truncate text-[17px] font-semibold leading-6",
               product.archived ? "text-muted-foreground" : "text-foreground",
             )}
           >
             {product.name}
           </span>
-          <span className="block truncate font-mono text-[13px] leading-5 text-muted-foreground">
+          <span className="block truncate font-mono text-[14px] leading-5 text-muted-foreground">
             {product.slug}
             {product.public_host && (
               <>
@@ -132,7 +132,7 @@ function ProductCard({
             <Badge variant="neutral">{roleLabel(product.role)}</Badge>
             {product.archived && <Badge variant="muted">Read-only</Badge>}
             {marker && <Badge variant="accent">{marker}</Badge>}
-            {opening && <span className="text-[14px] text-muted-foreground">Opening...</span>}
+            {opening && <span className="text-[15px] text-muted-foreground">Opening...</span>}
           </span>
         </span>
 
@@ -275,7 +275,7 @@ export function ProductPicker({
         <BrandLockup markSize={26} />
         <div className="flex min-w-0 items-center gap-3">
           <ThemeToggle className="hidden sm:inline-flex" />
-          <span className="hidden min-w-0 truncate text-[15px] text-muted-foreground md:inline" title={email}>
+          <span className="hidden min-w-0 truncate text-[16px] text-muted-foreground md:inline" title={email}>
             {email}
           </span>
           <button
@@ -316,8 +316,8 @@ export function ProductPicker({
 
         {creating && (
           <section className="mb-8 rounded-lg border border-border bg-card shadow-card p-6" aria-label="New product">
-            <h2 className="text-[16px] font-medium text-foreground">New product</h2>
-            <p className="mt-1 text-[14px] text-muted-foreground">
+            <h2 className="text-[17px] font-medium text-foreground">New product</h2>
+            <p className="mt-1 text-[15px] text-muted-foreground">
               Its own contacts, flows, topics, transports, brand and keys. You become its owner, and it opens when created.
             </p>
             <div className="mt-4">
@@ -329,7 +329,7 @@ export function ProductPicker({
         {error && (
           <div
             role="alert"
-            className="mb-6 flex items-center justify-between gap-4 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[15px] text-foreground"
+            className="mb-6 flex items-center justify-between gap-4 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5 text-[16px] text-foreground"
           >
             <span>{error}</span>
             {onRetry && (
@@ -391,7 +391,7 @@ export function ProductPicker({
               </button>
               {archivedOpen && (
                 <>
-                  <p className="mt-2 text-[14px] text-muted-foreground">
+                  <p className="mt-2 text-[15px] text-muted-foreground">
                     Archived products accept no events and send nothing. Their data stays readable.
                   </p>
                   <ul id="archived-products" className="mt-3 grid gap-3 sm:grid-cols-2" aria-label="Archived products">
@@ -405,7 +405,7 @@ export function ProductPicker({
         )}
 
         {!error && active.length > 1 && (
-          <p className="mt-12 hidden text-[14px] text-muted-foreground sm:block">
+          <p className="mt-12 hidden text-[15px] text-muted-foreground sm:block">
             <Kbd>←</Kbd>
             <Kbd>→</Kbd>
             <Kbd>↑</Kbd>

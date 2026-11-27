@@ -157,7 +157,7 @@ function AudienceSwitch({
           aria-checked={value === a.id}
           onClick={() => onChange(a.id)}
           className={cn(
-            "h-7 rounded-sm px-3 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "h-7 rounded-sm px-3 text-[15px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             value === a.id
               ? "bg-secondary font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -183,7 +183,7 @@ function AudienceNote({
 }) {
   if (audience === "all") return null;
   return (
-    <p className="text-[13px] leading-relaxed text-subtle-foreground">
+    <p className="text-[14px] leading-relaxed text-subtle-foreground">
       {audience === "paid"
         ? "Paid: payment status paid or past due."
         : "Free: everyone not paying (free, trial, cancelled or no payment status)."}
@@ -226,7 +226,7 @@ function RetentionGrid({ grid, audience, selected, onSelect }: GridProps) {
       <div />
       {RECENCY_COLS.map((r) => (
         <div key={r} className="px-2 pb-1 text-center">
-          <p className="text-[13px] font-semibold capitalize text-foreground">{r}</p>
+          <p className="text-[14px] font-semibold capitalize text-foreground">{r}</p>
           <p className="font-mono text-[12px] text-muted-foreground">
             {recencyRangeLabel(r, grid.recency_thresholds_days)}
           </p>
@@ -236,7 +236,7 @@ function RetentionGrid({ grid, audience, selected, onSelect }: GridProps) {
       {TENURE_ROWS.map((row) => (
         <React.Fragment key={row.id}>
           <div className="flex flex-col justify-center pr-2">
-            <p className="text-[13px] font-semibold text-foreground">{row.label}</p>
+            <p className="text-[14px] font-semibold text-foreground">{row.label}</p>
             <p className="font-mono text-[12px] text-muted-foreground">
               {tenureRangeLabel(row.id, grid.tenure_thresholds_days)}
             </p>
@@ -261,7 +261,7 @@ function RetentionGrid({ grid, audience, selected, onSelect }: GridProps) {
               >
                 <span
                   className={cn(
-                    "block text-[20px] font-semibold leading-none tracking-[-0.01em]",
+                    "block text-[22px] font-semibold leading-none tracking-[-0.01em]",
                     count === 0 ? "text-subtle-foreground" : "text-foreground",
                   )}
                 >
@@ -379,12 +379,12 @@ function CellDetail({
           <h3 className="mt-1 text-[19px] font-semibold tracking-[-0.01em] text-foreground">
             {tenureRow.label} · <span className="capitalize">{recency}</span>
           </h3>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-[16px] leading-relaxed text-muted-foreground">
             {tenureRow.desc.charAt(0).toUpperCase() + tenureRow.desc.slice(1)}{" "}
             ({tenureRangeLabel(tenure, grid.tenure_thresholds_days)}),{" "}
             {recencyRangeLabel(recency, grid.recency_thresholds_days)}.
           </p>
-          <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          <p className="mt-3 text-[16px] leading-relaxed text-muted-foreground">
             {RECENCY_ACTION[recency]}
           </p>
         </div>
@@ -393,14 +393,14 @@ function CellDetail({
         <div>
           <p className="font-display text-[28px] font-bold leading-none tracking-[-0.02em] text-foreground">
             {count}
-            <span className="ml-2 text-[15px] font-normal text-muted-foreground">
+            <span className="ml-2 text-[16px] font-normal text-muted-foreground">
               {audienceWord(audience)}
               {count === 1 ? "contact" : "contacts"}
               {paying > 0 && ` · ${paying} paying`}
             </span>
           </p>
           {delta !== null && (
-            <p className="mt-1.5 text-[14px]">
+            <p className="mt-1.5 text-[15px]">
               <span
                 className={cn(
                   "font-mono font-medium",
@@ -423,7 +423,7 @@ function CellDetail({
               Population, last {CELL_TREND_DAYS} days
             </p>
             {trendQuery.isError ? (
-              <p className="text-[14px] text-muted-foreground">
+              <p className="text-[15px] text-muted-foreground">
                 Could not load the trend.
               </p>
             ) : (
@@ -461,7 +461,7 @@ function CellDetail({
           </Button>
 
           {existingSegmentFlow ? (
-            <p className="text-[14px] leading-relaxed text-muted-foreground">
+            <p className="text-[15px] leading-relaxed text-muted-foreground">
               A segment flow already targets this cell:{" "}
               <Link
                 to={`/flows/${existingSegmentFlow.id}/edit`}
@@ -471,7 +471,7 @@ function CellDetail({
               </Link>
             </p>
           ) : (
-            <p className="text-[14px] leading-relaxed text-muted-foreground">
+            <p className="text-[15px] leading-relaxed text-muted-foreground">
               {cellTotal === 0
                 ? "This cell is empty right now."
                 : `Reaches the ${cellTotal} ${cellTotal === 1 ? "contact" : "contacts"} already here, and everyone who enters this cell later.`}
@@ -480,7 +480,7 @@ function CellDetail({
           )}
 
           {transition && (
-            <p className="text-[14px] leading-relaxed text-muted-foreground">
+            <p className="text-[15px] leading-relaxed text-muted-foreground">
               {existingTransitionFlow ? (
                 <>
                   The {transition.from} → {transition.to} transition is covered
@@ -554,7 +554,7 @@ function TabBar({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
           aria-selected={tab === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            "h-7 rounded-sm px-3 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "h-7 rounded-sm px-3 text-[15px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             tab === t.id
               ? "bg-secondary font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -600,7 +600,7 @@ export default function LifecyclePage() {
     : 0;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[90rem]">
       <PageHeader
         eyebrow="Retention"
         title="Lifecycle"
@@ -623,7 +623,7 @@ export default function LifecyclePage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">
+          <p className="text-[17px] text-foreground">
             Failed to load lifecycle data.
           </p>
           <Button
@@ -653,7 +653,7 @@ export default function LifecyclePage() {
               );
             }}
           />
-          <p className="mt-3 text-[13px] text-subtle-foreground">
+          <p className="mt-3 text-[14px] text-subtle-foreground">
             Recency thresholds follow your natural rhythm of{" "}
             {gridQuery.data.natural_frequency_days} days. Cell populations
             are snapshotted daily - click a cell for its trend and actions.
@@ -671,7 +671,7 @@ export default function LifecyclePage() {
             />
           ) : (
             <div className="mt-6 rounded-lg border border-dashed border-border-strong px-5 py-4">
-              <p className="text-[15px] leading-relaxed text-muted-foreground">
+              <p className="text-[16px] leading-relaxed text-muted-foreground">
                 <span className="font-medium text-foreground">
                   Pick a cell to act on it.
                 </span>{" "}
@@ -685,7 +685,7 @@ export default function LifecyclePage() {
 
       {tab === "movement" && movementQuery.data && (
         <div className="space-y-8">
-          <p className="max-w-2xl text-[13px] leading-relaxed text-subtle-foreground">
+          <p className="max-w-2xl text-[14px] leading-relaxed text-subtle-foreground">
             Two vocabularies, one contact base: the retention grid is your
             strategic map (tenure x quiet time, actionable per cell). The
             seven lifecycle states below are the engine's mechanics - they
@@ -697,12 +697,12 @@ export default function LifecyclePage() {
           {/* Movement */}
           <section>
             <div className="mb-1 flex items-center justify-between gap-4">
-              <h2 className="text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
+              <h2 className="text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
                 Movement
               </h2>
               <RangeSelect value={days} onChange={setDays} />
             </div>
-            <p className="mb-3 text-[14px] text-muted-foreground">
+            <p className="mb-3 text-[15px] text-muted-foreground">
               Lifecycle transitions per day over the last {days} days, split
               by direction.
             </p>
@@ -724,15 +724,15 @@ export default function LifecyclePage() {
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Entries and exits per state */}
             <section>
-              <h2 className="mb-4 text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
+              <h2 className="mb-4 text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
                 Entries and exits per state
               </h2>
               {movementQuery.data.movement.per_state.length === 0 ? (
-                <p className="text-[15px] text-muted-foreground">
+                <p className="text-[16px] text-muted-foreground">
                   No movement in this range.
                 </p>
               ) : (
-                <table className="w-full table-fixed text-[15px]">
+                <table className="w-full table-fixed text-[16px]">
                   <thead>
                     <tr className="border-b border-border text-left">
                       <th className="w-[40%] pb-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -762,7 +762,7 @@ export default function LifecyclePage() {
                       return (
                         <tr key={row.state} className="h-9 border-b border-border last:border-0">
                           <td>
-                            <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[13px] text-foreground">
+                            <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[14px] text-foreground">
                               {stateName(row.state)}
                             </span>
                           </td>
@@ -794,11 +794,11 @@ export default function LifecyclePage() {
 
             {/* Top transitions */}
             <section>
-              <h2 className="mb-4 text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
+              <h2 className="mb-4 text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
                 Most frequent transitions
               </h2>
               {movementQuery.data.movement.edges.length === 0 ? (
-                <p className="text-[15px] text-muted-foreground">
+                <p className="text-[16px] text-muted-foreground">
                   No movement in this range.
                 </p>
               ) : (
@@ -816,14 +816,14 @@ export default function LifecyclePage() {
                           key={`${e.from_state}-${e.to_state}`}
                           className="border-b border-border last:border-0"
                         >
-                          <div className="flex h-9 items-center gap-2.5 text-[15px]">
-                            <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[13px] text-muted-foreground">
+                          <div className="flex h-9 items-center gap-2.5 text-[16px]">
+                            <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[14px] text-muted-foreground">
                               {stateName(e.from_state)}
                             </span>
                             <span aria-hidden="true" className="text-subtle-foreground">
                               {"->"}
                             </span>
-                            <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[13px] text-foreground">
+                            <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[14px] text-foreground">
                               {stateName(e.to_state)}
                             </span>
                             <div className="h-1 min-w-0 flex-1 rounded-full bg-sunken">

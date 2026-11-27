@@ -209,7 +209,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
         )}
       >
         <ProductDot product={current} />
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+        <span className="min-w-0 flex-1 truncate text-[16px] font-semibold text-foreground">
           {current?.name ?? "Select a product"}
         </span>
         {current?.archived && (
@@ -243,7 +243,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                 }}
                 onKeyDown={onKeyDown}
                 placeholder="Find a product"
-                className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-[14px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-[15px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
           )}
@@ -258,7 +258,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
             className="max-h-[min(22rem,60vh)] overflow-y-auto py-1 focus-visible:outline-none"
           >
             {listed.length === 0 && (
-              <p className="px-3 py-2 text-[14px] text-muted-foreground">No product matches.</p>
+              <p className="px-3 py-2 text-[15px] text-muted-foreground">No product matches.</p>
             )}
             {items.map((item, i) => {
               const highlighted = i === activeIndex;
@@ -276,7 +276,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                       onPointerMove={() => setActiveIndex(i)}
                       onClick={() => activate(item)}
                       className={cn(
-                        "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-[7px] py-1.5 text-[14px] font-medium text-muted-foreground",
+                        "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-[7px] py-1.5 text-[15px] font-medium text-muted-foreground",
                         highlighted && "bg-selected text-foreground",
                       )}
                     >
@@ -305,7 +305,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                   <ProductDot product={p} />
                   <span
                     className={cn(
-                      "min-w-0 flex-1 truncate text-[14px] leading-5 text-foreground",
+                      "min-w-0 flex-1 truncate text-[15px] leading-5 text-foreground",
                       isCurrent ? "font-semibold" : "font-medium",
                     )}
                   >

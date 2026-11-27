@@ -182,7 +182,7 @@ export default function SentLogPage() {
   }
 
   return (
-    <div ref={topRef} className="mx-auto max-w-6xl">
+    <div ref={topRef} className="mx-auto max-w-[90rem]">
       <PageHeader
         eyebrow="Delivery"
         title="Sent Mail"
@@ -274,7 +274,7 @@ export default function SentLogPage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">
+          <p className="text-[17px] text-foreground">
             Failed to load messages:{" "}
             {list.error instanceof Error ? list.error.message : "Unknown error"}
           </p>
@@ -330,11 +330,11 @@ export default function SentLogPage() {
                 <React.Fragment key={group.key}>
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={6} className="bg-sunken/60 py-2">
-                      <span className="text-[14px] font-semibold text-foreground">
+                      <span className="text-[15px] font-semibold text-foreground">
                         {group.label}
                       </span>
                       {group.detail && (
-                        <span className="ml-2 text-[14px] text-muted-foreground">
+                        <span className="ml-2 text-[15px] text-muted-foreground">
                           {group.detail}
                         </span>
                       )}
@@ -352,7 +352,7 @@ export default function SentLogPage() {
                             <span className="block truncate font-medium text-foreground">
                               {msg.contact.name}
                             </span>
-                            <span className="block truncate font-mono text-[13px] text-muted-foreground">
+                            <span className="block truncate font-mono text-[14px] text-muted-foreground">
                               {msg.recipient_address ?? msg.contact.email ?? ""}
                             </span>
                           </>

@@ -43,14 +43,14 @@ function Step({
       />
       <span
         className={cn(
-          "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[13px] font-semibold",
+          "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[14px] font-semibold",
           done ? "bg-success-soft text-success" : "bg-accent-soft text-accent-text",
         )}
       >
         {done ? <Check size={14} strokeWidth={2.5} /> : n}
       </span>
       <div className="min-w-0 flex-1 pt-0.5">
-        <h3 className="text-[16px] font-semibold text-foreground">
+        <h3 className="text-[17px] font-semibold text-foreground">
           {title}
           {done && <span className="sr-only"> (done)</span>}
         </h3>
@@ -77,8 +77,8 @@ function KeyStep({
   if (created) {
     return (
       <div role="status" className="rounded-md border border-success bg-success-soft p-4">
-        <p className="text-[15px] font-medium text-foreground">Admin key created</p>
-        <p className="mt-1 text-[14px] text-foreground">
+        <p className="text-[16px] font-medium text-foreground">Admin key created</p>
+        <p className="mt-1 text-[15px] text-foreground">
           It is already in the snippet below. Copy it now if you need it elsewhere: it is stored as a hash and never
           shown again.
         </p>
@@ -98,7 +98,7 @@ function KeyStep({
   const scopes = withConfig ? [...MCP_SCOPES, "config"] : [...MCP_SCOPES];
   return (
     <>
-      <p className="text-[14px] leading-[22px] text-muted-foreground">
+      <p className="text-[15px] leading-[24px] text-muted-foreground">
         The assistant signs in with a product admin key. The key decides the product and which tools the assistant
         sees.{" "}
         {hasKey
@@ -108,12 +108,12 @@ function KeyStep({
       <div className="rounded-md border border-border bg-secondary p-4">
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {MCP_SCOPES.map((s) => (
-            <label key={s} className="flex items-center gap-2 text-[14px] text-foreground">
+            <label key={s} className="flex items-center gap-2 text-[15px] text-foreground">
               <input type="checkbox" checked disabled className="h-4 w-4 accent-(--accent-deep)" />
               <span className="font-mono">{s}</span>
             </label>
           ))}
-          <label className="flex items-center gap-2 text-[14px] text-foreground">
+          <label className="flex items-center gap-2 text-[15px] text-foreground">
             <input
               type="checkbox"
               checked={withConfig}
@@ -125,7 +125,7 @@ function KeyStep({
           </label>
         </div>
         {withConfig && (
-          <p className="mt-2 text-[13px] text-muted-foreground">
+          <p className="mt-2 text-[14px] text-muted-foreground">
             config also allows PUT /v1/config over the HTTP API. Give it deliberately.
           </p>
         )}
@@ -134,7 +134,7 @@ function KeyStep({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             aria-label="Key label"
-            className="h-8 w-64 rounded-md border border-border-strong bg-background px-2.5 text-[14px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-8 w-64 rounded-md border border-border-strong bg-background px-2.5 text-[15px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <Button
             size="sm"
@@ -151,7 +151,7 @@ function KeyStep({
           </Button>
         </div>
         {create.isError && (
-          <p className="mt-2 text-[14px] text-danger">
+          <p className="mt-2 text-[15px] text-danger">
             {create.error instanceof Error ? create.error.message : "Could not create the key."} Only product owners
             can create admin keys.
           </p>
@@ -182,21 +182,21 @@ function ClientStep({ endpoint, rawKey }: { endpoint: string; rawKey: string | n
                 : "border-border bg-card hover:bg-hover",
             )}
           >
-            <span className="text-[14px] font-medium text-foreground">{c.name}</span>
-            <span className="text-[13px] text-muted-foreground">{c.where}</span>
+            <span className="text-[15px] font-medium text-foreground">{c.name}</span>
+            <span className="text-[14px] text-muted-foreground">{c.where}</span>
           </button>
         ))}
       </div>
       <div role="tabpanel" className="space-y-2">
-        <p className="text-[14px] text-foreground">{client.intro}</p>
+        <p className="text-[15px] text-foreground">{client.intro}</p>
         <CodeBlock id={`mcp-${client.id}`} code={client.snippet(endpoint, key)} />
         {!rawKey && (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-[14px] text-muted-foreground">
             Replace <code className="font-mono">{KEY_PLACEHOLDER}</code> with your admin key, or create one in step 1
             and it is filled in here.
           </p>
         )}
-        <p className="text-[13px] leading-[20px] text-muted-foreground">{client.after}</p>
+        <p className="text-[14px] leading-[22px] text-muted-foreground">{client.after}</p>
       </div>
     </>
   );
@@ -210,11 +210,11 @@ function PromptList({ scopes }: { scopes: Set<string> | null }) {
         const missing = scopes !== null && !scopes.has(p.scope);
         return (
           <li key={p.text} className="flex flex-col rounded-lg border border-border bg-card shadow-card p-4">
-            <p className="text-[15px] leading-[23px] text-foreground">"{p.text}"</p>
+            <p className="text-[16px] leading-[23px] text-foreground">"{p.text}"</p>
             <div className="mt-auto flex items-center gap-2 pt-3">
-              <span className="truncate font-mono text-[13px] text-subtle-foreground">{p.uses}</span>
+              <span className="truncate font-mono text-[14px] text-subtle-foreground">{p.uses}</span>
               {missing && (
-                <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-muted-foreground">
+                <span className="inline-flex shrink-0 items-center gap-1 text-[14px] text-muted-foreground">
                   <Lock size={12} /> needs {p.scope}
                 </span>
               )}
@@ -265,7 +265,7 @@ export default function ConnectAiPage() {
   }, [created, usable]);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[90rem]">
       <PageHeader
         eyebrow="Integrate"
         title="Connect your AI"
@@ -275,7 +275,7 @@ export default function ConnectAiPage() {
             href="https://github.com/claroshq/claros/blob/main/docs/guide/MCP.md"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[14px] text-accent-text"
+            className="inline-flex items-center gap-1 text-[15px] text-accent-text"
           >
             MCP guide <ArrowUpRight size={12} />
           </a>
@@ -294,10 +294,10 @@ export default function ConnectAiPage() {
             ) : (
               <Badge variant="muted">Not set up, about two minutes</Badge>
             )}
-            <h2 className="mt-3 font-display text-[22px] font-bold leading-[28px] tracking-[-0.02em] text-foreground">
+            <h2 className="mt-3 font-display text-[22px] font-bold leading-[30px] tracking-[-0.02em] text-foreground">
               "Anything waiting in Claros?"
             </h2>
-            <p className="mt-2 max-w-xl text-[15px] leading-[24px] text-muted-foreground">
+            <p className="mt-2 max-w-xl text-[16px] leading-[24px] text-muted-foreground">
               Claros serves a Model Context Protocol endpoint as part of the API you already run. Your assistant reads
               the queue with each draft's flow, subject and reasoning, and approves, edits, revises or rejects on your
               word. Nothing extra to install on the server.
@@ -317,8 +317,8 @@ export default function ConnectAiPage() {
                 <li key={g.title} className="flex gap-3">
                   <Icon size={16} strokeWidth={1.5} className="mt-0.5 shrink-0 text-accent-text" />
                   <div>
-                    <p className="text-[14px] font-medium text-foreground">{g.title}</p>
-                    <p className="mt-0.5 text-[13px] leading-[20px] text-muted-foreground">{g.text}</p>
+                    <p className="text-[15px] font-medium text-foreground">{g.title}</p>
+                    <p className="mt-0.5 text-[14px] leading-[22px] text-muted-foreground">{g.text}</p>
                   </div>
                 </li>
               );
@@ -328,7 +328,7 @@ export default function ConnectAiPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-5 flex items-center gap-2 text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
+        <h2 className="mb-5 flex items-center gap-2 text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
           <Terminal size={18} strokeWidth={1.5} className="text-accent-text" />
           Set it up
         </h2>
@@ -340,7 +340,7 @@ export default function ConnectAiPage() {
             <ClientStep endpoint={endpoint} rawKey={created?.key ?? null} />
           </Step>
           <Step n={3} title="Ask your first question" done={state.kind === "used"}>
-            <p className="text-[14px] leading-[22px] text-muted-foreground">
+            <p className="text-[15px] leading-[24px] text-muted-foreground">
               Start a new chat and ask "Anything waiting in Claros?". The assistant calls queue_summary and answers
               with the counts. {state.kind === "used" ? "" : "Once it does, this page shows when the key was last used."}
             </p>
@@ -349,24 +349,24 @@ export default function ConnectAiPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="mb-1 flex items-center gap-2 text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
+        <h2 className="mb-1 flex items-center gap-2 text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
           <MessageSquare size={18} strokeWidth={1.5} className="text-accent-text" />
           What to ask
         </h2>
-        <p className="mb-4 text-[14px] text-muted-foreground">
+        <p className="mb-4 text-[15px] text-muted-foreground">
           Plain words work. Each prompt shows the tools it ends up calling.
         </p>
         <PromptList scopes={scopes} />
       </section>
 
       <section className="mt-10">
-        <h2 className="mb-4 text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
+        <h2 className="mb-4 text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">
           Keys that can review
         </h2>
         {keys.isLoading ? (
           <Skeleton className="h-16 w-full rounded-lg" />
         ) : usable.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border-strong px-5 py-4 text-[14px] text-muted-foreground">
+          <p className="rounded-lg border border-dashed border-border-strong px-5 py-4 text-[15px] text-muted-foreground">
             No admin key with the messages scope yet. Step 1 creates one.
           </p>
         ) : (
@@ -374,16 +374,16 @@ export default function ConnectAiPage() {
             {usable.map((k) => (
               <li key={k.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
                 <span className="font-mono text-[14px] text-muted-foreground">{k.prefix}...</span>
-                <span className="text-[14px] text-foreground">{k.label ?? "No label"}</span>
-                <span className="font-mono text-[13px] text-subtle-foreground">{(k.scopes ?? []).join(", ")}</span>
-                <span className="ml-auto font-mono text-[13px] text-muted-foreground">
+                <span className="text-[15px] text-foreground">{k.label ?? "No label"}</span>
+                <span className="font-mono text-[14px] text-subtle-foreground">{(k.scopes ?? []).join(", ")}</span>
+                <span className="ml-auto font-mono text-[14px] text-muted-foreground">
                   {k.last_used_at ? `used ${ago(k.last_used_at)}` : "never used"}
                 </span>
               </li>
             ))}
           </ul>
         )}
-        <p className="mt-3 text-[13px] text-muted-foreground">
+        <p className="mt-3 text-[14px] text-muted-foreground">
           Revoke keys on the <Link to="/integrate" className="text-accent-text">Integrate</Link> page; revocation
           applies to the next request. Last used covers every call made with the key, MCP or HTTP API.
         </p>

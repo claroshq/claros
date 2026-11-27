@@ -87,7 +87,7 @@ function KbRow({
       <div className="flex items-center gap-2.5">
         <span
           className={cn(
-            "truncate text-[15px] font-medium",
+            "truncate text-[16px] font-medium",
             entry.is_active ? "text-foreground" : "text-muted-foreground",
           )}
         >
@@ -100,16 +100,16 @@ function KbRow({
             {embeddingLabel(status)}
           </Badge>
         )}
-        <span className="ml-auto shrink-0 pl-4 font-mono text-[13px] text-subtle-foreground">
+        <span className="ml-auto shrink-0 pl-4 font-mono text-[14px] text-subtle-foreground">
           {formatDate(entry.updated_at)}
         </span>
       </div>
-      <p className="mt-1 max-w-3xl line-clamp-2 text-[15px] leading-relaxed text-muted-foreground">
+      <p className="mt-1 max-w-3xl line-clamp-2 text-[16px] leading-relaxed text-muted-foreground">
         {entry.content_preview}
       </p>
       {(shownTags.length > 0 || showType) && (
         <p
-          className="mt-1.5 truncate font-mono text-[13px] text-subtle-foreground"
+          className="mt-1.5 truncate font-mono text-[14px] text-subtle-foreground"
           title={entry.tags.length > 0 ? entry.tags.join(", ") : undefined}
         >
           {showType && <span className="text-muted-foreground">{entry.content_type}</span>}
@@ -191,7 +191,7 @@ export default function KbPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[90rem]">
       <PageHeader
         eyebrow="Corpus"
         title="Knowledge Base"
@@ -229,7 +229,7 @@ export default function KbPage() {
 
       {reembedNote && (
         <p
-          className="mb-6 rounded-md border border-border bg-secondary px-4 py-3 text-[15px] text-foreground"
+          className="mb-6 rounded-md border border-border bg-secondary px-4 py-3 text-[16px] text-foreground"
           role="status"
         >
           {reembedNote}
@@ -240,11 +240,11 @@ export default function KbPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">{reembedError}</p>
+          <p className="text-[17px] text-foreground">{reembedError}</p>
         </div>
       )}
 
-      <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-[15px] text-muted-foreground">
+      <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-[16px] text-muted-foreground">
         <input
           type="checkbox"
           checked={includeInactive}
@@ -261,7 +261,7 @@ export default function KbPage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">
+          <p className="text-[17px] text-foreground">
             Failed to load entries:{" "}
             {list.error instanceof Error ? list.error.message : "Unknown error"}
           </p>
@@ -278,7 +278,7 @@ export default function KbPage() {
       {entries.length > 0 && (
         <>
           {noEmbeddingProvider && (
-            <p className="mb-4 text-[15px] text-muted-foreground">
+            <p className="mb-4 text-[16px] text-muted-foreground">
               No embedding provider, so drafts find entries by shared words
               instead of meaning. Pinned entries and kb_select are not
               affected. To add one, open{" "}
@@ -289,7 +289,7 @@ export default function KbPage() {
             </p>
           )}
           {failedCount > 0 && (
-            <p className="mb-4 text-[15px] text-muted-foreground">
+            <p className="mb-4 text-[16px] text-muted-foreground">
               {failedCount} {failedCount === 1 ? "entry" : "entries"} failed
               to embed. Semantic search skips them; pinned entries and
               kb_select still use them. Open an entry to see the provider's
@@ -308,9 +308,9 @@ export default function KbPage() {
             {groups.map((group) => (
               <section key={group.name} aria-label={showGroupHeaders ? group.name : undefined}>
                 {showGroupHeaders && (
-                  <h2 className="mb-3 flex items-baseline gap-2 text-[17px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
+                  <h2 className="mb-3 flex items-baseline gap-2 text-[18px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
                     {group.name}
-                    <span className="text-[15px] font-medium tabular-nums text-subtle-foreground">{group.entries.length}</span>
+                    <span className="text-[16px] font-medium tabular-nums text-subtle-foreground">{group.entries.length}</span>
                   </h2>
                 )}
                 <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-card">

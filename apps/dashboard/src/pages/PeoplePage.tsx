@@ -204,7 +204,7 @@ function LetterBar({
   onChange: (letter: string | null) => void;
 }) {
   const item =
-    "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-sm px-1.5 font-mono text-[13px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-sm px-1.5 font-mono text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   return (
     <div
       role="toolbar"
@@ -217,7 +217,7 @@ function LetterBar({
         onClick={() => onChange(null)}
         className={cn(
           item,
-          "px-2 font-sans text-[14px]",
+          "px-2 font-sans text-[15px]",
           value === null
             ? "bg-accent-soft font-semibold text-accent-text"
             : "text-muted-foreground hover:bg-hover hover:text-foreground",
@@ -376,7 +376,7 @@ export default function PeoplePage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[90rem]">
       <PageHeader
         eyebrow="Contacts"
         title="People"
@@ -402,7 +402,7 @@ export default function PeoplePage() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-accent-text">
               From the retention grid
             </p>
-            <p className="mt-0.5 text-[15px] text-foreground">
+            <p className="mt-0.5 text-[16px] text-foreground">
               Showing {query.audience ? `${query.audience} contacts in ` : ""}the cell{" "}
               <span className="font-semibold">
                 {query.tenure ? TENURE_LABELS[query.tenure] : "Any tenure"} ·{" "}
@@ -413,7 +413,7 @@ export default function PeoplePage() {
           <div className="flex items-center gap-3">
             <Link
               to={query.audience ? `/lifecycle?audience=${query.audience}` : "/lifecycle"}
-              className="text-[14px] text-accent-text underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="text-[15px] text-accent-text underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Back to Lifecycle
             </Link>
@@ -465,7 +465,7 @@ export default function PeoplePage() {
             ))}
           </Select>
         </div>
-        <div className="w-[calc(50%-6px)] sm:w-36">
+        <div className="w-[calc(50%-6px)] sm:w-40">
           <Select
             aria-label="Filter by payment status"
             value={query.payment ?? ""}
@@ -510,7 +510,7 @@ export default function PeoplePage() {
                 onChange={(e) => update({ dateFrom: e.target.value || null })}
               />
             </div>
-            <span className="text-[14px] text-muted-foreground" aria-hidden="true">to</span>
+            <span className="text-[15px] text-muted-foreground" aria-hidden="true">to</span>
             <div className="flex-1 sm:w-40 sm:flex-none">
               <Input
                 type="date"
@@ -546,7 +546,7 @@ export default function PeoplePage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">
+          <p className="text-[17px] text-foreground">
             Failed to load contacts:{" "}
             {list.error instanceof Error ? list.error.message : "Unknown error"}
           </p>
@@ -599,19 +599,19 @@ export default function PeoplePage() {
                     <div className="flex items-center gap-3">
                       <span
                         aria-hidden="true"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[13px] font-semibold text-accent-text"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[14px] font-semibold text-accent-text"
                       >
                         {initial(c)}
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate font-medium text-foreground">{displayName(c)}</span>
                         {c.company && (
-                          <span className="block truncate text-[14px] text-muted-foreground">{c.company}</span>
+                          <span className="block truncate text-[15px] text-muted-foreground">{c.company}</span>
                         )}
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">
+                  <TableCell className="font-mono text-[14px] text-muted-foreground">
                     {c.email ?? "-"}
                   </TableCell>
                   <TableCell>

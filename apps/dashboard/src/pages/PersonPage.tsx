@@ -140,7 +140,7 @@ function transitionCause(metadata: Record<string, unknown> | null): string | nul
 
 function StateChip({ state }: { state: string }) {
   return (
-    <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[13px] text-foreground">
+    <span className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[14px] text-foreground">
       {stateName(state)}
     </span>
   );
@@ -172,20 +172,20 @@ function TimelineRow({ item, last, contactId }: { item: TimelineItem; last: bool
       <div className="min-w-0 flex-1 pt-0.5">
         {item.kind === "event" && (
           <div>
-            <p className="text-[15px] text-foreground">
+            <p className="text-[16px] text-foreground">
               <code className="font-mono text-[14px]">{item.event_name ?? item.event_type}</code>
             </p>
             {contextSummary(item.context) && (
-              <p className="mt-0.5 font-mono text-[13px] text-subtle-foreground">
+              <p className="mt-0.5 font-mono text-[14px] text-subtle-foreground">
                 {contextSummary(item.context)}
               </p>
             )}
             {item.properties && Object.keys(item.properties).length > 0 && (
               <details className="mt-1">
-                <summary className="cursor-pointer select-none text-[14px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+                <summary className="cursor-pointer select-none text-[15px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
                   payload
                 </summary>
-                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 font-mono text-[13px] text-muted-foreground">
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 font-mono text-[14px] text-muted-foreground">
                   {JSON.stringify(item.properties, null, 2)}
                 </pre>
               </details>
@@ -194,12 +194,12 @@ function TimelineRow({ item, last, contactId }: { item: TimelineItem; last: bool
         )}
         {item.kind === "transition" && (
           <div>
-            <p className="flex flex-wrap items-center gap-2 text-[15px] text-foreground">
+            <p className="flex flex-wrap items-center gap-2 text-[16px] text-foreground">
               <StateChip state={item.from_state} />
               <span aria-hidden="true" className="text-subtle-foreground">{"->"}</span>
               <StateChip state={item.to_state} />
               {transitionCause(item.metadata) && (
-                <span className="text-[14px] text-muted-foreground">
+                <span className="text-[15px] text-muted-foreground">
                   {transitionCause(item.metadata)}
                 </span>
               )}
@@ -208,7 +208,7 @@ function TimelineRow({ item, last, contactId }: { item: TimelineItem; last: bool
         )}
         {item.kind === "message" && (
           <div>
-            <p className="text-[15px] text-foreground">
+            <p className="text-[16px] text-foreground">
               <Link
                 to={`/sent/${item.id}`}
                 state={{ fromPerson: contactId }}
@@ -217,7 +217,7 @@ function TimelineRow({ item, last, contactId }: { item: TimelineItem; last: bool
                 {item.subject ?? "(no subject)"}
               </Link>
             </p>
-            <p className="mt-1 flex flex-wrap items-center gap-2 text-[14px] text-muted-foreground">
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[15px] text-muted-foreground">
               <Badge variant={messageVariant(item.status)}>{item.status}</Badge>
               {item.feedback && (
                 <span className="font-mono">{item.feedback}</span>
@@ -227,7 +227,7 @@ function TimelineRow({ item, last, contactId }: { item: TimelineItem; last: bool
             </p>
           </div>
         )}
-        <p className="mt-1 font-mono text-[13px] text-subtle-foreground">
+        <p className="mt-1 font-mono text-[14px] text-subtle-foreground">
           {formatDateTime(item.occurred_at)}
         </p>
       </div>
@@ -248,7 +248,7 @@ function RailCard({
 }) {
   return (
     <div className="rounded-lg border border-border bg-card shadow-card p-6">
-      <h2 className="mb-4 text-[17px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
+      <h2 className="mb-4 text-[18px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
         {title}
       </h2>
       {children}
@@ -283,7 +283,7 @@ function PropertyFact({ label, value }: { label: string; value: unknown }) {
     <div className="py-1">
       <dt className="text-muted-foreground [overflow-wrap:anywhere]">{label}</dt>
       <dd className="mt-1">
-        <pre className="whitespace-pre-wrap rounded-md bg-sunken px-2 py-1.5 font-mono text-[13px] leading-[20px] text-muted-foreground [overflow-wrap:anywhere]">
+        <pre className="whitespace-pre-wrap rounded-md bg-sunken px-2 py-1.5 font-mono text-[14px] leading-[22px] text-muted-foreground [overflow-wrap:anywhere]">
           {JSON.stringify(value, null, 2)}
         </pre>
       </dd>
@@ -308,7 +308,7 @@ function PropertiesCard({ entries }: { entries: Array<[string, unknown]> }) {
   return (
     <RailCard title="Properties">
       {entries.length === 0 ? (
-        <p className="text-[15px] text-muted-foreground">
+        <p className="text-[16px] text-muted-foreground">
           No properties recorded. Anything sent with identify calls or
           event payloads lands here.
         </p>
@@ -387,7 +387,7 @@ function NameHeading({ contactId, displayName, name }: { contactId: string; disp
       <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(null)}>
         Cancel
       </Button>
-      {error && <p className="w-full text-[14px] text-danger" role="alert">{error}</p>}
+      {error && <p className="w-full text-[15px] text-danger" role="alert">{error}</p>}
     </form>
   );
 }
@@ -396,7 +396,7 @@ function NameHeading({ contactId, displayName, name }: { contactId: string; disp
 function NameLockNote({ contactId }: { contactId: string }) {
   const set = useSetContactName(contactId);
   return (
-    <p className="mt-1 text-[14px] text-subtle-foreground">
+    <p className="mt-1 text-[15px] text-subtle-foreground">
       Name edited here, so identify calls no longer change it.{" "}
       <button
         type="button"
@@ -427,7 +427,7 @@ export default function PersonPage() {
 
   if (contactQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto max-w-[90rem] space-y-4">
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-7 w-64" />
         <div className="flex gap-8">
@@ -440,12 +440,12 @@ export default function PersonPage() {
 
   if (contactQuery.isError || !contactQuery.data) {
     return (
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-[90rem]">
         <div
           className="rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">
+          <p className="text-[17px] text-foreground">
             Failed to load this person:{" "}
             {contactQuery.error instanceof Error
               ? contactQuery.error.message
@@ -462,12 +462,12 @@ export default function PersonPage() {
   const propertyEntries = Object.entries(contact.properties ?? {});
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[90rem]">
       {/* Header */}
       <div className="mb-8">
         <Link
           to="/people"
-          className="text-[15px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
+          className="text-[16px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
         >
           &larr; People
         </Link>
@@ -481,7 +481,7 @@ export default function PersonPage() {
             {stateName(contact.lifecycle_state)}
           </Badge>
           {contact.engagement_depth && (
-            <span className="text-[15px] text-muted-foreground">
+            <span className="text-[16px] text-muted-foreground">
               {contact.engagement_depth}
             </span>
           )}
@@ -491,7 +491,7 @@ export default function PersonPage() {
             </span>
           )}
         </div>
-        <p className="mt-1 text-[15px] text-muted-foreground">
+        <p className="mt-1 text-[16px] text-muted-foreground">
           {contact.company ? (
             <>
               {contact.company}
@@ -508,7 +508,7 @@ export default function PersonPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">
+          <p className="text-[17px] text-foreground">
             This address is suppressed ({suppression.reason}
             {suppression.source ? ` via ${suppression.source}` : ""},{" "}
             {formatDate(suppression.created_at)}). The engine will not send
@@ -532,7 +532,7 @@ export default function PersonPage() {
                 <Fact label="Activated" value={formatDate(contact.activated_at)} />
                 <Fact label="Recorded" value={formatDate(contact.created_at)} />
               </dl>
-              <p className="mt-2 text-[13px] text-subtle-foreground">
+              <p className="mt-2 text-[14px] text-subtle-foreground">
                 Email, company and plan come from your app's identify calls
                 (the <code className="font-mono">plan</code> trait), so they are not edited here.
               </p>
@@ -541,7 +541,7 @@ export default function PersonPage() {
             <PropertiesCard entries={propertyEntries} />
           </div>
 
-          <p className="mb-4 text-[15px] font-medium text-foreground">
+          <p className="mb-4 text-[16px] font-medium text-foreground">
             Timeline
           </p>
 
@@ -558,7 +558,7 @@ export default function PersonPage() {
               className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
               role="alert"
             >
-              <p className="text-[16px] text-foreground">
+              <p className="text-[17px] text-foreground">
                 Failed to load the timeline.
               </p>
               <Button variant="outline" size="sm" onClick={() => timeline.refetch()}>
@@ -569,7 +569,7 @@ export default function PersonPage() {
 
           {!timeline.isLoading && !timeline.isError && items.length === 0 && (
             <div className="rounded-lg border border-dashed border-border-strong px-6 py-12 text-center">
-              <p className="text-[15px] text-muted-foreground">
+              <p className="text-[16px] text-muted-foreground">
                 Nothing has happened to this person yet. Events, lifecycle
                 changes, and messages will appear here in order.
               </p>
@@ -616,7 +616,7 @@ export default function PersonPage() {
 
           <RailCard title="Flows">
             {memberships.length === 0 ? (
-              <p className="text-[15px] text-muted-foreground">
+              <p className="text-[16px] text-muted-foreground">
                 Not enrolled in any flow.
               </p>
             ) : (
@@ -626,7 +626,7 @@ export default function PersonPage() {
                     <div className="flex items-center gap-2">
                       <Link
                         to={`/flows/${m.flow_id}/edit`}
-                        className="text-[15px] font-medium text-accent-text underline underline-offset-4"
+                        className="text-[16px] font-medium text-accent-text underline underline-offset-4"
                       >
                         {m.flow_name}
                       </Link>
@@ -634,7 +634,7 @@ export default function PersonPage() {
                         {m.status}
                       </Badge>
                     </div>
-                    <p className="mt-0.5 text-[14px] text-muted-foreground">
+                    <p className="mt-0.5 text-[15px] text-muted-foreground">
                       {"step "}
                       {m.current_step}
                       {" · entered "}
@@ -693,30 +693,30 @@ function NotesCard({ contactId }: { contactId: string }) {
           value={draft}
           maxLength={5000}
           onChange={(e) => setDraft(e.target.value)}
-          className="min-h-16 text-[15px]"
+          className="min-h-16 text-[16px]"
         />
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[13px] text-subtle-foreground">Only your team sees notes.</span>
+          <span className="text-[14px] text-subtle-foreground">Only your team sees notes.</span>
           <Button type="submit" size="sm" variant="secondary" disabled={!draft.trim() || add.isPending}>
             {add.isPending ? "Saving..." : "Add note"}
           </Button>
         </div>
         {add.isError && (
-          <p className="text-[14px] text-danger" role="alert">
+          <p className="text-[15px] text-danger" role="alert">
             {add.error instanceof Error ? add.error.message : "Saving the note failed."}
           </p>
         )}
       </form>
 
       {notes.isError && (
-        <p className="mt-3 text-[14px] text-danger" role="alert">Failed to load notes.</p>
+        <p className="mt-3 text-[15px] text-danger" role="alert">Failed to load notes.</p>
       )}
       {items.length > 0 && (
         <ul className="mt-4 space-y-3">
           {items.map((n) => (
             <li key={n.id} className="group rounded-md bg-sunken px-3 py-2">
               <div className="flex items-start justify-between gap-2">
-                <p className="min-w-0 whitespace-pre-wrap break-words text-[15px] text-foreground">{n.body}</p>
+                <p className="min-w-0 whitespace-pre-wrap break-words text-[16px] text-foreground">{n.body}</p>
                 <button
                   type="button"
                   aria-label="Delete note"
@@ -730,7 +730,7 @@ function NotesCard({ contactId }: { contactId: string }) {
                   <X size={14} strokeWidth={1.5} />
                 </button>
               </div>
-              <p className="mt-1 text-[13px] text-subtle-foreground">
+              <p className="mt-1 text-[14px] text-subtle-foreground">
                 {n.author ? (n.author.name ?? n.author.email ?? "Removed member") : "Unknown"}
                 {" · "}
                 <span className="font-mono">{formatDateTime(n.created_at)}</span>
@@ -796,14 +796,14 @@ function ActionsCard({
           >
             {exclude.isPending ? "Excluding..." : "Exclude from mail"}
           </Button>
-          <p className="mt-1.5 text-[13px] text-subtle-foreground">
+          <p className="mt-1.5 text-[14px] text-subtle-foreground">
             {suppressed
               ? "This address is already suppressed."
               : "Stops lifecycle mail to this person and keeps their history."}
           </p>
-          {excludeResult && <p className="mt-1.5 text-[14px] text-foreground">{excludeResult}</p>}
+          {excludeResult && <p className="mt-1.5 text-[15px] text-foreground">{excludeResult}</p>}
           {exclude.isError && (
-            <p className="mt-1.5 text-[14px] text-danger" role="alert">
+            <p className="mt-1.5 text-[15px] text-danger" role="alert">
               {exclude.error instanceof Error ? exclude.error.message : "Exclude failed."}
             </p>
           )}
@@ -817,19 +817,19 @@ function ActionsCard({
               </Button>
             ) : (
               <form onSubmit={onDelete} className="space-y-2 rounded-md border border-danger bg-danger-soft p-3">
-                <p className="text-[14px] text-foreground">
+                <p className="text-[15px] text-foreground">
                   This erases {label} from this product: events, flow memberships,
                   messages, notes and topic choices. Suppressions stay, so the address
                   is not mailed again. It cannot be undone. If your app sends this
                   person again, they come back as a new contact.
                 </p>
-                <label className="block text-[14px] text-foreground">
+                <label className="block text-[15px] text-foreground">
                   Type <code className="font-mono">{confirmValue}</code> to confirm
                   <Input
                     autoFocus
                     value={typed}
                     onChange={(e) => setTyped(e.target.value)}
-                    className="mt-1 h-8 text-[15px]"
+                    className="mt-1 h-8 text-[16px]"
                   />
                 </label>
                 <div className="flex gap-2">
@@ -854,7 +854,7 @@ function ActionsCard({
                   </Button>
                 </div>
                 {erase.isError && (
-                  <p className="text-[14px] text-danger" role="alert">
+                  <p className="text-[15px] text-danger" role="alert">
                     {erase.error instanceof Error ? erase.error.message : "Delete failed."}
                   </p>
                 )}
@@ -886,7 +886,7 @@ function TopicToggles({ contactId, topics }: { contactId: string; topics: Contac
           const title = t.default ? "Topic default (no choice recorded)" : t.source ? `Set via ${t.source}` : undefined;
           return (
             <li key={t.topic_id} className="flex items-center justify-between gap-3">
-              <span className="min-w-0 truncate text-[15px] text-foreground" title={title}>
+              <span className="min-w-0 truncate text-[16px] text-foreground" title={title}>
                 {t.name}
                 {t.kind !== "transactional" && t.default && <span className="text-muted-foreground"> (default)</span>}
               </span>
@@ -918,8 +918,8 @@ function TopicToggles({ contactId, topics }: { contactId: string; topics: Contac
           );
         })}
       </ul>
-      {error && <p className="mt-2 text-[14px] text-danger" role="alert">{error}</p>}
-      <p className="mt-3 text-[13px] leading-[20px] text-muted-foreground">
+      {error && <p className="mt-2 text-[15px] text-danger" role="alert">{error}</p>}
+      <p className="mt-3 text-[14px] leading-[22px] text-muted-foreground">
         Changes here are recorded as set by your team. To stop all mail, use Exclude from mail.
       </p>
     </div>
