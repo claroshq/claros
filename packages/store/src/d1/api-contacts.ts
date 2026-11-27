@@ -216,7 +216,7 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
 
     async getContact({ tenantId, contactId }) {
       const rows = await db.all<Record<string, unknown>>(sql`
-        SELECT id, tenant_id, external_id, email, name, company, properties,
+        SELECT id, tenant_id, external_id, email, name, name_locked_at, company, properties,
                lifecycle_state, engagement_depth, payment_status,
                first_seen_at, last_seen_at, activated_at, created_at
         FROM contacts
@@ -227,7 +227,7 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
       if (!row) return null;
       return convert<Record<string, unknown>>(
         row,
-        ["first_seen_at", "last_seen_at", "activated_at", "created_at"],
+        ["first_seen_at", "last_seen_at", "activated_at", "created_at", "name_locked_at"],
         ["properties"],
       );
     },
@@ -255,6 +255,18 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
       `);
       const row = rows[0];
       return row ? convert<Record<string, unknown>>(row, ["created_at"]) : null;
+    },
+
+    async setContactName(input) {
+      const set = input.lock
+        ? sql`name = ${input.name}, name_locked_at = ${input.now.getTime()}`
+        : sql`name_locked_at = NULL`;
+      const rows = await db.all<{ id: string }>(sql`
+        UPDATE contacts SET ${set}
+        WHERE tenant_id = ${input.tenantId} AND id = ${input.contactId.toLowerCase()}
+        RETURNING id
+      `);
+      return rows.length > 0;
     },
 
     async contactExists({ tenantId, contactId }) {

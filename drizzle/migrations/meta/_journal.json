@@ -253,6 +253,13 @@
       "when": 1795779346662,
       "tag": "0035_message_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795782760986,
+      "tag": "0036_contact_name_lock",
+      "breakpoints": true
     }
   ]
 }

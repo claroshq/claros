@@ -15,7 +15,7 @@
  */
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Zap, RefreshCw, Mail, X } from "lucide-react";
+import { Zap, RefreshCw, Mail, X, Pencil } from "lucide-react";
 import {
   useContact,
   useContactTimeline,
@@ -24,6 +24,7 @@ import {
   useDeleteContactNote,
   useSetContactTopics,
   useDeleteContact,
+  useSetContactName,
 } from "../contacts.js";
 import { useExcludeContact } from "../messages.js";
 import { useMe } from "../auth.js";
@@ -290,6 +291,126 @@ function PropertyFact({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+/** Properties shown before "Show all": about five rows of the two-column grid. */
+const PROPERTIES_PREVIEW = 10;
+
+function PropertiesCard({ entries }: { entries: Array<[string, unknown]> }) {
+  const [all, setAll] = useState(false);
+  // Scalars first in the grid; objects and arrays take a full row each, after them.
+  const sorted = useMemo(
+    () => [
+      ...entries.filter(([, v]) => v === null || typeof v !== "object"),
+      ...entries.filter(([, v]) => v !== null && typeof v === "object"),
+    ],
+    [entries],
+  );
+  const shown = all ? sorted : sorted.slice(0, PROPERTIES_PREVIEW);
+  return (
+    <RailCard title="Properties">
+      {entries.length === 0 ? (
+        <p className="text-[14px] text-muted-foreground">
+          No properties recorded. Anything sent with identify calls or
+          event payloads lands here.
+        </p>
+      ) : (
+        <>
+          <dl className="grid gap-x-8 sm:grid-cols-2">
+            {shown.map(([key, value]) => (
+              <div key={key} className={value !== null && typeof value === "object" ? "sm:col-span-2" : undefined}>
+                <PropertyFact label={key} value={value} />
+              </div>
+            ))}
+          </dl>
+          {sorted.length > PROPERTIES_PREVIEW && (
+            <Button variant="ghost" size="sm" className="mt-2" onClick={() => setAll(!all)}>
+              {all ? "Show fewer" : `Show all ${sorted.length}`}
+            </Button>
+          )}
+        </>
+      )}
+    </RailCard>
+  );
+}
+
+/**
+ * The person's name with an edit button. Saving locks the name: identify
+ * calls from the app no longer change it (see NameLockNote).
+ */
+function NameHeading({ contactId, displayName, name }: { contactId: string; displayName: string; name: string | null }) {
+  const set = useSetContactName(contactId);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (draft === null) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <h1 className="font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground">
+          {displayName}
+        </h1>
+        <button
+          type="button"
+          aria-label="Edit name"
+          title="Edit name"
+          onClick={() => { setError(null); setDraft(name ?? ""); }}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-sunken-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Pencil className="size-4" aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = draft.trim();
+    if (!value) { setError("A name needs some text."); return; }
+    set.mutate(value, {
+      onSuccess: () => setDraft(null),
+      onError: (err) => setError(err.message),
+    });
+  };
+
+  return (
+    <form onSubmit={save} className="flex flex-wrap items-center gap-2">
+      <Input
+        autoFocus
+        aria-label="Name"
+        value={draft}
+        maxLength={200}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }}
+        className="w-72"
+      />
+      <Button type="submit" size="sm" disabled={set.isPending}>
+        {set.isPending ? "Saving..." : "Save"}
+      </Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(null)}>
+        Cancel
+      </Button>
+      {error && <p className="w-full text-[13px] text-danger" role="alert">{error}</p>}
+    </form>
+  );
+}
+
+/** Shown while the name is locked, with the way back to the app's value. */
+function NameLockNote({ contactId }: { contactId: string }) {
+  const set = useSetContactName(contactId);
+  return (
+    <p className="mt-1 text-[13px] text-subtle-foreground">
+      Name edited here, so identify calls no longer change it.{" "}
+      <button
+        type="button"
+        disabled={set.isPending}
+        title="The current name stays until your app next sends one with identify."
+        onClick={() => set.mutate(null)}
+        className="text-accent-text underline underline-offset-4 disabled:cursor-wait"
+      >
+        Use the name from your app
+      </button>
+    </p>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -351,9 +472,11 @@ export default function PersonPage() {
           &larr; People
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground">
-            {displayName}
-          </h1>
+          <NameHeading
+            contactId={contact.id}
+            displayName={displayName}
+            name={contact.name}
+          />
           <Badge variant={stateVariant(contact.lifecycle_state)} title={stateHint(contact.lifecycle_state)}>
             {stateName(contact.lifecycle_state)}
           </Badge>
@@ -377,6 +500,7 @@ export default function PersonPage() {
           ) : null}
           <span className="font-mono text-[13px]">{contact.external_id}</span>
         </p>
+        {contact.name_locked_at && <NameLockNote contactId={contact.id} />}
       </div>
 
       {suppression && (
@@ -396,6 +520,27 @@ export default function PersonPage() {
       <div className="flex flex-col gap-10 lg:flex-row lg:gap-8">
         {/* Timeline (main column) */}
         <div className="min-w-0 flex-1">
+          <div className="mb-10 space-y-6">
+            <RailCard title="Profile">
+              <dl className="grid gap-x-8 sm:grid-cols-2">
+                <Fact label="Email" value={contact.email ?? "-"} />
+                <Fact label="User id" value={contact.external_id} />
+                {contact.company && <Fact label="Company" value={contact.company} mono={false} />}
+                <Fact label="Plan" value={contact.payment_status ?? "-"} />
+                <Fact label="First seen" value={formatDate(contact.first_seen_at)} />
+                <Fact label="Last seen" value={formatDate(contact.last_seen_at)} />
+                <Fact label="Activated" value={formatDate(contact.activated_at)} />
+                <Fact label="Recorded" value={formatDate(contact.created_at)} />
+              </dl>
+              <p className="mt-2 text-[12px] text-subtle-foreground">
+                Email, company and plan come from your app's identify calls
+                (the <code className="font-mono">plan</code> trait), so they are not edited here.
+              </p>
+            </RailCard>
+
+            <PropertiesCard entries={propertyEntries} />
+          </div>
+
           <p className="mb-4 text-[14px] font-medium text-foreground">
             Timeline
           </p>
@@ -462,38 +607,6 @@ export default function PersonPage() {
         {/* Right rail */}
         <div className="w-full shrink-0 space-y-6 lg:w-72">
           <NotesCard contactId={contact.id} />
-
-          <RailCard title="Profile">
-            <dl>
-              <Fact label="Email" value={contact.email ?? "-"} />
-              <Fact label="User id" value={contact.external_id} />
-              {contact.company && <Fact label="Company" value={contact.company} mono={false} />}
-              <Fact label="Plan" value={contact.payment_status ?? "-"} />
-              <Fact label="First seen" value={formatDate(contact.first_seen_at)} />
-              <Fact label="Last seen" value={formatDate(contact.last_seen_at)} />
-              <Fact label="Activated" value={formatDate(contact.activated_at)} />
-              <Fact label="Recorded" value={formatDate(contact.created_at)} />
-            </dl>
-            <p className="mt-2 text-[12px] text-subtle-foreground">
-              Plan and profile come from your app's identify calls
-              (the <code className="font-mono">plan</code> trait), so they are not edited here.
-            </p>
-          </RailCard>
-
-          <RailCard title="Properties">
-            {propertyEntries.length === 0 ? (
-              <p className="text-[14px] text-muted-foreground">
-                No properties recorded. Anything sent with identify calls or
-                event payloads lands here.
-              </p>
-            ) : (
-              <dl>
-                {propertyEntries.map(([key, value]) => (
-                  <PropertyFact key={key} label={key} value={value} />
-                ))}
-              </dl>
-            )}
-          </RailCard>
 
           {topicStatuses.length > 0 && (
             <RailCard title="Topics">

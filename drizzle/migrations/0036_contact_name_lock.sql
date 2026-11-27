@@ -1,0 +1,1 @@
+ALTER TABLE "contacts" ADD COLUMN "name_locked_at" timestamp with time zone;

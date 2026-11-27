@@ -18,6 +18,9 @@ export const contacts = sqliteTable(
     externalId: text("external_id").notNull(), // tenant's user ID
     email: text("email"), // [v2] NULLABLE: identify may arrive before email is known
     name: text("name"),
+    // Set when someone edits the name in the dashboard: identify then leaves
+    // the name alone until the lock is cleared (DELETE /v1/contacts/:id/name).
+    nameLockedAt: integer("name_locked_at", { mode: "timestamp_ms" }),
     company: text("company"),
     properties: text("properties", { mode: "json" }), // arbitrary attributes from track/identify
     lifecycleState: text("lifecycle_state").notNull(), // signed_up|activated|engaged|at_risk|dormant|churned|resurrected

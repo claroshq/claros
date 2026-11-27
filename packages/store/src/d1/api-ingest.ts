@@ -272,7 +272,10 @@ async function writeEvent(
     }
 
     const sets: SQL[] = [];
-    if ("name" in columnUpdates) sets.push(sql`name = ${columnUpdates.name ?? null}`);
+    // A name edited in the dashboard is locked: identify leaves it alone.
+    if ("name" in columnUpdates) {
+      sets.push(sql`name = CASE WHEN name_locked_at IS NULL THEN ${columnUpdates.name ?? null} ELSE name END`);
+    }
     if ("company" in columnUpdates) sets.push(sql`company = ${columnUpdates.company ?? null}`);
     if ("paymentStatus" in columnUpdates) sets.push(sql`payment_status = ${columnUpdates.paymentStatus ?? null}`);
     if (Object.keys(propsToMerge).length > 0 || keysToRemove.length > 0) {

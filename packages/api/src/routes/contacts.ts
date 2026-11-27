@@ -487,6 +487,39 @@ export default function contactsRoutes() {
     return c.json({ topics });
   });
 
+  /**
+   * PUT /v1/contacts/:id/name - set the name from the dashboard { "name": "..." }.
+   * The name is locked: identify calls no longer change it until the lock is
+   * cleared with DELETE. Returns the contact detail like GET /v1/contacts/:id.
+   */
+  router.put("/:id/name", "member", validatedBody(nameBodySchema), async (c) => {
+    const db: Db = c.var.db;
+    const tenant = c.var.tenant!;
+    const v = validateBody(c, nameBodySchema);
+    if (!v.ok) return v.response;
+    const name = v.value.name.trim();
+    if (name.length === 0) return c.json({ error: "A name needs some text." }, 400);
+    const contactId = c.req.param("id")!;
+    if (!isUuid(contactId)) return c.json({ error: "Contact not found." }, 404);
+    const ok = await storeFor(db).apiContacts.setContactName({ tenantId: tenant.id, contactId, name, lock: true, now: new Date() });
+    if (!ok) return c.json({ error: "Contact not found." }, 404);
+    return c.json(await getContactDetail({ db, tenant }, contactId));
+  });
+
+  /**
+   * DELETE /v1/contacts/:id/name - clear the name lock. The name stays as it
+   * is until the next identify call that sends one.
+   */
+  router.delete("/:id/name", "member", async (c) => {
+    const db: Db = c.var.db;
+    const tenant = c.var.tenant!;
+    const contactId = c.req.param("id")!;
+    if (!isUuid(contactId)) return c.json({ error: "Contact not found." }, 404);
+    const ok = await storeFor(db).apiContacts.setContactName({ tenantId: tenant.id, contactId, lock: false });
+    if (!ok) return c.json({ error: "Contact not found." }, 404);
+    return c.json(await getContactDetail({ db, tenant }, contactId));
+  });
+
   /** GET /v1/contacts/:id/notes - the team's notes about the contact, newest first. */
   router.get("/:id/notes", "member", async (c) => {
     const db: Db = c.var.db;
@@ -534,6 +567,9 @@ export default function contactsRoutes() {
 }
 
 const NOTE_MAX_LENGTH = 5000;
+
+/** PUT /v1/contacts/:id/name body. */
+const nameBodySchema = z.object({ name: z.string().max(200) });
 
 /** PUT /v1/contacts/:id/topics body: topic slug -> subscribed. */
 const topicsBodySchema = z.object({ topics: z.record(z.string(), z.boolean()) });

@@ -163,6 +163,13 @@ export interface ApiContactsQueries {
    * when a suppression was added. Returns what changed.
    */
   excludeContact(input: { tenantId: string; contactId: string; email: string | null; now: Date }): Promise<{ suppressed: boolean; cancelled: string[] }>;
+  /**
+   * Set the contact's name from the dashboard and lock it (name_locked_at = now),
+   * so identify no longer changes it. With lock false the name is left as it is
+   * and the lock cleared: the next identify that sends a name sets it again.
+   * False when the contact does not exist.
+   */
+  setContactName(input: { tenantId: string; contactId: string; name: string; lock: true; now: Date } | { tenantId: string; contactId: string; lock: false }): Promise<boolean>;
   /** The contact's notes, newest first. */
   listContactNotes(input: { tenantId: string; contactId: string }): Promise<ContactNoteRow[]>;
   /** Add a note to a contact of the tenant. Null when the contact does not exist. */
