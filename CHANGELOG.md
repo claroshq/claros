@@ -8,6 +8,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Changed
 
+- Dashboard: the sidebar footer is a user menu. It opens upward with Settings, Documentation (claros.org, new tab), the theme (light, system, dark) and Log out; Settings moves there from the nav. Keyboard: arrows, Home, End, Enter, Escape.
 - Dashboard: the type scale steps down one notch (body and table cells 14px on a 20px line, page titles 28px) and the vertical rhythm tightens (36px controls, ~44px table rows, 36px nav items, less space between sections). Flow names in the list are medium weight. No API change, no migration.
 
 ## [0.13.1] - 2026-11-27
