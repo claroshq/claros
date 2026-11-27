@@ -1,6 +1,6 @@
 {
   "name": "@claroshq/claros",
-  "version": "0.8.15",
+  "version": "0.9.0",
   "description": "Deploy and operate Claros on Cloudflare Workers + D1",
   "keywords": [
     "claros",

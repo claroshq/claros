@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-27
+
 ### Added
 
 - MCP server: `POST /v1/mcp`, a [Model Context Protocol](https://modelcontextprotocol.io) endpoint for working a product's approval queue from Claude Code, Claude Desktop or another MCP client. Connect with a product admin key (`Authorization: Bearer clr_ak_...`), for example `claude mcp add --transport http claros https://<host>/v1/mcp --header "Authorization: Bearer clr_ak_..."`. Fifteen tools, shown according to the key's scopes: `queue_summary`, `list_pending_approvals`, `get_message`, `approve_messages`, `reject_messages`, `edit_message`, `regenerate_message`, `cancel_message`, `unapprove_message`, `exclude_contact` (scope `messages`); `get_contact`, `get_contact_timeline` (`contacts:read`); `list_flows`, `pause_flow`, `resume_flow` (`config`). The tools run the same code as the HTTP routes: a message that already moved on comes back as a `conflict` outcome with its current status, approvals and edits record `api_key:<key id>`, and an approved message is sent by the normal drain with every send check (send window, throttle, suppression). Nothing is sent, configured or deleted through it, and the LLM never runs in it. Session cookies, ingestion keys and instance keys answer `401`; `X-Claros-Product` is ignored. Streamable HTTP, stateless, JSON responses; one log line per call without arguments. `GET /v1/capabilities` lists `mcp`. Same on Postgres and D1; no new dependency, no migration. `scripts/mcp-smoke.mjs` checks a running instance. See [MCP server](docs/guide/MCP.md).
@@ -349,7 +351,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.8.15...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/claroshq/claros/compare/v0.8.15...v0.9.0
 [0.8.15]: https://github.com/claroshq/claros/compare/v0.8.14...v0.8.15
 [0.8.14]: https://github.com/claroshq/claros/compare/v0.8.13...v0.8.14
 [0.8.13]: https://github.com/claroshq/claros/compare/v0.8.12...v0.8.13
