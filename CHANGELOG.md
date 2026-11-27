@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-27
+
+### Upgrade
+
+Two migrations run with the normal upgrade: `0035_message_revisions` (Postgres) and `0015_message_revisions` (D1). They only add the nullable columns `lifecycle_messages.revision_request` and `revisions`; no backfill and nothing else to do. A rollback to 0.9.0 leaves the columns unused. The API changes are additive.
+
 ### Added
 
 - Dashboard, Sent Mail: a **Refresh** button re-reads the log without reloading the page. Messages are grouped by the day they were sent, with readable day headings (Today, Yesterday, the weekday within the last week, then the date), and the time column shows the time of day. Messages without a send time (failed, suppressed, still sending) are grouped under **Not sent**.
@@ -21,6 +27,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Fixed
 
 - Dashboard, Sent Mail: messages without a send time after the first 50 rows could not be reached with **Load more** (the cursor stopped at them). Numbered pages reach every row.
+- Person page: long property values (for example a `topics` object from identify) wrap inside the Properties card instead of running past it; object and array properties show as indented JSON.
 
 ## [0.9.0] - 2026-11-27
 
@@ -367,7 +374,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/claroshq/claros/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/claroshq/claros/compare/v0.8.15...v0.9.0
 [0.8.15]: https://github.com/claroshq/claros/compare/v0.8.14...v0.8.15
 [0.8.14]: https://github.com/claroshq/claros/compare/v0.8.13...v0.8.14
