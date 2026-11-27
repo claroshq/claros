@@ -203,7 +203,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
         className={cn(
           // Outer edge on the nav items' edge (wrapper px-3); 1px border + 11px
           // padding puts the dot on the 24px axis of the mark and nav icons.
-          "flex h-11 w-full items-center gap-2.5 rounded-lg border bg-card px-[11px] text-left shadow-card transition-colors duration-(--dur-fast)",
+          "flex h-10 w-full items-center gap-2.5 rounded-lg border bg-card px-[11px] text-left shadow-card transition-colors duration-(--dur-fast)",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           open ? "border-border-strong" : "border-border hover:border-border-strong",
         )}

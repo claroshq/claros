@@ -164,27 +164,28 @@ One named scale, defined once as `@theme --text-*` tokens in
 `apps/dashboard/src/index.css` and used by name everywhere (`text-body`,
 `text-title`, ...). Components never write `text-[Npx]` or pixel
 `leading-[...]`: a size change is made here and nowhere else. The values
-follow common product-UI practice (Material 3, IBM Carbon): a 15px body on
-a 22px line, steps of roughly 1.07 to 1.25, three weights (400 body, 500
+follow common product-UI practice (Material 3, IBM Carbon, the 14px body of
+Stripe and Linear): a 14px body on a 20px line, steps of roughly 1.07 to 1.25, three weights (400 body, 500
 emphasis and nav, 600 titles; 700 only for Bricolage). claros.org uses the
 same names one step up at reading sizes (section 15).
 
 | Token | Size / line | Typical weight | Use |
 |---|---|---|---|
-| `text-micro` | 12 / 16 | 600, +0.06em, uppercase | table headers, nav group labels, eyebrows |
-| `text-caption` | 13 / 18 | 400 | timestamps, hints, footnotes, small chips |
-| `text-small` | 14 / 20 | 400/500 | secondary lines, badges, mono data, small buttons |
-| `text-body` | 15 / 22 | 400 | default UI text, table cells, nav, inputs, buttons |
-| `text-lead` | 16 / 24 | 400/600 | page subtitles, list item titles, empty-state text |
-| `text-title` | 17 / 24 | 600, -0.01em | card titles |
-| `text-heading` | 20 / 28 | 600, -0.015em | headings between card groups, draft subjects |
-| `text-headline` | 24 / 30 | 600/700 | large numbers inside panels |
-| `text-display` | 28 / 34 | Bricolage 700, -0.02em | record page titles (person, flow, entry) |
-| `text-page` | 32 / 38 | Bricolage 700, -0.03em | the page title (PageHeader), metrics in Instrument 600 tabular |
+| `text-micro` | 11 / 16 | 600, +0.06em, uppercase | table headers, nav group labels, eyebrows |
+| `text-caption` | 12 / 16 | 400 | timestamps, hints, footnotes, small chips |
+| `text-small` | 13 / 18 | 400/500 | secondary lines, badges, mono data, small buttons |
+| `text-body` | 14 / 20 | 400 | default UI text, table cells, nav, inputs, buttons |
+| `text-lead` | 15 / 22 | 400/600 | page subtitles, list item titles, empty-state text |
+| `text-title` | 16 / 22 | 600, -0.01em | card titles |
+| `text-heading` | 18 / 24 | 600, -0.015em | headings between card groups, draft subjects |
+| `text-headline` | 22 / 28 | 600/700 | large numbers inside panels |
+| `text-display` | 24 / 30 | Bricolage 700, -0.02em | record page titles (person, flow, entry) |
+| `text-page` | 28 / 34 | Bricolage 700, -0.03em | the page title (PageHeader), metrics in Instrument 600 tabular |
 
 Body text is weight 400 with `-webkit-font-smoothing: antialiased`. A pass
 in 2026-11 tried 450 without antialiasing and 16px cells; it read as bold
-and oversized and was reverted. Readability comes from color
+and oversized and was reverted, and 15px still read a notch large, so the
+scale settled on 14px. Controls are 36px, table rows ~44px, nav items 36px. Readability comes from color
 (`--fg-muted` 0.36) and surfaces, not from weight.
 
 Rules:
@@ -284,7 +285,7 @@ both canvases (measured below).
 
 ## 9. Data density
 
-- Tables: `text-body` cells, ~52px row rhythm, 12px micro-label headers, 1px
+- Tables: `text-body` cells, ~44px row rhythm, `text-micro` headers, 1px
   `--border` separators, `--bg-hover` row hover. A table standing on the
   canvas is framed (white card, edge, card shadow); a table inside a card
   passes `framed={false}`. No zebra striping (zebra adds a surface per row
@@ -317,11 +318,11 @@ pairs added to `scripts/contrast.mjs`.
   `outline` (border-strong boundary), `secondary` (raised surface with
   border), `ghost` (quiet chrome actions like Sign out), `destructive`
   (`--danger-fill` with white text), `link` (accent text). Sizes `sm`
-  (36px, 14px text), `default` (40px, 15px), `lg` (44px), `icon` (40px). Disabled state is a solid
+  (32px, `text-small`), `default` (36px, `text-body`), `lg` (40px), `icon` (36px). Disabled state is a solid
   `--bg-sunken` fill with muted text: never opacity. The old disabled style
   (accent at 50% opacity) rendered as a muddy olive and failed AA; that is
   why this rule exists.
-- **Input / Select / Textarea**: 40px fields at 15px (textarea grows),
+- **Input / Select / Textarea**: 36px fields at `text-body` (textarea grows),
   white `--bg-raised` fill (never the grey canvas, which reads as
   disabled), `--border-strong` boundary, focus ring per section 8. Select is a
   styled native element: no custom listbox. Placeholders are
@@ -427,7 +428,7 @@ Usage:
   comparable product puts it. (This replaces an earlier version of this
   rule that prescribed a 64px header with a right-aligned cluster; the
   header did no work proportional to its cost.)
-- Nav items: 40px tall, `text-body` at weight 500, 18px icons in `--fg-subtle`,
+- Nav items: 36px tall, `text-body` at weight 500, 17px icons in `--fg-subtle`,
   8px radius. Active item: the `--selected` fill (neutral slate-blue tint,
   not cyan) with `--fg` text at weight 600 and the icon in accent-text.
   Groups after the first carry a 12px micro label (Build, Monitor, Setup)
@@ -606,14 +607,14 @@ scanned:
 | Token | Size | Use |
 |---|---|---|
 | `--fs-micro` | 12px (0.75rem) | eyebrows, table headers |
-| `--fs-caption` | 14px (0.875rem) | captions, footnotes, code in prose |
-| `--fs-small` | 15px (0.9375rem) | secondary copy, nav, buttons |
-| `--fs-body` | 17px (1.0625rem) | body copy |
-| `--fs-lead` | 20px (1.25rem) | lead paragraphs, card titles |
-| `--fs-heading` | 24px (1.5rem) | sub-section headings |
-| `--fs-headline` | 32px (2rem) | page titles of inner pages |
-| `--fs-display` | 40px (2.5rem) | section titles |
-| `--fs-page` | 56px (3.5rem) | the landing hero, once |
+| `--fs-caption` | 13px (0.8125rem) | captions, footnotes, code in prose |
+| `--fs-small` | 14px (0.875rem) | secondary copy, nav, buttons |
+| `--fs-body` | 16px (1rem) | body copy |
+| `--fs-lead` | 18px (1.125rem) | lead paragraphs, card titles |
+| `--fs-heading` | 22px (1.375rem) | sub-section headings |
+| `--fs-headline` | 28px (1.75rem) | page titles of inner pages |
+| `--fs-display` | 36px (2.25rem) | section titles |
+| `--fs-page` | 48px (3rem) | the landing hero, once |
 
 Body weight 400 with antialiasing, as in the product. Site CSS uses the
 `--fs-*` names only, never a literal font size.

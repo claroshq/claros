@@ -283,7 +283,7 @@ export default function FlowsPage() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/flows/${flow.id}/edit`)}
                 >
-                  <TableCell className="min-w-[15rem] font-semibold text-foreground">
+                  <TableCell className="min-w-[15rem] font-medium text-foreground">
                     <Link
                       to={`/flows/${flow.id}/edit`}
                       className="text-foreground"
