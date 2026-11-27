@@ -100,6 +100,8 @@ export default function sentLogRoutes() {
    * Query params:
    *   ?limit=<n>          default 50, max 200
    *   ?after=<cursor>     opaque cursor from previous page's next_cursor
+   *   ?page=<n>           numbered page (1-based) instead of a cursor; the
+   *                       response then also carries page, page_size and total
    *   ?status=<status>    filter by status (sent|failed|suppressed|sending)
    *   ?flow_id=<uuid>     filter by flow
    *   ?recipient=<text>   ILIKE search on recipient_address, contact email, or name
@@ -108,6 +110,7 @@ export default function sentLogRoutes() {
    *   ?feedback=<value>   filter by feedback (opened|clicked|bounced|complained)
    *
    * Response: { messages: [...], next_cursor: string | null }
+   *   with ?page: { messages, next_cursor: null, page, page_size, total }
    */
   router.get("/", "member", async (c) => {
     const db: Db = c.var.db;
@@ -140,29 +143,39 @@ export default function sentLogRoutes() {
         ? feedbackParam
         : null;
 
+    // Numbered page (1-based). Takes precedence over the cursor.
+    const rawPage = parseInt(query.page ?? "", 10);
+    const page = query.page === undefined ? null : isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+
     // Cursor
     let cursor: CursorPayload | null = null;
-    if (query.after) {
+    if (query.after && page === null) {
       cursor = decodeCursor(query.after);
     }
 
-    const rows = await storeFor(db).apiSentLog.listSentMessages({
-      tenantId,
-      filter: {
-        status,
-        flowId,
-        recipient,
-        // Date range on sent_at
-        from: query.from || null,
-        to: query.to || null,
-        // DESC order: next page has OLDER messages
-        before: cursor ? { sentAt: cursor.sent_at, id: cursor.id } : null,
-        feedback,
-      },
-      limit: fetchLimit,
-    });
+    const filter = {
+      status,
+      flowId,
+      recipient,
+      // Date range on sent_at
+      from: query.from || null,
+      to: query.to || null,
+      // DESC order: next page has OLDER messages
+      before: cursor ? { sentAt: cursor.sent_at, id: cursor.id } : null,
+      feedback,
+    };
+    const store = storeFor(db).apiSentLog;
+    const [rows, total] = await Promise.all([
+      store.listSentMessages({
+        tenantId,
+        filter,
+        limit: page === null ? fetchLimit : limit,
+        offset: page === null ? 0 : (page - 1) * limit,
+      }),
+      page === null ? Promise.resolve(null) : store.countSentMessages({ tenantId, filter }),
+    ]);
 
-    const hasNextPage = rows.length > limit;
+    const hasNextPage = page === null && rows.length > limit;
     const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
 
     const lastRow = pageRows[pageRows.length - 1];
@@ -190,6 +203,7 @@ export default function sentLogRoutes() {
         },
       })),
       next_cursor: nextCursor,
+      ...(page !== null && { page, page_size: limit, total }),
     });
   });
 

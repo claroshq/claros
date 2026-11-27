@@ -5,71 +5,77 @@ import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
 import type {
   ApiSentLogQueries,
+  SentLogFilter,
   SentLogRow,
   SentLogDetailRow,
   SentLogEventRow,
 } from "../areas/api-sent-log.js";
 
+/** WHERE conditions of the sent-log list (and its count). */
+function sentLogConditions(tenantId: string, filter: SentLogFilter, withCursor: boolean): ReturnType<typeof sql>[] {
+  // Build WHERE conditions
+  const conditions: ReturnType<typeof sql>[] = [
+    sql`m.tenant_id = ${tenantId}`,
+  ];
+
+  // Status filter: default shows all sent-log statuses
+  if (filter.status !== null) {
+    conditions.push(sql`m.status = ${filter.status}`);
+  } else {
+    conditions.push(
+      sql`m.status IN ('sending', 'sent', 'failed', 'suppressed')`
+    );
+  }
+
+  // Flow filter
+  if (filter.flowId !== null) {
+    conditions.push(sql`m.flow_id = ${filter.flowId}::uuid`);
+  }
+
+  // Recipient search (ILIKE on address, contact email, or contact name)
+  if (filter.recipient !== null) {
+    const pattern = `%${filter.recipient}%`;
+    conditions.push(
+      sql`(
+        m.recipient_address ILIKE ${pattern}
+        OR c.email ILIKE ${pattern}
+        OR c.name ILIKE ${pattern}
+      )`
+    );
+  }
+
+  // Date range on sent_at
+  if (filter.from !== null) {
+    conditions.push(sql`m.sent_at >= ${filter.from}::timestamptz`);
+  }
+  if (filter.to !== null) {
+    conditions.push(sql`m.sent_at <= ${filter.to}::timestamptz`);
+  }
+
+  // Feedback filter
+  if (filter.feedback !== null) {
+    if (filter.feedback === "opened") {
+      // opened-or-better (includes clicked)
+      conditions.push(sql`m.feedback IN ('opened', 'clicked')`);
+    } else {
+      conditions.push(sql`m.feedback = ${filter.feedback}`);
+    }
+  }
+
+  // Cursor
+  if (withCursor && filter.before !== null) {
+    // DESC order: next page has OLDER messages
+    conditions.push(
+      sql`ROW(date_trunc('milliseconds', m.sent_at), m.id) < ROW(${filter.before.sentAt}::timestamptz, ${filter.before.id}::uuid)`
+    );
+  }
+  return conditions;
+}
+
 export function pgApiSentLog(db: PgDb): ApiSentLogQueries {
   return {
-    async listSentMessages({ tenantId, filter, limit }) {
-      // Build WHERE conditions
-      const conditions: ReturnType<typeof sql>[] = [
-        sql`m.tenant_id = ${tenantId}`,
-      ];
-
-      // Status filter: default shows all sent-log statuses
-      if (filter.status !== null) {
-        conditions.push(sql`m.status = ${filter.status}`);
-      } else {
-        conditions.push(
-          sql`m.status IN ('sending', 'sent', 'failed', 'suppressed')`
-        );
-      }
-
-      // Flow filter
-      if (filter.flowId !== null) {
-        conditions.push(sql`m.flow_id = ${filter.flowId}::uuid`);
-      }
-
-      // Recipient search (ILIKE on address, contact email, or contact name)
-      if (filter.recipient !== null) {
-        const pattern = `%${filter.recipient}%`;
-        conditions.push(
-          sql`(
-            m.recipient_address ILIKE ${pattern}
-            OR c.email ILIKE ${pattern}
-            OR c.name ILIKE ${pattern}
-          )`
-        );
-      }
-
-      // Date range on sent_at
-      if (filter.from !== null) {
-        conditions.push(sql`m.sent_at >= ${filter.from}::timestamptz`);
-      }
-      if (filter.to !== null) {
-        conditions.push(sql`m.sent_at <= ${filter.to}::timestamptz`);
-      }
-
-      // Feedback filter
-      if (filter.feedback !== null) {
-        if (filter.feedback === "opened") {
-          // opened-or-better (includes clicked)
-          conditions.push(sql`m.feedback IN ('opened', 'clicked')`);
-        } else {
-          conditions.push(sql`m.feedback = ${filter.feedback}`);
-        }
-      }
-
-      // Cursor
-      if (filter.before !== null) {
-        // DESC order: next page has OLDER messages
-        conditions.push(
-          sql`ROW(date_trunc('milliseconds', m.sent_at), m.id) < ROW(${filter.before.sentAt}::timestamptz, ${filter.before.id}::uuid)`
-        );
-      }
-
+    async listSentMessages({ tenantId, filter, limit, offset }) {
+      const conditions = sentLogConditions(tenantId, filter, true);
       const whereClause = sql.join(conditions, sql` AND `);
 
       const result = await db.execute<SentLogRow>(sql`
@@ -87,8 +93,21 @@ export function pgApiSentLog(db: PgDb): ApiSentLogQueries {
         WHERE ${whereClause}
         ORDER BY m.sent_at DESC NULLS LAST, m.id DESC
         LIMIT ${limit}
+        OFFSET ${Math.max(0, offset ?? 0)}
       `);
       return result.rows;
+    },
+
+    async countSentMessages({ tenantId, filter }) {
+      const conditions = sentLogConditions(tenantId, filter, false);
+      const join = filter.recipient !== null
+        ? sql`LEFT JOIN contacts c ON c.id = m.contact_id AND c.tenant_id = m.tenant_id`
+        : sql``;
+      const result = await db.execute<{ n: string | number }>(sql`
+        SELECT count(*) AS n FROM lifecycle_messages m ${join}
+        WHERE ${sql.join(conditions, sql` AND `)}
+      `);
+      return Number(result.rows[0]?.n ?? 0);
     },
 
     async getSentMessage({ tenantId, messageId }) {

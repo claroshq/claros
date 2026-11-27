@@ -187,9 +187,28 @@ for (const factory of testBackends()) {
       expect(afterLastSent).toEqual([]);
     });
 
+    it("listSentMessages pages by offset, countSentMessages counts the filtered log", async () => {
+      const all = expectedIds(() => true);
+      const pages: string[] = [];
+      for (let offset = 0; offset < all.length; offset += 3) {
+        const rows = await b.store.apiSentLog.listSentMessages({ tenantId, filter: NO_FILTER, limit: 3, offset });
+        pages.push(...rows.map((r) => r.id));
+      }
+      expect(pages).toEqual(all);
+      const count = (f: Partial<SentLogFilter>) =>
+        b.store.apiSentLog.countSentMessages({ tenantId, filter: { ...NO_FILTER, ...f } });
+      expect(await count({})).toBe(all.length);
+      expect(await count({ status: "failed" })).toBe(expectedIds((m) => m.status === "failed").length);
+      expect(await count({ recipient: "zhang" })).toBe(expectedIds((m) => m.contact === 1).length);
+      expect(await count({ feedback: "opened" })).toBe(2);
+      // The cursor does not narrow the count.
+      expect(await count({ before: { sentAt: new Date(now).toISOString(), id: msgIds[0]! } })).toBe(all.length);
+    });
+
     it("listSentMessages is tenant scoped", async () => {
       const other = await b.newTenant();
       expect(await b.store.apiSentLog.listSentMessages({ tenantId: other, filter: NO_FILTER, limit: 10 })).toEqual([]);
+      expect(await b.store.apiSentLog.countSentMessages({ tenantId: other, filter: NO_FILTER })).toBe(0);
     });
 
     it("getSentMessage returns the detail row, null for another tenant or unknown id", async () => {

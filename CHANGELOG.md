@@ -6,6 +6,19 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard, Sent Mail: a **Refresh** button re-reads the log without reloading the page. Messages are grouped by the day they were sent, with readable day headings (Today, Yesterday, the weekday within the last week, then the date), and the time column shows the time of day. Messages without a send time (failed, suppressed, still sending) are grouped under **Not sent**.
+- API: `GET /v1/sent-log?page=<n>` returns a numbered page (1-based, `limit` rows) with `page`, `page_size` and `total` (the count for the same filters). Without `page` the cursor response (`after`, `next_cursor`) is unchanged. Same on Postgres and D1; no migration.
+
+### Changed
+
+- Dashboard, Sent Mail: numbered pages (Previous, page numbers, Next, and "1-50 of 312 messages") replace **Load more**. The page is in the URL (`/sent?page=3`), so going back from a message returns to the same page; changing a filter starts at page 1.
+
+### Fixed
+
+- Dashboard, Sent Mail: messages without a send time after the first 50 rows could not be reached with **Load more** (the cursor stopped at them). Numbered pages reach every row.
+
 ## [0.9.0] - 2026-11-27
 
 ### Added
