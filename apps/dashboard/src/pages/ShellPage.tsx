@@ -28,19 +28,16 @@ import {
   Inbox,
   BookOpen,
   BarChart3,
-  Settings,
   Plug,
   Bot,
-  LogOut,
   Send,
   Menu,
   X,
   LayoutTemplate,
 } from "lucide-react";
 import { BrandLockup } from "../components/brand-lockup.js";
-import { ThemeToggle } from "../components/theme-toggle.js";
+import { UserMenu } from "../components/user-menu.js";
 import { ProductSwitcher } from "../components/product-switcher.js";
-import { useSignOut } from "../components/use-sign-out.js";
 import { useHomePendingMessages } from "../home.js";
 import type { MeResponse } from "../api.js";
 
@@ -65,6 +62,8 @@ interface NavItem {
  *   3. Watching: audience, delivery and reporting.
  *   4. Setup: integration and settings, visited rarely after day one.
  * Before setup is complete, Home's setup checklist links to Integrate.
+ * Settings lives in the user menu at the foot of the sidebar, with the
+ * theme, Documentation and Log out.
  * The first group has no heading; the rest carry a micro label, which
  * scans faster than bare dividers once the list passes a dozen items.
  */
@@ -92,7 +91,6 @@ const NAV_GROUPS: NavGroup[] = [
   { heading: "Setup", items: [
     { label: "Integrate", path: "/integrate", icon: Plug, enabled: true },
     { label: "Connect your AI", path: "/connect-ai", icon: Bot, enabled: true },
-    { label: "Settings", path: "/settings", icon: Settings, enabled: true },
   ] },
 ];
 
@@ -117,7 +115,6 @@ interface ShellPageProps {
 }
 
 export default function ShellPage({ me }: ShellPageProps) {
-  const signOut = useSignOut();
   const location = useLocation();
   const pendingBadge = usePendingBadge();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -223,30 +220,9 @@ export default function ShellPage({ me }: ShellPageProps) {
         ))}
       </nav>
 
-      {/* Footer: appearance, identity, session */}
-      <div className="shrink-0 space-y-3 border-t border-border px-3 pb-4 pt-4">
-        <div className="flex items-center justify-between px-3">
-          <span className="text-small font-medium text-muted-foreground">Theme</span>
-          <ThemeToggle />
-        </div>
-        <div className="flex items-center gap-1 rounded-md pl-3">
-          <span
-            className="min-w-0 flex-1 truncate text-body text-muted-foreground"
-            title={me.user.email}
-          >
-            {me.user.email}
-          </span>
-          <button
-            type="button"
-            onClick={signOut.run}
-            disabled={signOut.pending}
-            title={signOut.pending ? "Signing out..." : "Sign out"}
-            aria-label="Sign out"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-subtle-foreground"
-          >
-            <LogOut size={17} strokeWidth={1.5} />
-          </button>
-        </div>
+      {/* Footer: the user menu (Settings, Documentation, theme, Log out) */}
+      <div className="shrink-0 border-t border-border p-3">
+        <UserMenu me={me} onNavigate={closeSidebar} />
       </div>
     </>
   );

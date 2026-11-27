@@ -430,8 +430,7 @@ Usage:
 
 - Shell: a single chrome column. The 248px sidebar (white in light,
   recessed in dark, a 1px `--border` rule on its right edge) carries the brand lockup
-  at the top, navigation in the middle, and a footer with the theme toggle,
-  the signed-in user, and sign out. There is no horizontal header: it would
+  at the top, navigation in the middle, and a footer with the user menu. There is no horizontal header: it would
   spend the scarce axis (vertical space in a data-dense tool) to hold three
   small controls, and identity belongs with navigation, where every
   comparable product puts it. (This replaces an earlier version of this
@@ -447,9 +446,12 @@ Usage:
   the nav sits on the page canvas (no band or card of its own), padded so
   the mark and the nav icons share one vertical axis.
   Disabled destinations render in `--fg-subtle` and are not focusable.
-- The sidebar footer is separated by a 1px `--border` line. The user email
-  truncates; sign out is a quiet icon button, not a primary action.
-- Pages: one title (40px Bricolage, the focal point), one eyebrow micro
+- The sidebar footer is separated by a 1px `--border` line and holds one
+  control, the user menu (`components/user-menu.tsx`): avatar initial and
+  name or email, opening upward to Settings, Documentation (claros.org,
+  new tab), the theme (light / system / dark) and Log out. Settings is not
+  in the nav; account-level destinations live in this menu.
+- Pages: one title (`text-page` Bricolage, the focal point), one eyebrow micro
   label above it, one-line muted subtitle, primary action top right,
   content in a `max-w-6xl` column. The header block renders in every state
   of the page.
