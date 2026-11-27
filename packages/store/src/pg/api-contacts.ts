@@ -286,6 +286,17 @@ export function pgApiContacts(db: PgDb): ApiContactsQueries {
       return row ? { id: row.id, externalId: row.external_id, email: row.email } : null;
     },
 
+    async findContactByEmail({ tenantId, email }) {
+      const res = await db.execute<{ id: string; external_id: string; email: string | null }>(sql`
+        SELECT id, external_id, email FROM contacts
+        WHERE tenant_id = ${tenantId}::uuid AND lower(email) = lower(${email})
+        ORDER BY created_at, id
+        LIMIT 1
+      `);
+      const row = res.rows[0];
+      return row ? { id: row.id, externalId: row.external_id, email: row.email } : null;
+    },
+
     async eraseContact({ tenantId, contactId }) {
       return db.transaction(async (tx) => {
         const t = sql`${tenantId}::uuid`;

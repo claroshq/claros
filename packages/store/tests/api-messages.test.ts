@@ -223,5 +223,68 @@ for (const factory of testBackends()) {
       expect(await b.store.apiMessages.getMessageStatus({ tenantId: await b.newTenant(), messageId: id })).toBeNull();
       expect(await b.store.apiMessages.getMessageStatus({ tenantId: t, messageId: randomUUID() })).toBeNull();
     });
+
+    it("getMessage returns one message of the tenant with flow, contact and approval columns", async () => {
+      const t = await b.newTenant();
+      const m = await seedMembership(b, t, { email: "g@example.com", name: "Gil" });
+      const approvedAt = new Date(Date.UTC(2026, 3, 1));
+      const id = await seedMessage(b, t, {
+        status: "approved",
+        subject: "Hello",
+        bodyText: "Body",
+        approvedAt,
+        approvedBy: "api_key:k1",
+        editedBy: "user:u1",
+        editedAt: approvedAt,
+        originalSubject: "Hi",
+      }, m);
+      const row = await b.store.apiMessages.getMessage({ tenantId: t, messageId: id });
+      expect(row).not.toBeNull();
+      expect(row!.subject).toBe("Hello");
+      expect(row!.body_text).toBe("Body");
+      expect(row!.contact_email).toBe("g@example.com");
+      expect(row!.flow_name).toBe("Flow");
+      expect(row!.approved_by).toBe("api_key:k1");
+      expect(row!.edited_by).toBe("user:u1");
+      expect(row!.original_subject).toBe("Hi");
+      expect(asMs(row!.approved_at)).toBe(approvedAt.getTime());
+      expect(await b.store.apiMessages.getMessage({ tenantId: await b.newTenant(), messageId: id })).toBeNull();
+      expect(await b.store.apiMessages.getMessage({ tenantId: t, messageId: randomUUID() })).toBeNull();
+    });
+
+    it("countOpenMessages groups open messages by flow, status and reason", async () => {
+      const t = await b.newTenant();
+      const m = await seedMembership(b, t);
+      const since = new Date(Date.UTC(2026, 5, 1));
+      const recent = new Date(Date.UTC(2026, 5, 2));
+      const old = new Date(Date.UTC(2026, 4, 1));
+      await seedMessage(b, t, { status: "pending_approval", createdAt: old }, m);
+      await seedMessage(b, t, { status: "pending_approval", createdAt: recent }, m);
+      await seedMessage(b, t, { status: "approved" }, m);
+      await seedMessage(b, t, { status: "pending_generation", statusReason: "llm_budget" }, m);
+      await seedMessage(b, t, { status: "pending_generation" }, m);
+      await seedMessage(b, t, { status: "value_gated", createdAt: recent }, m);
+      await seedMessage(b, t, { status: "value_gated", createdAt: old }, m);
+      await seedMessage(b, t, { status: "failed", brainReasoning: "generation_failed: no provider", createdAt: recent }, m);
+      await seedMessage(b, t, { status: "failed", brainReasoning: "send failed", createdAt: recent }, m);
+      await seedMessage(b, t, { status: "sent" }, m);
+      // Another product's messages never count.
+      await seedMessage(b, await b.newTenant(), { status: "pending_approval" });
+
+      const rows = await b.store.apiMessages.countOpenMessages({ tenantId: t, since });
+      const key = (r: { status: string; reason: string | null }) => `${r.status}/${r.reason ?? "-"}`;
+      const counts = Object.fromEntries(rows.map((r) => [key(r), r.n]));
+      expect(counts).toEqual({
+        "pending_approval/-": 2,
+        "approved/-": 1,
+        "pending_generation/llm_budget": 1,
+        "pending_generation/-": 1,
+        "value_gated/-": 1,
+        "failed/generation_failed": 1,
+      });
+      expect(rows.every((r) => r.flow_id === m.flowId)).toBe(true);
+      const pending = rows.find((r) => r.status === "pending_approval")!;
+      expect(pending.oldest_created_at?.getTime()).toBe(old.getTime());
+    });
   });
 }

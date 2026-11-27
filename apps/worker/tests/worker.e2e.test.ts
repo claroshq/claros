@@ -750,3 +750,55 @@ describe("Workers bundle", () => {
     expect(size).toBeLessThan(3 * 1024 * 1024);
   });
 });
+
+describe("Workers runtime: MCP endpoint", () => {
+  let mcpKey: string;
+  let productId: string;
+  let messageId: string;
+
+  beforeAll(async () => {
+    productId = randomUUID();
+    await db.insert(schema.tenants).values({ id: productId, name: "Workers MCP", slug: "workers-mcp", settings: { postal_address: POSTAL_ADDRESS } });
+    mcpKey = `clr_ak_${randomBytes(32).toString("base64url")}`;
+    await db.insert(schema.apiKeys).values({
+      tenantId: productId,
+      keyHash: createHash("sha256").update(mcpKey).digest("hex"),
+      prefix: mcpKey.slice(0, 8),
+      kind: "admin",
+      scopes: ["messages"],
+    });
+    const contactId = randomUUID();
+    const flowId = randomUUID();
+    const membershipId = randomUUID();
+    messageId = randomUUID();
+    await db.insert(schema.contacts).values({ id: contactId, tenantId: productId, externalId: "u_mcp", email: "mcp@workers-mcp.test", lifecycleState: "activated" });
+    await db.insert(schema.flows).values({ id: flowId, tenantId: productId, name: "Trial ending", triggerType: "event", triggerConfig: {}, steps: [], status: "active", approvalMode: "require" });
+    await db.insert(schema.flowMemberships).values({ id: membershipId, tenantId: productId, contactId, flowId, enteredAt: new Date() });
+    await db.insert(schema.lifecycleMessages).values({
+      id: messageId, tenantId: productId, contactId, flowId, membershipId, flowStepOrder: 1,
+      status: "pending_approval", subject: "Your trial ends Friday", bodyText: "Hi", bodyHtml: "<p>Hi</p>",
+    });
+  });
+
+  it("the production bundle serves the MCP handshake, tools/list and a read tool on D1", async () => {
+    const headers = { authorization: `Bearer ${mcpKey}`, "content-type": "application/json", accept: "application/json, text/event-stream" };
+    const rpc = async (body: Record<string, unknown>) =>
+      mf.dispatchFetch("http://localhost/v1/mcp", { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", ...body }) });
+
+    const init = await rpc({ id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } } });
+    expect(init.status).toBe(200);
+    expect(((await init.json()) as { result: { protocolVersion: string } }).result.protocolVersion).toBe("2025-06-18");
+    expect((await rpc({ method: "notifications/initialized" })).status).toBe(202);
+
+    const list = (await (await rpc({ id: 2, method: "tools/list" })).json()) as { result: { tools: Array<{ name: string }> } };
+    expect(list.result.tools.map((t) => t.name)).toContain("list_pending_approvals");
+    expect(list.result.tools.map((t) => t.name)).not.toContain("get_contact");
+
+    const queue = (await (await rpc({ id: 3, method: "tools/call", params: { name: "list_pending_approvals", arguments: {} } })).json()) as {
+      result: { structuredContent: { messages: Array<{ id: string }> } };
+    };
+    expect(queue.result.structuredContent.messages.map((m) => m.id)).toEqual([messageId]);
+
+    expect((await mf.dispatchFetch("http://localhost/v1/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(401);
+  });
+});

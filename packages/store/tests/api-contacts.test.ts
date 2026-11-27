@@ -365,6 +365,14 @@ for (const factory of testBackends()) {
       expect(await b.store.apiContacts.contactExists({ tenantId: other, contactId: id })).toBe(false);
     });
 
+    it("findContactByEmail matches the exact email case-insensitively, tenant scoped", async () => {
+      const c = contacts[1]!;
+      const hit = await b.store.apiContacts.findContactByEmail({ tenantId, email: c.email!.toUpperCase() });
+      expect(hit).toEqual({ id: c.id, externalId: c.externalId, email: c.email });
+      expect(await b.store.apiContacts.findContactByEmail({ tenantId, email: c.email!.slice(1) })).toBeNull();
+      expect(await b.store.apiContacts.findContactByEmail({ tenantId: await b.newTenant(), email: c.email! })).toBeNull();
+    });
+
     it("findSuppression matches the email case-insensitively", async () => {
       const t = await b.newTenant();
       const id = randomUUID();

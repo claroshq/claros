@@ -76,6 +76,7 @@ export const FEATURES = [
   "brand_logo_upload",
   "email_templates",
   "event_history_import",
+  "mcp",
 ] as const;
 
 export type Runtime = "node" | "workers";
