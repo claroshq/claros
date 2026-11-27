@@ -10,7 +10,9 @@
  *   {{compliance_footer}}  required, once: unsubscribe link and postal address
  *   {{preheader}}          hidden inbox preview text (empty when the step has none)
  *   {{eyebrow}}            the step's small label above the body, as a <p>, or empty
- *   {{logo}}               the logo <img>, or the brand name as text when there is no logo
+ *   {{logo}}               the logo <img>, or the brand name as text when there is no logo;
+ *                          with brand.logo_dark_url, two <img>s that swap in dark mode
+ *                          (DARK_LOGO_STYLE is then added before </head>)
  *   {{logo_url}}           the logo URL, or empty
  *   {{brand_name}}         the brand name (escaped)
  *   {{accent_color}}       the accent color (hex)
@@ -157,6 +159,35 @@ export function tintHex(hex: string, amount: number): string {
   return `#${out.join("")}`;
 }
 
+/**
+ * Swaps the logo for its dark-mode version. Apple Mail and Outlook (macOS,
+ * iOS) apply prefers-color-scheme; Outlook.com marks dark mode with
+ * [data-ogsc]. Clients that support neither, Gmail included, show the
+ * logo: the dark version carries an inline display:none, and Outlook on
+ * Windows never sees it (conditional comment, mso-hide).
+ */
+export const DARK_LOGO_STYLE = `<style>
+@media (prefers-color-scheme: dark) {
+  .claros-logo-light { display: none !important; }
+  .claros-logo-dark { display: block !important; max-height: none !important; }
+}
+[data-ogsc] .claros-logo-light { display: none !important; }
+[data-ogsc] .claros-logo-dark { display: block !important; max-height: none !important; }
+</style>
+`;
+
+/** The logo markup for {{logo}}: one <img>, or the swapping pair when a dark-mode version is set. */
+function logoMarkup(logoUrl: string, logoDarkUrl: string, alt: string, height: number): string {
+  const size = `height:${height}px;width:auto;border:0;`;
+  if (!logoDarkUrl) {
+    return `<img src="${esc(logoUrl)}" alt="${alt}" height="${height}" style="display:block;${size}" />`;
+  }
+  return (
+    `<img class="claros-logo-light" src="${esc(logoUrl)}" alt="${alt}" height="${height}" style="display:block;${size}" />` +
+    `<!--[if !mso]><!--><img class="claros-logo-dark" src="${esc(logoDarkUrl)}" alt="${alt}" height="${height}" style="display:none;${size}max-height:0;overflow:hidden;mso-hide:all;" /><!--<![endif]-->`
+  );
+}
+
 /** The value of every placeholder for one message. */
 export function layoutValues(input: EmailShellInput, width: LayoutWidth): Record<LayoutPlaceholder, string> {
   const accent = safeAccentColor(input.brand.accent_color);
@@ -167,7 +198,7 @@ export function layoutValues(input: EmailShellInput, width: LayoutWidth): Record
     ? esc(input.brand.footer_text)
     : `You are receiving this email because you have an account with ${brandName}.`;
   const logo = logoUrl
-    ? `<img src="${esc(logoUrl)}" alt="${brandName}" height="${logoHeight}" style="display:block;height:${logoHeight}px;width:auto;border:0;" />`
+    ? logoMarkup(logoUrl, input.brand.logo_dark_url || "", brandName, logoHeight)
     : `<span style="font-size:14px;font-weight:600;color:#6b7280;letter-spacing:0.02em;text-transform:uppercase;">${brandName}</span>`;
   const eyebrow = input.eyebrow
     ? `<p class="email-eyebrow" style="margin:0 0 12px 0;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${esc(input.eyebrow)}</p>\n`
@@ -192,7 +223,15 @@ export function layoutValues(input: EmailShellInput, width: LayoutWidth): Record
  */
 export function renderLayout(template: LayoutTemplate, input: EmailShellInput): string {
   const values = layoutValues(input, template.width);
-  return template.source.replace(PLACEHOLDER_RE, (_m, name: string) =>
+  let source = template.source;
+  // The dark-mode logo needs its swap rules: in <head>, where every client
+  // reads styles, else (a template without a head) next to the logo.
+  if (input.brand.logo_url && input.brand.logo_dark_url && /\{\{\s*logo\s*\}\}/.test(source)) {
+    const head = source.search(/<\/head>/i);
+    if (head >= 0) source = source.slice(0, head) + DARK_LOGO_STYLE + source.slice(head);
+    else values.logo = DARK_LOGO_STYLE + values.logo;
+  }
+  return source.replace(PLACEHOLDER_RE, (_m, name: string) =>
     (LAYOUT_PLACEHOLDERS as readonly string[]).includes(name) ? values[name as LayoutPlaceholder] : "",
   );
 }

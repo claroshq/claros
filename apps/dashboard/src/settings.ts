@@ -18,6 +18,9 @@ import {
   fetchBrandLogo,
   uploadBrandLogo,
   deleteBrandLogo,
+  fetchBrandLogoDark,
+  uploadBrandLogoDark,
+  deleteBrandLogoDark,
   fetchTemplates,
   applyTemplate,
   fetchThrottle,
@@ -122,6 +125,25 @@ export function useBrandLogoMutations() {
   return {
     upload: useMutation({ mutationFn: (file: File) => uploadBrandLogo(file), onSuccess }),
     remove: useMutation({ mutationFn: () => deleteBrandLogo(), onSuccess }),
+  };
+}
+
+export const BRAND_LOGO_DARK_QUERY_KEY = ["settings", "brand-logo-dark"] as const;
+
+export function useBrandLogoDark() {
+  return useQuery({ queryKey: BRAND_LOGO_DARK_QUERY_KEY, queryFn: fetchBrandLogoDark });
+}
+
+/** Upload or remove the dark-mode logo; both change brand.logo_dark_url. */
+export function useBrandLogoDarkMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: BRAND_LOGO_DARK_QUERY_KEY });
+    void qc.invalidateQueries({ queryKey: TENANT_QUERY_KEY });
+  };
+  return {
+    upload: useMutation({ mutationFn: (file: File) => uploadBrandLogoDark(file), onSuccess }),
+    remove: useMutation({ mutationFn: () => deleteBrandLogoDark(), onSuccess }),
   };
 }
 

@@ -839,6 +839,8 @@ export interface LlmConfig {
 export interface BrandSettingsData {
   brand_name: string | null;
   logo_url: string | null;
+  /** The logo's dark-mode version (uploaded or external), or null. */
+  logo_dark_url: string | null;
   logo_height: number | null;
   accent_color: string | null;
   footer_text: string | null;
@@ -1218,6 +1220,39 @@ export async function uploadBrandLogo(file: File): Promise<{ logo: BrandLogo; br
 /** DELETE /v1/settings/brand/logo - remove the uploaded logo. */
 export async function deleteBrandLogo(): Promise<{ deleted: boolean; brand: BrandSettingsData }> {
   const res = await apiFetch("/v1/settings/brand/logo", { method: "DELETE" });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body;
+}
+
+/** GET /v1/settings/brand/logo-dark - the uploaded dark-mode logo, or null. */
+export async function fetchBrandLogoDark(): Promise<{ logo: BrandLogo | null }> {
+  const res = await apiFetch("/v1/settings/brand/logo-dark");
+  if (!res.ok) {
+    throw new Error(`/v1/settings/brand/logo-dark returned ${res.status}`);
+  }
+  return res.json();
+}
+
+/** POST /v1/settings/brand/logo-dark - upload the dark-mode logo (PNG or JPEG body). */
+export async function uploadBrandLogoDark(file: File): Promise<{ logo: BrandLogo; brand: BrandSettingsData }> {
+  const res = await apiFetch("/v1/settings/brand/logo-dark", {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw parseFlowError(res.status, body);
+  }
+  return body;
+}
+
+/** DELETE /v1/settings/brand/logo-dark - remove the dark-mode logo. */
+export async function deleteBrandLogoDark(): Promise<{ deleted: boolean; brand: BrandSettingsData }> {
+  const res = await apiFetch("/v1/settings/brand/logo-dark", { method: "DELETE" });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw parseFlowError(res.status, body);

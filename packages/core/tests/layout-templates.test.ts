@@ -11,6 +11,7 @@ import {
   BUILTIN_LAYOUTS,
   builtinLayout,
   checkLayoutSource,
+  DARK_LOGO_STYLE,
   isCustomLayoutRef,
   lintLayoutSource,
   renderLayout,
@@ -116,6 +117,50 @@ describe("rendering", () => {
     expect(tintHex("#000000", 0.5)).toBe("#808080");
     expect(tintHex("#f50", 0)).toBe("#ff5500");
     expect(tintHex("#2563ebcc", 1)).toBe("#ffffff");
+  });
+});
+
+describe("dark-mode logo", () => {
+  const withLogo = (brand: EmailShellInput["brand"]) => ({ ...sample, brand: { ...sample.brand, ...brand } });
+
+  it("renders one logo and no swap rules without logo_dark_url", () => {
+    const html = renderLayout(builtinLayout("classic")!, withLogo({ logo_url: "https://x.test/l.png" }));
+    expect(html).toContain('<img src="https://x.test/l.png"');
+    expect(html).not.toContain("claros-logo-dark");
+    expect(html).not.toContain(".claros-logo-light");
+  });
+
+  it("ignores logo_dark_url without logo_url", () => {
+    const html = renderLayout(builtinLayout("classic")!, withLogo({ logo_dark_url: "https://x.test/d.png" }));
+    expect(html).not.toContain("d.png");
+    expect(html).not.toContain("claros-logo-dark");
+  });
+
+  it("renders both logos, the dark one hidden inline and outside Outlook for Windows, with the rules in <head>", () => {
+    for (const b of BUILTIN_LAYOUTS) {
+      const html = renderLayout(b, withLogo({ logo_url: "https://x.test/l.png", logo_dark_url: "https://x.test/d.png", logo_height: 40 }));
+      const head = html.slice(0, html.search(/<\/head>/i));
+      expect(head, b.key).toContain(DARK_LOGO_STYLE);
+      expect(html.split(DARK_LOGO_STYLE).length, b.key).toBe(2);
+      expect(html, b.key).toContain('<img class="claros-logo-light" src="https://x.test/l.png"');
+      expect(html, b.key).toMatch(/<!--\[if !mso\]><!--><img class="claros-logo-dark" src="https:\/\/x\.test\/d\.png" alt="Acme" height="40" style="display:none;[^"]*mso-hide:all;" \/><!--<!\[endif\]-->/);
+    }
+  });
+
+  it("puts the rules next to the logo when a template has no <head>", () => {
+    const html = renderLayout(
+      { source: "<table><tr><td>{{logo}}</td></tr><tr><td>{{body}}{{compliance_footer}}</td></tr></table>", width: "narrow" },
+      withLogo({ logo_url: "https://x.test/l.png", logo_dark_url: "https://x.test/d.png" }),
+    );
+    expect(html.startsWith("<table><tr><td>" + DARK_LOGO_STYLE + '<img class="claros-logo-light"')).toBe(true);
+  });
+
+  it("adds no rules to a template without {{logo}}", () => {
+    const html = renderLayout(
+      { source: "<html><head></head><body>{{logo_url}}{{body}}{{compliance_footer}}</body></html>", width: "narrow" },
+      withLogo({ logo_url: "https://x.test/l.png", logo_dark_url: "https://x.test/d.png" }),
+    );
+    expect(html).not.toContain("claros-logo");
   });
 });
 

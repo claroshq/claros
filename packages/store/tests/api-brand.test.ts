@@ -91,5 +91,21 @@ for (const backend of testBackends()) {
       expect(await settingsOf(t)).toEqual({ brand: { logo_url: "external" } });
       expect(await b.store.apiBrand.deleteLogo({ tenantId: t })).toBe(false);
     });
+
+    it("keeps the logo and its dark-mode version apart", async () => {
+      const t = await b.newTenant();
+      const light = { contentType: "image/png", bytes: bytes(12, 1), width: 2, height: 1, sha256: "e".repeat(64) };
+      const dark = { contentType: "image/png", bytes: bytes(14, 2), width: 2, height: 1, sha256: "f".repeat(64) };
+      await b.store.apiBrand.saveLogo({ tenantId: t, logo: light, settings: { brand: { logo_url: "l" } }, now: new Date() });
+      await b.store.apiBrand.saveLogo({ tenantId: t, kind: "logo_dark", logo: dark, settings: { brand: { logo_url: "l", logo_dark_url: "d" } }, now: new Date() });
+
+      expect((await b.store.apiBrand.getLogo(t))?.sha256).toBe(light.sha256);
+      expect(Array.from((await b.store.apiBrand.getLogo(t, "logo_dark"))!.bytes)).toEqual(Array.from(dark.bytes));
+
+      expect(await b.store.apiBrand.deleteLogo({ tenantId: t, kind: "logo_dark", settings: { brand: { logo_url: "l" } } })).toBe(true);
+      expect(await b.store.apiBrand.getLogo(t, "logo_dark")).toBeNull();
+      expect((await b.store.apiBrand.getLogo(t))?.sha256).toBe(light.sha256);
+      expect(await settingsOf(t)).toEqual({ brand: { logo_url: "l" } });
+    });
   });
 }

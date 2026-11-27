@@ -101,7 +101,7 @@ When an assistant change introduces a new finding, the chat message lists it.
 | `{{compliance_footer}}` | The unsubscribe link and the product's postal address. Required, exactly once. |
 | `{{preheader}}` | The step's hidden inbox preview text, or nothing. Place it right after `<body>`. |
 | `{{eyebrow}}` | The step's small label above the body as a `<p>`, or nothing. |
-| `{{logo}}` | The logo `<img>`, or the brand name as text when there is no logo. |
+| `{{logo}}` | The logo `<img>`, or the brand name as text when there is no logo. With a [dark-mode logo](INSTALLATION.md#dark-mode-logo), both images and a style block (added before `</head>`, or next to the logo when the template has no `<head>`) that shows the dark one in dark mode. |
 | `{{logo_url}}` | The logo URL, or empty. |
 | `{{brand_name}}` | The brand name (Settings, Branding), else the product name. |
 | `{{accent_color}}` | The accent color. |

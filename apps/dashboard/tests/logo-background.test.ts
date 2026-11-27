@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeLogo, lowContrastShare, removeBackground } from "../src/lib/logo-background.js";
+import { analyzeLogo, darkVariant, lowContrastShare, removeBackground } from "../src/lib/logo-background.js";
 
 type Px = [number, number, number, number];
 const W: Px = [255, 255, 255, 255];
@@ -190,5 +190,35 @@ describe("lowContrastShare", () => {
   it("counts dark visible pixels and ignores transparent ones", () => {
     const { data, width, height } = image([[K, K, W, T]]);
     expect(lowContrastShare(data, width, height)).toBeCloseTo(2 / 3);
+  });
+});
+
+describe("darkVariant", () => {
+  const lum = (r: number, g: number, b: number) => {
+    const f = (c: number) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const onDark = (r: number, g: number, b: number) => (lum(r, g, b) + 0.05) / (lum(26, 26, 26) + 0.05);
+
+  it("turns a navy or black wordmark off-white and keeps alpha", () => {
+    const navy: Px = [26, 26, 46, 255];
+    const edge: Px = [26, 26, 46, 120];
+    const { data, width, height } = image([[navy, edge, K]]);
+    const out = darkVariant(data, width, height);
+    for (let i = 0; i < 3; i++) {
+      const [r, g, b] = [out[i * 4]!, out[i * 4 + 1]!, out[i * 4 + 2]!];
+      expect(onDark(r, g, b)).toBeGreaterThanOrEqual(4.5);
+      expect(Math.max(r, g, b)).toBeLessThan(250); // off-white, not pure white
+    }
+    // Navy keeps a blue cast.
+    expect(out[2]!).toBeGreaterThan(out[0]!);
+    expect(out[7]).toBe(120);
+  });
+
+  it("leaves colors that already read on dark, and transparent pixels, alone", () => {
+    const red: Px = [224, 52, 47, 255];
+    const gray: Px = [154, 160, 168, 255];
+    const { data, width, height } = image([[red, gray, T]]);
+    expect(Array.from(darkVariant(data, width, height))).toEqual(Array.from(data));
   });
 });

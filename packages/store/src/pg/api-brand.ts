@@ -7,7 +7,6 @@ import { brandAssets, tenants } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { ApiBrandQueries, BrandProductRow } from "../areas/api-brand.js";
 
-const LOGO = "logo";
 
 export function pgApiBrand(db: PgDb): ApiBrandQueries {
   const product = async (where: ReturnType<typeof eq>): Promise<BrandProductRow | null> => {
@@ -24,7 +23,7 @@ export function pgApiBrand(db: PgDb): ApiBrandQueries {
     findProductByPublicHost: (host) => product(eq(tenants.publicHost, host)),
     findProductBySlug: (slug) => product(eq(tenants.slug, slug)),
 
-    async getLogo(tenantId) {
+    async getLogo(tenantId, kind = "logo") {
       const rows = await db
         .select({
           contentType: brandAssets.contentType,
@@ -35,27 +34,27 @@ export function pgApiBrand(db: PgDb): ApiBrandQueries {
           updatedAt: brandAssets.updatedAt,
         })
         .from(brandAssets)
-        .where(and(eq(brandAssets.tenantId, tenantId), eq(brandAssets.kind, LOGO)))
+        .where(and(eq(brandAssets.tenantId, tenantId), eq(brandAssets.kind, kind)))
         .limit(1);
       return rows[0] ?? null;
     },
 
-    async saveLogo({ tenantId, logo, settings, now }) {
+    async saveLogo({ tenantId, kind = "logo", logo, settings, now }) {
       const values = { ...logo, updatedAt: now };
       await db.transaction(async (tx) => {
         await tx
           .insert(brandAssets)
-          .values({ tenantId, kind: LOGO, ...values })
+          .values({ tenantId, kind, ...values })
           .onConflictDoUpdate({ target: [brandAssets.tenantId, brandAssets.kind], set: values });
         await tx.update(tenants).set({ settings }).where(eq(tenants.id, tenantId));
       });
     },
 
-    async deleteLogo({ tenantId, settings }) {
+    async deleteLogo({ tenantId, kind = "logo", settings }) {
       return db.transaction(async (tx) => {
         const deleted = await tx
           .delete(brandAssets)
-          .where(and(eq(brandAssets.tenantId, tenantId), eq(brandAssets.kind, LOGO)))
+          .where(and(eq(brandAssets.tenantId, tenantId), eq(brandAssets.kind, kind)))
           .returning({ kind: brandAssets.kind });
         if (settings) await tx.update(tenants).set({ settings }).where(eq(tenants.id, tenantId));
         return deleted.length > 0;

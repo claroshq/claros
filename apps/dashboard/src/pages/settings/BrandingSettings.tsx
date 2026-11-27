@@ -8,14 +8,22 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useSetupState, usePatchTenant, useSendTestEmail, useBrandLogo, useBrandLogoMutations } from "../../settings.js";
+import {
+  useSetupState,
+  usePatchTenant,
+  useSendTestEmail,
+  useBrandLogo,
+  useBrandLogoMutations,
+  useBrandLogoDark,
+  useBrandLogoDarkMutations,
+} from "../../settings.js";
 import type { BrandLogo, BrandSettingsData } from "../../api.js";
 import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { Section, FormError, errorMessage } from "./shared.js";
-import { decodeLogo, transparentLogo, type DecodedLogo } from "../../lib/logo-image.js";
-import type { Rgb } from "../../lib/logo-background.js";
+import { decodeLogo, prepareLogo, type DecodedLogo, type PreparedLogo } from "../../lib/logo-image.js";
+import { lowContrastShare } from "../../lib/logo-background.js";
 
 /** Same limits as the upload route (packages/core/src/brand-logo.ts). */
 const LOGO_TYPES = ["image/png", "image/jpeg"];
@@ -34,6 +42,9 @@ export default function BrandingSettings() {
   const logoQuery = useBrandLogo();
   const logoMutations = useBrandLogoMutations();
   const uploaded: BrandLogo | null = logoQuery.data?.logo ?? null;
+  const darkQuery = useBrandLogoDark();
+  const darkMutations = useBrandLogoDarkMutations();
+  const uploadedDark: BrandLogo | null = darkQuery.data?.logo ?? null;
   const patch = usePatchTenant();
   const testEmail = useSendTestEmail();
   const [brandName, setBrandName] = useState("");
@@ -146,8 +157,11 @@ export default function BrandingSettings() {
 
         <LogoUpload
           logo={uploaded}
+          darkLogo={uploadedDark?.in_use ? uploadedDark : null}
           height={tenant.brand.logo_height}
+          slug={tenant.slug}
           mutations={logoMutations}
+          darkMutations={darkMutations}
           onUploaded={() => { setLogoUrl(""); setSaved(false); }}
           onUse={async (url) => {
             await patch.mutateAsync({ brand: { logo_url: url } });
@@ -257,59 +271,91 @@ export default function BrandingSettings() {
 }
 
 /**
- * Upload control for the brand logo: preview, type and size hints, replace
- * and remove. The image is stored by Claros and served from this instance
- * (or the product's public host), so mail does not depend on another site.
+ * Upload control for the brand logo and its dark-mode version: preview on
+ * light and dark, replace and remove. The images are stored by Claros and
+ * served from this instance (or the product's public host), so mail does
+ * not depend on another site.
+ *
+ * A chosen logo on a solid light background, or a transparent one that is
+ * hard to read on dark, opens LogoReview first: it removes the background
+ * and makes the dark-mode version (lib/logo-background.ts) before upload.
  */
 function LogoUpload({
   logo,
+  darkLogo,
   height,
+  slug,
   mutations,
+  darkMutations,
   onUploaded,
   onUse,
 }: {
   logo: BrandLogo | null;
+  darkLogo: BrandLogo | null;
   height: number | null;
+  slug: string;
   mutations: ReturnType<typeof useBrandLogoMutations>;
+  darkMutations: ReturnType<typeof useBrandLogoDarkMutations>;
   onUploaded: () => void;
   onUse: (url: string) => Promise<void>;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const darkInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingLogo | null>(null);
-  const busy = mutations.upload.isPending || mutations.remove.isPending;
+  const [preparing, setPreparing] = useState(false);
+  const busy =
+    mutations.upload.isPending || mutations.remove.isPending || darkMutations.upload.isPending || darkMutations.remove.isPending;
+
+  function checkFile(file: File): string | null {
+    if (!LOGO_TYPES.includes(file.type)) return "The logo must be a PNG or JPEG image.";
+    if (file.size > LOGO_MAX_BYTES) {
+      return `The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(file.size)}).`;
+    }
+    return null;
+  }
+
+  /** Open the review when the logo would look wrong in dark mode; true when it did. */
+  function review(file: File, decoded: DecodedLogo | null): boolean {
+    if (!decoded) return false;
+    const { analysis } = decoded;
+    if (
+      analysis.kind === "light-background" ||
+      (analysis.kind === "transparent" && lowContrastShare(decoded.data, decoded.width, decoded.height) >= LOW_CONTRAST_NOTE_SHARE)
+    ) {
+      setPending({ file, decoded });
+      return true;
+    }
+    return false;
+  }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setError(null);
-    if (!LOGO_TYPES.includes(file.type)) {
-      setError("The logo must be a PNG or JPEG image.");
+    const problem = checkFile(file);
+    if (problem) {
+      setError(problem);
       return;
     }
-    if (file.size > LOGO_MAX_BYTES) {
-      setError(`The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(file.size)}).`);
-      return;
-    }
-    // A logo on a solid light background shows as a light box in dark
-    // mode: offer a transparent version before uploading.
-    const decoded = await decodeLogo(file);
-    if (decoded && decoded.analysis.kind === "light-background") {
-      setPending({ file, decoded, background: decoded.analysis.background });
-      return;
-    }
-    await upload(file);
+    if (review(file, await decodeLogo(file))) return;
+    await finish({ logo: file, dark: null });
   }
 
-  async function upload(file: File): Promise<boolean> {
+  /** Upload the logo, then its dark-mode version (or remove a stale one). */
+  async function finish(files: { logo: File; dark: File | null }): Promise<boolean> {
     setError(null);
-    if (file.size > LOGO_MAX_BYTES) {
-      setError(`The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(file.size)}).`);
-      return false;
+    for (const f of [files.logo, files.dark]) {
+      if (f && f.size > LOGO_MAX_BYTES) {
+        setError(`The logo must be at most ${formatBytes(LOGO_MAX_BYTES)} (this file is ${formatBytes(f.size)}).`);
+        return false;
+      }
     }
     try {
-      await mutations.upload.mutateAsync(file);
+      await mutations.upload.mutateAsync(files.logo);
+      if (files.dark) await darkMutations.upload.mutateAsync(files.dark);
+      else if (darkLogo) await darkMutations.remove.mutateAsync();
       onUploaded();
       return true;
     } catch (err) {
@@ -318,19 +364,52 @@ function LogoUpload({
     }
   }
 
-  async function handleRemove() {
+  /** Run the review on the logo already uploaded. */
+  async function handlePrepare() {
     setError(null);
+    setPreparing(true);
     try {
-      await mutations.remove.mutateAsync();
+      const res = await fetch(`/brand/${encodeURIComponent(slug)}/logo`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Could not read the uploaded logo.");
+      const blob = await res.blob();
+      const file = new File([blob], blob.type === "image/jpeg" ? "logo.jpg" : "logo.png", { type: blob.type });
+      const decoded = await decodeLogo(file);
+      if (!decoded) throw new Error("Could not read the uploaded logo.");
+      if (decoded.analysis.kind === "other") {
+        setError(
+          "This logo has neither a transparent nor a plain light background, so Claros cannot make a dark-mode version of it. Upload one with Upload dark version.",
+        );
+        return;
+      }
+      setPending({ file, decoded });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  async function handleDarkFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    const problem = checkFile(file);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    try {
+      await darkMutations.upload.mutateAsync(file);
     } catch (err) {
       setError(errorMessage(err));
     }
   }
 
-  async function handleUse(url: string) {
+  async function run(action: () => Promise<unknown>) {
     setError(null);
     try {
-      await onUse(url);
+      await action();
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -347,19 +426,38 @@ function LogoUpload({
         onChange={handleFile}
         aria-label="Logo file"
       />
+      <input
+        ref={darkInput}
+        type="file"
+        accept={LOGO_TYPES.join(",")}
+        className="hidden"
+        onChange={handleDarkFile}
+        aria-label="Dark-mode logo file"
+      />
       <div className="flex flex-wrap items-center gap-4">
-        {logo && <LogoSwatches src={logo.url} alt="Uploaded logo" height={height} />}
+        {logo && <LogoSwatches src={logo.url} darkSrc={darkLogo?.url} alt="Uploaded logo" height={height} />}
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={busy || !!pending} onClick={() => input.current?.click()}>
             {mutations.upload.isPending ? "Uploading..." : logo ? "Replace" : "Upload logo"}
           </Button>
           {logo && !logo.in_use && (
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => handleUse(logo.url)}>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run(() => onUse(logo.url))}>
               Use in mail
             </Button>
           )}
           {logo && (
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={handleRemove}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || !!pending}
+              onClick={() =>
+                run(async () => {
+                  await mutations.remove.mutateAsync();
+                  if (darkLogo) await darkMutations.remove.mutateAsync();
+                })
+              }
+            >
               {mutations.remove.isPending ? "Removing..." : "Remove"}
             </Button>
           )}
@@ -370,14 +468,39 @@ function LogoUpload({
         {logo && ` Current: ${logo.content_type === "image/png" ? "PNG" : "JPEG"}, ${logo.width} x ${logo.height} px, ${formatBytes(logo.size)}.`}
         {logo && !logo.in_use && " Not used in mail: the external logo URL below replaces it."}
       </p>
+      {logo && !pending && (
+        <div className="mt-3">
+          <p className="text-[13px] font-medium text-foreground">Dark mode</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            {darkLogo
+              ? "Apple Mail and Outlook show the right-hand version when the reader uses dark mode. Gmail and other apps show the logo."
+              : "No dark-mode version: every mail app shows the logo as it is, also in dark mode."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {!darkLogo && (
+              <Button type="button" variant="outline" size="sm" disabled={busy || preparing} onClick={handlePrepare}>
+                {preparing ? "Reading..." : "Prepare for dark mode"}
+              </Button>
+            )}
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => darkInput.current?.click()}>
+              {darkMutations.upload.isPending ? "Uploading..." : darkLogo ? "Replace dark version" : "Upload dark version"}
+            </Button>
+            {darkLogo && (
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run(() => darkMutations.remove.mutateAsync())}>
+                {darkMutations.remove.isPending ? "Removing..." : "Remove dark version"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {pending && (
-        <LogoBackgroundReview
+        <LogoReview
           pending={pending}
           height={height}
-          uploading={mutations.upload.isPending}
+          uploading={busy}
           onCancel={() => setPending(null)}
-          onUpload={async (file) => {
-            if (await upload(file)) setPending(null);
+          onUpload={async (files) => {
+            if (await finish(files)) setPending(null);
           }}
           onError={setError}
         />
@@ -390,11 +513,10 @@ function LogoUpload({
 interface PendingLogo {
   file: File;
   decoded: DecodedLogo;
-  background: Rgb;
 }
 
 /** A logo shown on a light and a dark mail background, the two ways readers see it. */
-function LogoSwatches({ src, alt, height }: { src: string; alt: string; height: number | null }) {
+function LogoSwatches({ src, darkSrc, alt, height }: { src: string; darkSrc?: string | null; alt: string; height: number | null }) {
   const style = { height: `${Math.min(64, height ?? 32)}px`, width: "auto" };
   return (
     <div className="flex gap-2">
@@ -406,18 +528,34 @@ function LogoSwatches({ src, alt, height }: { src: string; alt: string; height: 
         style={{ backgroundColor: DARK_PREVIEW_BG }}
         title="Dark mode"
       >
-        <img src={src} alt="" style={style} />
+        <img src={darkSrc || src} alt="" style={style} />
       </div>
     </div>
   );
 }
 
+/** An object URL for a file, revoked when the file changes or the component unmounts. */
+function useObjectUrl(file: File | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) {
+      setUrl(null);
+      return;
+    }
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  return url;
+}
+
 /**
- * Shown when a chosen logo sits on a solid light background: previews the
- * transparent version (lib/logo-background.ts) on light and dark, and
- * uploads it, or the original if the user turns removal off.
+ * Shown when a chosen logo would look wrong in dark mode: it sits on a
+ * solid light background, or it is transparent but too dark to read on a
+ * dark background. Previews what gets uploaded on light and dark, with the
+ * background made transparent and a dark-mode version made from it.
  */
-function LogoBackgroundReview({
+function LogoReview({
   pending,
   height,
   uploading,
@@ -429,26 +567,28 @@ function LogoBackgroundReview({
   height: number | null;
   uploading: boolean;
   onCancel: () => void;
-  onUpload: (file: File) => Promise<void>;
+  onUpload: (files: { logo: File; dark: File | null }) => Promise<void>;
   onError: (message: string | null) => void;
 }) {
+  const { analysis } = pending.decoded;
+  const background = analysis.kind === "light-background" ? analysis.background : null;
   const [removeBg, setRemoveBg] = useState(true);
   const [clearEnclosed, setClearEnclosed] = useState(true);
-  const [candidate, setCandidate] = useState<File | null>(null);
-  const [lowContrast, setLowContrast] = useState(0);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  /** null: decided from the result (on when the logo is hard to read on dark). */
+  const [makeDark, setMakeDark] = useState<boolean | null>(null);
+  const [prepared, setPrepared] = useState<PreparedLogo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setCandidate(null);
-    const make = removeBg
-      ? transparentLogo(pending.file, pending.decoded, pending.background, { clearEnclosed }, LOGO_MAX_BYTES)
-      : Promise.resolve({ file: pending.file, lowContrast: 0 });
-    make.then(
+    setPrepared(null);
+    prepareLogo(
+      pending.file,
+      pending.decoded,
+      { background: background && removeBg ? background : null, remove: { clearEnclosed }, dark: true },
+      LOGO_MAX_BYTES,
+    ).then(
       (result) => {
-        if (cancelled) return;
-        setCandidate(result.file);
-        setLowContrast(result.lowContrast);
+        if (!cancelled) setPrepared(result);
       },
       (err) => {
         if (!cancelled) onError(errorMessage(err));
@@ -457,65 +597,79 @@ function LogoBackgroundReview({
     return () => {
       cancelled = true;
     };
-  }, [pending, removeBg, clearEnclosed, onError]);
+  }, [pending, background, removeBg, clearEnclosed, onError]);
 
-  useEffect(() => {
-    if (!candidate) return;
-    const url = URL.createObjectURL(candidate);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [candidate]);
+  const darkAvailable = !!prepared?.dark;
+  const hardOnDark = (prepared?.lowContrast ?? 0) >= LOW_CONTRAST_NOTE_SHARE;
+  const useDark = darkAvailable && (makeDark ?? hardOnDark);
+  const logoUrl = useObjectUrl(prepared?.logo ?? null);
+  const darkUrl = useObjectUrl(useDark ? (prepared?.dark ?? null) : null);
 
-  const { r, g, b } = pending.background;
-  const bgName = r >= 250 && g >= 250 && b >= 250 ? "white" : "light";
+  const bgName = background && background.r >= 250 && background.g >= 250 && background.b >= 250 ? "white" : "light";
 
   return (
     <div className="mt-3 rounded-md border border-border p-4">
-      <p className="text-[14px] font-medium text-foreground">This logo has a solid {bgName} background</p>
-      <p className="mt-1 text-[13px] text-muted-foreground">
-        In dark mode, mail apps darken the email but not images, so the background shows as a {bgName} box around the
-        logo. Claros can make it transparent before uploading. Check both previews.
+      <p className="text-[14px] font-medium text-foreground">
+        {background ? `This logo has a solid ${bgName} background` : "This logo is hard to read in dark mode"}
       </p>
-      <div className="mt-3">{previewUrl && <LogoSwatches src={previewUrl} alt="Logo to upload" height={height} />}</div>
-      {removeBg && lowContrast >= LOW_CONTRAST_NOTE_SHARE && (
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          Parts of this logo are dark, so they stay hard to read on a dark background even without the box. A logo
-          version in lighter or mid-tone colors reads in both modes.
-        </p>
-      )}
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        {background
+          ? `In dark mode, mail apps darken the email but not images, so the background shows as a ${bgName} box around the logo. Claros can make it transparent and add a light version for dark mode. Check both previews.`
+          : "Parts of it are dark, so they get lost on a dark background. Claros can add a light version for dark mode. Check both previews."}
+      </p>
+      <div className="mt-3">{logoUrl && <LogoSwatches src={logoUrl} darkSrc={darkUrl} alt="Logo to upload" height={height} />}</div>
       <div className="mt-3 space-y-1.5 text-[13px] text-foreground">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={removeBg} onChange={(e) => setRemoveBg(e.target.checked)} />
-          Make the background transparent
-        </label>
-        <label className={`flex items-center gap-2 ${removeBg ? "" : "opacity-50"}`}>
+        {background && (
+          <>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={removeBg} onChange={(e) => setRemoveBg(e.target.checked)} />
+              Make the background transparent
+            </label>
+            <label className={`flex items-center gap-2 ${removeBg ? "" : "opacity-50"}`}>
+              <input
+                type="checkbox"
+                checked={clearEnclosed}
+                disabled={!removeBg}
+                onChange={(e) => setClearEnclosed(e.target.checked)}
+              />
+              Also clear the background color inside the logo, such as the holes in letters
+            </label>
+            <p className="pl-6 text-[12px] text-muted-foreground">
+              Turn this off if the logo has white parts of its own that should stay.
+            </p>
+          </>
+        )}
+        <label className={`flex items-center gap-2 ${darkAvailable ? "" : "opacity-50"}`}>
           <input
             type="checkbox"
-            checked={clearEnclosed}
-            disabled={!removeBg}
-            onChange={(e) => setClearEnclosed(e.target.checked)}
+            checked={useDark}
+            disabled={!darkAvailable}
+            onChange={(e) => setMakeDark(e.target.checked)}
           />
-          Also clear the background color inside the logo, such as the holes in letters
+          Add a dark-mode version with the dark parts turned light
         </label>
         <p className="pl-6 text-[12px] text-muted-foreground">
-          Turn this off if the logo has white parts of its own that should stay.
+          {darkAvailable
+            ? "Apple Mail and Outlook show it when the reader uses dark mode. Gmail and some other apps do not tell the email, so they show the logo."
+            : "Needs a transparent background."}
         </p>
       </div>
       <div className="mt-3 flex items-center gap-2">
         <Button
           type="button"
           size="sm"
-          disabled={!candidate || uploading}
-          onClick={() => candidate && onUpload(candidate)}
+          disabled={!prepared || uploading}
+          onClick={() => prepared && onUpload({ logo: prepared.logo, dark: useDark ? prepared.dark : null })}
         >
           {uploading ? "Uploading..." : "Upload"}
         </Button>
         <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={onCancel}>
           Cancel
         </Button>
-        {candidate && (
+        {prepared && (
           <span className="text-[12px] text-muted-foreground">
-            {candidate.type === "image/png" ? "PNG" : "JPEG"}, {formatBytes(candidate.size)}
+            {prepared.logo.type === "image/png" ? "PNG" : "JPEG"}, {formatBytes(prepared.logo.size)}
+            {useDark && prepared.dark && `; dark version ${formatBytes(prepared.dark.size)}`}
           </span>
         )}
       </div>
