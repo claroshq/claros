@@ -23,7 +23,7 @@ Both options run the same HTTP API and the same engine behaviour. Postgres stays
 | `packages/core` | Pure logic: flows, lifecycle state machine, enrollment, throttle gate, templates. No I/O |
 | `packages/adapters` | Email transports (Resend, SMTP, Cloudflare Email Service), crypto, unsubscribe tokens |
 | `packages/brain-oss` | Optional LLM module: compile, decide, draft, assess prompts for any OpenAI-compatible endpoint |
-| `packages/api` | HTTP API on [Hono](https://hono.dev): ingest, management, dashboard auth, public pages, webhooks |
+| `packages/api` | HTTP API on [Hono](https://hono.dev): ingest, management, dashboard auth, public pages, webhooks, the [MCP server](guide/MCP.md) (`POST /v1/mcp`) |
 | `packages/worker` | Background jobs: scan, trigger checks, step advancement, content generation, drain, reaper |
 | `packages/scheduler` | Recurring job schedule |
 | `drizzle/` | Database schema and migrations |
@@ -54,6 +54,7 @@ Every product-owned table carries `tenant_id` (user-facing name: product) and ev
 | Knowledge base search | pgvector cosine similarity when the product has an embedding provider, word matching otherwise | cosine similarity over the stored vectors (no vector index) when the product has an embedding provider, word matching otherwise |
 | Event storage | monthly partitioned `events` | plain `events` with a daily rollup and retention |
 | Transports (several per product, routed by topic kind; Cloudflare Email Service for transactional mail only) | Resend, SMTP (nodemailer), Cloudflare Email Service (REST API) | Resend, SMTP (worker-mailer), Cloudflare Email Service (`send_email` binding, else REST API) |
+| MCP server (`POST /v1/mcp`, admin keys, since v0.9.0) | yes | yes, same tools and behaviour |
 | Custom domains from the CLI | no (use your reverse proxy) | yes |
 | Scale target | larger installs; partitioned events (not benchmarked) | small and medium installs; one database per instance |
 

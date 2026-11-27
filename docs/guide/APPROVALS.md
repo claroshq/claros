@@ -32,6 +32,7 @@ The dashboard Approvals screen offers all of these. Keyboard: `j`/`k` move throu
 ## Reaching reviewers (v0.8)
 
 - An [admin key](API_KEYS.md) with the `messages` scope can list, approve, reject, edit, regenerate and cancel from your own tools.
+- The [MCP server](MCP.md) (v0.9.0) puts the same queue in an MCP client such as Claude Code or Claude Desktop: ask what is waiting, read a draft, edit it and approve or reject it from the chat. It uses an admin key and the same compare-and-swap transitions, so a draft someone else already handled comes back as a conflict with its current status.
 - The `message.pending_approval` [webhook](WEBHOOKS.md) tells you that messages are waiting. It is batched: at most one per product and endpoint per window (the endpoint's `batch_interval_minutes`, 1 to 1440, default 15), sent at the end of the window, with `pending_count`, the number of messages waiting at delivery time.
 - With `settings.approvals.daily_digest: true` ([config](CONFIG.md#settings)), the product's owners get one mail a day, from 08:00 in the product's timezone (`throttle.tenant_timezone`, else UTC), saying how many drafts wait and linking to the Approvals page. It goes through the product's transactional route (no List-Unsubscribe headers) and is skipped on days nothing waits.
 

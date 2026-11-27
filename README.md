@@ -17,7 +17,7 @@ The dashboard shows the compiled flow as a timeline: what starts it, each email 
 
 ![Flow editor](docs/guide/assets/flow-editor.png)
 
-**Everything AI-written waits for a human.** Generated emails queue in an approval inbox. You approve, reject, edit or regenerate, or let a trusted flow auto-send. The preview shows the mail as the recipient will see it, in the product's template. The AI drafts; you publish.
+**Everything AI-written waits for a human.** Generated emails queue in an approval inbox. You approve, reject, edit or regenerate, or let a trusted flow auto-send. The preview shows the mail as the recipient will see it, in the product's template. The AI drafts; you publish. The queue is also an [MCP server](docs/guide/MCP.md): ask Claude what is waiting, then edit and approve from the chat.
 
 ![Approval queue](docs/guide/assets/approvals.png)
 
@@ -57,12 +57,13 @@ Two install options run the same HTTP API and engine. Pick one.
 
 Either way, open the claim URL printed at the end, enter your email, and you are the owner. The **[Quickstart](docs/guide/QUICKSTART.md)** walks through the rest: connect a transport, activate the library flow, send a test event, and receive a real email - all from the browser. [Architecture](docs/architecture.md) lists the differences between the two backends.
 
-### What's new in 0.8
+### What's new since 0.8
 
 - **0.8.0**: the Cloudflare Workers + D1 install option, multi-product instances, topics and consent, several transports per product, operational alerts, admin keys and config as code, signed webhooks and an analytics sink, date triggers, context sources, knowledge base v2, the `choose` step and send-history import
 - **0.8.4 to 0.8.7**: `engagement_events` (which events count as activity), brand logo upload, the dashboard product picker, an embedding provider separate from the LLM provider, knowledge base search without embeddings
 - **0.8.8 to 0.8.10**: email templates and the template studio, the flow editor redesign, an email template per flow, notes, topic switches and delete / exclude actions on a person's page
 - **0.8.11**: importing event history and recomputing lifecycle state from it, for products that move to Claros with existing users
+- **0.9.0**: an MCP server, so you can work the approval queue and look up contacts and flows from Claude Code, Claude Desktop or any MCP client; the lifecycle state `churned` is returned as `gone_quiet`
 
 Postgres installs upgrade in place; Workers installs run `npx @claroshq/claros upgrade`. See the [CHANGELOG](CHANGELOG.md) for the full list and the upgrade notes.
 
@@ -74,6 +75,7 @@ Postgres installs upgrade in place; Workers installs run `npx @claroshq/claros u
 - **Email templates and the template studio** - seven built-in templates (`classic`, `letter`, `banner`, `compact` narrow; `wide`, `broadsheet`, `canvas` wide), custom copies, and a chat that edits a template with mail client knowledge built in; client checks for Outlook, Gmail, Apple Mail and Yahoo without the LLM. One template per product, and a flow can send in its own. See [Email templates](docs/guide/TEMPLATES.md)
 - **Branding and language** - logo (uploaded and served by Claros, or an external URL), accent color, Reply-To, postal address; the product `locale` sets the drafting language and the language of the mail footer and unsubscribe pages (English and Spanish)
 - **Approval queue** - AI-drafted messages are held for human review by default; edit, regenerate, cancel or exclude a person; per-flow auto-approve when you trust it; keyboard shortcuts; an optional daily digest of waiting approvals to the product's owners. See [Approvals](docs/guide/APPROVALS.md)
+- **MCP server** - `POST /v1/mcp` on every install: connect Claude Code, Claude Desktop or another MCP client with an admin key and review the queue from the chat (what is waiting, read a draft, edit, approve, reject, cancel, exclude a person), look up a contact and their timeline, list, pause and resume flows. Approval only moves a message to `approved`; the normal send checks still apply. Nothing is sent, configured or deleted from it. See [MCP server](docs/guide/MCP.md)
 - **AI guardrails** - named links and a link allowlist, `text_rules` (find/replace and forbidden phrases), product guidelines, `single_cta`, a daily LLM token budget and the assess value gate
 - **Event ingestion** - Segment-compatible `/v1/track`, `/v1/identify`, `/v1/batch`. Publishable and secret API keys, rate limits, browser snippet at `/claros.js`
 - **Multi-product instances** - one install serves several products, each with its own contacts, flows, topics, transports, brand, keys and team; per-product memberships, instance admins, instance keys (`clr_ik_`) and the `X-Claros-Product` header; a product picker in the dashboard; archive and unarchive. See [Products](docs/guide/PRODUCTS.md)
@@ -111,7 +113,7 @@ Postgres installs upgrade in place; Workers installs run `npx @claroshq/claros u
 | [Flow Prompt Library](docs/guide/FLOW-PROMPTS.md) | Working prompts to paste into the flow editor |
 | [Ingestion](docs/guide/INGESTION.md) | Sending events: curl, browser snippet, server SDKs, Segment compatibility, GTM |
 | [Flows](docs/guide/FLOWS.md), [Email templates](docs/guide/TEMPLATES.md), [Config as code](docs/guide/CONFIG.md), [Products](docs/guide/PRODUCTS.md), [Topics](docs/guide/TOPICS.md), [Transports](docs/guide/TRANSPORTS.md) | Triggers and step fields, the config file, multi-product instances, consent, sending |
-| [API keys](docs/guide/API_KEYS.md), [Webhooks](docs/guide/WEBHOOKS.md), [Approvals](docs/guide/APPROVALS.md), [Alerts](docs/guide/ALERTS.md), [Knowledge base](docs/guide/KB.md), [Import](docs/guide/IMPORT.md) | Integrating with your product and operating an instance |
+| [API keys](docs/guide/API_KEYS.md), [MCP server](docs/guide/MCP.md), [Webhooks](docs/guide/WEBHOOKS.md), [Approvals](docs/guide/APPROVALS.md), [Alerts](docs/guide/ALERTS.md), [Knowledge base](docs/guide/KB.md), [Import](docs/guide/IMPORT.md) | Integrating with your product and operating an instance |
 | [FAQ and Troubleshooting](docs/guide/FAQ.md) | Lost admin access, secrets, email not sending, AI features idle, backups, data egress |
 | [Contributing](CONTRIBUTING.md) | Issues, pull requests, running the checks locally |
 | [Security](SECURITY.md) | Vulnerability reporting |

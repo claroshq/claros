@@ -15,7 +15,7 @@ Keys created before these prefixes existed (`cl_pub_`, `cl_live_`) keep working 
 
 ## Admin keys
 
-An admin key lets your backend, CI or a script manage one product without a dashboard session: apply configuration, add and remove suppressions, work the approval queue, read and erase contacts.
+An admin key lets your backend, CI or a script manage one product without a dashboard session: apply configuration, add and remove suppressions, work the approval queue, read and erase contacts. The same key connects an MCP client such as Claude Code to the product's approval queue (v0.9.0, see [MCP server](MCP.md)).
 
 - Only product owners create, change and revoke admin keys (dashboard: **Integrate**, **Admin key**; API: `POST /v1/ingestion/keys` with `{"kind": "admin", "scopes": [...]}`).
 - A request acts on the key's product only. The `X-Claros-Product` header and `?product=` are ignored.
@@ -36,7 +36,7 @@ curl https://claros.example.com/v1/suppressions?since=2026-11-01T00:00:00Z \
 
 | Scope | Routes |
 |---|---|
-| `config` | `GET /v1/config`, `PUT /v1/config` ([config as code](CONFIG.md)), `GET /v1/flows`, `POST /v1/flows/:ref/pause`, `POST /v1/flows/:ref/resume` (`:ref` is the flow id or slug), `GET/POST/DELETE /v1/settings/brand/logo` ([brand logo](INSTALLATION.md#brand-logo), v0.8.5) |
+| `config` | `GET /v1/config`, `PUT /v1/config` ([config as code](CONFIG.md)), `GET /v1/flows`, `POST /v1/flows/:ref/pause`, `POST /v1/flows/:ref/resume`, `POST /v1/flows/:ref/enroll` ([manual enrollment](FLOWS.md)) (`:ref` is the flow id or slug), `GET/POST/DELETE /v1/settings/brand/logo` ([brand logo](INSTALLATION.md#brand-logo), v0.8.5) |
 | `suppressions` | `GET/POST /v1/suppressions`, `POST /v1/suppressions/import`, `DELETE /v1/suppressions/:email` |
 | `messages` | `GET /v1/messages`, approve, reject, bulk approve and reject, retry, `PATCH /v1/messages/:id`, regenerate, cancel, unapprove, `POST /v1/contacts/:id/exclude` ([approvals](APPROVALS.md)), `POST /v1/import/messages` ([history import](IMPORT.md)) |
 | `contacts:read` | `GET /v1/contacts`, `GET /v1/contacts/:id`, `GET /v1/contacts/:id/timeline` |
@@ -44,6 +44,8 @@ curl https://claros.example.com/v1/suppressions?since=2026-11-01T00:00:00Z \
 | `kb` | `GET/POST /v1/kb`, `GET/PATCH/DELETE /v1/kb/:id`, `POST /v1/kb/import` ([knowledge base import](KB.md#import)), `POST /v1/kb/re-embed` |
 | `events` | `POST /v1/import/events`, `POST /v1/import/lifecycle` ([history import](IMPORT.md), v0.8.11) |
 | `broadcasts` | Reserved for broadcasts (not released yet) |
+
+The [MCP endpoint](MCP.md) `POST /v1/mcp` takes admin keys only and offers the tools of the key's scopes: `messages` (the approval queue), `contacts:read` (contact lookups) and `config` (list, pause and resume flows).
 
 A route the key's scopes do not cover answers `403`. Routes without a scope (other flow routes, settings, team, keys) accept dashboard sessions only.
 
