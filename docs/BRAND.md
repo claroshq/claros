@@ -476,8 +476,8 @@ modifier, and no blended backdrop.
 |---|---|---|---|
 | body text on bg | 16.10 | 4.5 | PASS |
 | body text on raised | 17.92 | 4.5 | PASS |
-| muted text on bg | 10.57 | 4.5 | PASS |
-| muted text on raised | 11.77 | 4.5 | PASS |
+| muted text on bg | 9.77 | 4.5 | PASS |
+| muted text on raised | 10.87 | 4.5 | PASS |
 | subtle text (placeholder) on bg | 6.41 | 3 | PASS |
 | subtle text on raised (timestamps on cards) | 7.13 | 4.5 | PASS |
 | border vs bg (card edge on canvas, decorative) | 1.33 | n/a | decorative |
@@ -487,8 +487,8 @@ modifier, and no blended backdrop.
 | accent text (link) on bg | 6.48 | 4.5 | PASS |
 | accent text on accent-soft | 5.91 | 4.5 | PASS |
 | fg on selected (active nav) | 14.82 | 4.5 | PASS |
-| muted text on accent-soft (queue item meta) | 9.65 | 4.5 | PASS |
-| muted text on sunken (chips) | 10.17 | 4.5 | PASS |
+| muted text on accent-soft (queue item meta) | 8.92 | 4.5 | PASS |
+| muted text on sunken (chips) | 9.40 | 4.5 | PASS |
 | fg on sunken (active nav) | 15.49 | 4.5 | PASS |
 | bg on fg (active nav block) | 16.10 | 4.5 | PASS |
 | warning text on raised (badge on card) | 6.97 | 4.5 | PASS |
@@ -508,9 +508,9 @@ modifier, and no blended backdrop.
 | body text on danger-soft (banner) | 14.68 | 4.5 | PASS |
 | body text on warning-soft (banner) | 14.79 | 4.5 | PASS |
 | body text on success-soft (grid cell) | 14.72 | 4.5 | PASS |
-| muted text on success-soft (grid cell meta) | 9.67 | 4.5 | PASS |
-| muted text on warning-soft (grid cell meta) | 9.71 | 4.5 | PASS |
-| muted text on danger-soft (grid cell meta) | 9.64 | 4.5 | PASS |
+| muted text on success-soft (grid cell meta) | 8.93 | 4.5 | PASS |
+| muted text on warning-soft (grid cell meta) | 8.97 | 4.5 | PASS |
+| muted text on danger-soft (grid cell meta) | 8.91 | 4.5 | PASS |
 | white text on danger-fill (button) | 6.59 | 4.5 | PASS |
 | border vs bg (input boundary) | 3.55 | 3 | PASS |
 | border vs raised (card edge, decorative, 1.4.11 n/a) | 1.48 | n/a | decorative |
