@@ -12,10 +12,16 @@
  * choices as menuitemradio, with aria-activedescendant (focus stays on the
  * menu). Arrow keys, Home and End move, Enter and Space activate, Escape
  * closes and returns focus to the trigger, Tab and a click outside close.
+ *
+ * Layout: the header repeats the trigger (avatar initial, name or email), so
+ * the open menu reads as the same object. Rows put their icon in a column
+ * as wide as the avatar, so labels line up with the header text. The theme
+ * is one row with a compact icon switch; the focus ring on a theme choice
+ * shows only while the keyboard drives the menu, never on hover.
  */
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpRight, BookOpen, ChevronsUpDown, LogOut, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { ArrowUpRight, BookOpen, ChevronsUpDown, LogOut, Monitor, Moon, Settings, Sun, SunMoon } from "lucide-react";
 import { useThemeMode, type ThemeMode } from "../lib/theme.js";
 import { useSignOut } from "./use-sign-out.js";
 import type { MeResponse } from "../api.js";
@@ -38,6 +44,17 @@ function initialOf(user: MeResponse["user"]): string {
   return source.charAt(0).toUpperCase();
 }
 
+function Avatar({ user }: { user: MeResponse["user"] }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-caption font-semibold text-accent-text"
+    >
+      {initialOf(user)}
+    </span>
+  );
+}
+
 export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () => void }) {
   const navigate = useNavigate();
   const signOut = useSignOut();
@@ -46,7 +63,10 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  // -1: nothing active (opened by pointer). Keyboard opening starts at 0.
+  const [activeIndex, setActiveIndex] = useState(-1);
+  // True while the keyboard drives the menu; the pointer clears it.
+  const [keyboard, setKeyboard] = useState(false);
 
   const items: Item[] = useMemo(
     () => [
@@ -76,7 +96,6 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
 
   useEffect(() => {
     if (!open) return;
-    setActiveIndex(0);
     panelRef.current?.focus();
     function onPointerDown(e: PointerEvent) {
       if (!panelRef.current?.contains(e.target as Node) && !triggerRef.current?.contains(e.target as Node)) {
@@ -104,6 +123,7 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
 
   function onKeyDown(e: React.KeyboardEvent) {
     const last = items.length - 1;
+    setKeyboard(true);
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -124,7 +144,7 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
       case "Enter":
       case " ":
         e.preventDefault();
-        activate(items[activeIndex]);
+        if (activeIndex >= 0) activate(items[activeIndex]);
         return;
       case "Escape":
         e.preventDefault();
@@ -140,50 +160,70 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
   const itemId = (i: number) => `${baseId}-item-${i}`;
   const themeStart = items.findIndex((it) => it.kind === "theme");
 
-  function row(item: Item, i: number) {
+  function pointTo(i: number) {
+    setKeyboard(false);
+    setActiveIndex(i);
+  }
+
+  function themeChoice(item: Extract<Item, { kind: "theme" }>, i: number) {
+    const Icon = item.icon;
+    const checked = mode === item.mode;
+    return (
+      <div
+        key={item.key}
+        id={itemId(i)}
+        role="menuitemradio"
+        aria-checked={checked}
+        aria-label={`${item.label} theme`}
+        title={item.label}
+        onPointerEnter={() => pointTo(i)}
+        onClick={() => activate(item)}
+        className={cn(
+          "flex h-6 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors duration-(--dur-fast)",
+          checked
+            ? "bg-selected text-foreground"
+            : "text-subtle-foreground hover:bg-sunken hover:text-foreground dark:hover:bg-hover",
+          keyboard && i === activeIndex && "ring-2 ring-ring",
+        )}
+      >
+        <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+      </div>
+    );
+  }
+
+  function actionRow(item: Extract<Item, { kind: "action" }>, i: number) {
     const Icon = item.icon;
     const active = i === activeIndex;
-    if (item.kind === "theme") {
-      const checked = mode === item.mode;
-      return (
-        <div
-          key={item.key}
-          id={itemId(i)}
-          role="menuitemradio"
-          aria-checked={checked}
-          onPointerEnter={() => setActiveIndex(i)}
-          onClick={() => activate(item)}
-          className={cn(
-            "flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-sm text-small transition-colors duration-(--dur-fast)",
-            checked ? "bg-card font-medium text-foreground shadow-card ring-1 ring-border" : "text-muted-foreground",
-            active && !checked && "bg-card text-foreground",
-            active && "outline-2 outline-offset-1 outline-ring",
-          )}
-        >
-          <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
-          {item.label}
-        </div>
-      );
-    }
     return (
       <div
         key={item.key}
         id={itemId(i)}
         role="menuitem"
         aria-disabled={item.key === "logout" && signOut.pending ? true : undefined}
-        onPointerEnter={() => setActiveIndex(i)}
+        onPointerEnter={() => pointTo(i)}
         onClick={() => activate(item)}
         className={cn(
-          "flex h-9 cursor-pointer items-center gap-3 rounded-md px-2.5 text-body text-foreground transition-colors duration-(--dur-fast)",
-          active && "bg-sunken dark:bg-hover",
+          "flex h-9 cursor-pointer items-center gap-2.5 rounded-md px-2 text-body font-medium transition-colors duration-(--dur-fast)",
+          active ? "bg-sunken text-foreground dark:bg-hover" : "text-muted-foreground",
         )}
       >
-        <Icon size={16} strokeWidth={1.75} className="shrink-0 text-subtle-foreground" aria-hidden="true" />
+        <span className="flex w-7 shrink-0 justify-center">
+          <Icon
+            size={16}
+            strokeWidth={1.75}
+            className={active ? "text-foreground" : "text-subtle-foreground"}
+            aria-hidden="true"
+          />
+        </span>
         <span className="flex-1">{item.label}</span>
         {item.external && <ArrowUpRight size={14} className="text-subtle-foreground" aria-hidden="true" />}
       </div>
     );
   }
+
+  const actions = (from: number, to: number) =>
+    items.slice(from, to).map((it, j) => (it.kind === "action" ? actionRow(it, from + j) : null));
+  const themeEnd = themeStart + THEMES.length;
 
   return (
     <div className="relative">
@@ -193,25 +233,34 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
           role="menu"
           tabIndex={-1}
           aria-label="Account"
-          aria-activedescendant={itemId(activeIndex)}
+          aria-activedescendant={activeIndex >= 0 ? itemId(activeIndex) : undefined}
           onKeyDown={onKeyDown}
-          className="absolute bottom-full left-0 right-0 z-40 mb-2 rounded-lg border border-border bg-card p-1.5 shadow-overlay focus:outline-none"
+          className="absolute bottom-full left-0 right-0 z-40 mb-2 rounded-lg border border-border bg-card p-1 shadow-overlay focus:outline-none"
         >
-          <div className="px-2.5 pb-2 pt-1.5">
-            <p className="truncate text-body font-medium text-foreground">{display}</p>
-            {me.user.name && <p className="truncate text-small text-muted-foreground">{me.user.email}</p>}
+          <div className="flex h-11 items-center gap-2.5 px-2">
+            <Avatar user={me.user} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-body font-medium text-foreground">{display}</p>
+              {me.user.name && <p className="truncate text-caption text-muted-foreground">{me.user.email}</p>}
+            </div>
           </div>
-          <div role="separator" className="my-1 border-t border-border" />
-          {items.slice(0, themeStart).map((it, i) => row(it, i))}
-          <div role="separator" className="my-1 border-t border-border" />
-          <div className="px-2.5 pb-1 pt-1.5 text-micro font-semibold uppercase tracking-[0.06em] text-subtle-foreground">
-            Theme
+          <div role="separator" className="-mx-1 my-1 border-t border-border" />
+          {actions(0, themeStart)}
+          <div className="flex h-9 items-center gap-2.5 px-2 text-body font-medium text-muted-foreground">
+            <span className="flex w-7 shrink-0 justify-center">
+              <SunMoon size={16} strokeWidth={1.75} className="text-subtle-foreground" aria-hidden="true" />
+            </span>
+            <span aria-hidden="true" className="flex-1">
+              Theme
+            </span>
+            <div role="group" aria-label="Theme" className="flex gap-0.5 rounded-md border border-border p-0.5">
+              {items.slice(themeStart, themeEnd).map((it, j) =>
+                it.kind === "theme" ? themeChoice(it, themeStart + j) : null,
+              )}
+            </div>
           </div>
-          <div role="group" aria-label="Theme" className="mx-1 mb-1 flex gap-0.5 rounded-md bg-sunken p-0.5">
-            {items.slice(themeStart, themeStart + THEMES.length).map((it, j) => row(it, themeStart + j))}
-          </div>
-          <div role="separator" className="my-1 border-t border-border" />
-          {items.slice(themeStart + THEMES.length).map((it, j) => row(it, themeStart + THEMES.length + j))}
+          <div role="separator" className="-mx-1 my-1 border-t border-border" />
+          {actions(themeEnd, items.length)}
         </div>
       )}
       <button
@@ -219,10 +268,18 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          // detail 0: Enter or Space on the trigger, so start on the first item.
+          const byKeyboard = e.detail === 0;
+          setKeyboard(byKeyboard);
+          setActiveIndex(byKeyboard ? 0 : -1);
+          setOpen((o) => !o);
+        }}
         onKeyDown={(e) => {
           if (!open && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
             e.preventDefault();
+            setKeyboard(true);
+            setActiveIndex(e.key === "ArrowUp" ? items.length - 1 : 0);
             setOpen(true);
           }
         }}
@@ -232,12 +289,7 @@ export function UserMenu({ me, onNavigate }: { me: MeResponse; onNavigate?: () =
           open ? "bg-sunken" : "hover:bg-sunken",
         )}
       >
-        <span
-          aria-hidden="true"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-caption font-semibold text-accent-text"
-        >
-          {initialOf(me.user)}
-        </span>
+        <Avatar user={me.user} />
         <span className="min-w-0 flex-1 truncate text-body text-foreground">{display}</span>
         <ChevronsUpDown size={14} strokeWidth={1.5} className="shrink-0 text-subtle-foreground" aria-hidden="true" />
       </button>

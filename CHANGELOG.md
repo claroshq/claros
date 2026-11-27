@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard: the user menu matches its trigger. Its header repeats the avatar and email, rows line up under it, and the theme is one row with a compact Light, System and Dark switch instead of a labelled block. Opening the menu with the pointer no longer highlights Settings, and the focus ring on a theme choice shows only while the keyboard drives the menu.
+
 ## [0.13.3] - 2026-11-27
 
 ### Upgrade
