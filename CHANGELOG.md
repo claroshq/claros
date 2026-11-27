@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard: Lifecycle sits on cards. The retention grid is one card whose footer carries the "pick a cell" hint and the threshold note (the dashed hint box is gone), the selected cell opens a card under it, and Movement's chart and two tables are cards like Analytics. Empty grid cells are a dashed outline instead of a dark well.
+
 ## [0.13.2] - 2026-11-27
 
 ### Upgrade

@@ -255,7 +255,9 @@ function RetentionGrid({ grid, audience, selected, onSelect }: GridProps) {
                 aria-label={`${row.label} ${recency}: ${count} ${audienceWord(audience)}contacts`}
                 className={cn(
                   "rounded-md px-3 py-3 text-center transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  count === 0 ? "bg-sunken hover:bg-sunken-hover" : RECENCY_SURFACE[recency],
+                  count === 0
+                    ? "border border-dashed border-border hover:bg-hover"
+                    : RECENCY_SURFACE[recency],
                   isSelected && "ring-2 ring-ring",
                 )}
               >
@@ -369,7 +371,7 @@ function CellDetail({
     : undefined;
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-card shadow-card p-5">
+    <section className="mt-4 rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_240px]">
         {/* Identity + guidance */}
         <div>
@@ -611,7 +613,7 @@ export default function LifecyclePage() {
         }
       />
 
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <TabBar tab={tab} onChange={setTab} />
         <AudienceSwitch value={audience} onChange={setAudience} />
       </div>
@@ -641,6 +643,7 @@ export default function LifecyclePage() {
 
       {tab === "grid" && gridQuery.data && (
         <section className="mb-10">
+          <div className="rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
           <RetentionGrid
             grid={gridQuery.data}
             audience={audience}
@@ -653,24 +656,8 @@ export default function LifecyclePage() {
               );
             }}
           />
-          <p className="mt-3 text-caption text-subtle-foreground">
-            Recency thresholds follow your natural rhythm of{" "}
-            {gridQuery.data.natural_frequency_days} days. Cell populations
-            are snapshotted daily - click a cell for its trend and actions.
-          </p>
-          <div className="mt-1">
-            <AudienceNote audience={audience} />
-          </div>
-
-          {selected ? (
-            <CellDetail
-              grid={gridQuery.data}
-              tenure={selected.tenure}
-              recency={selected.recency}
-              audience={audience}
-            />
-          ) : (
-            <div className="mt-6 rounded-lg border border-dashed border-border-strong px-5 py-4">
+          <div className="mt-5 space-y-1 border-t border-border pt-4">
+            {!selected && (
               <p className="text-body leading-relaxed text-muted-foreground">
                 <span className="font-medium text-foreground">
                   Pick a cell to act on it.
@@ -678,13 +665,29 @@ export default function LifecyclePage() {
                 Each cell is a group of contacts with the same story: how long
                 they have been around and how long they have been quiet.
               </p>
-            </div>
+            )}
+            <p className="text-caption leading-relaxed text-subtle-foreground">
+              Recency thresholds follow your natural rhythm of{" "}
+              {gridQuery.data.natural_frequency_days} days. Cell populations
+              are snapshotted daily.
+            </p>
+            <AudienceNote audience={audience} />
+          </div>
+          </div>
+
+          {selected && (
+            <CellDetail
+              grid={gridQuery.data}
+              tenure={selected.tenure}
+              recency={selected.recency}
+              audience={audience}
+            />
           )}
         </section>
       )}
 
       {tab === "movement" && movementQuery.data && (
-        <div className="space-y-8">
+        <div className="space-y-4">
           <p className="max-w-2xl text-caption leading-relaxed text-subtle-foreground">
             Two vocabularies, one contact base: the retention grid is your
             strategic map (tenure x quiet time, actionable per cell). The
@@ -695,7 +698,7 @@ export default function LifecyclePage() {
           </p>
 
           {/* Movement */}
-          <section>
+          <section className="min-w-0 rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
             <div className="mb-1 flex items-center justify-between gap-4">
               <h2 className="text-heading font-semibold tracking-[-0.015em] text-foreground">
                 Movement
@@ -721,9 +724,9 @@ export default function LifecyclePage() {
             />
           </section>
 
-          <div className="grid gap-8 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {/* Entries and exits per state */}
-            <section>
+            <section className="min-w-0 rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
               <h2 className="mb-4 text-heading font-semibold tracking-[-0.015em] text-foreground">
                 Entries and exits per state
               </h2>
@@ -793,7 +796,7 @@ export default function LifecyclePage() {
             </section>
 
             {/* Top transitions */}
-            <section>
+            <section className="min-w-0 rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
               <h2 className="mb-4 text-heading font-semibold tracking-[-0.015em] text-foreground">
                 Most frequent transitions
               </h2>
