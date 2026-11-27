@@ -207,3 +207,32 @@ export function requireRoleOrKey(minRole: UserRole, adminScope: AdminScope | nul
 export function requireRoleOrAdminKey(minRole: UserRole, scope: AdminScope): MiddlewareHandler<AppEnv> {
   return requireRoleOrKey(minRole, scope, null);
 }
+
+/**
+ * Authenticate a request by its product admin key only (no session): the
+ * MCP endpoint. Returns the key's product as a TenantContext and its scopes,
+ * or null for a missing, malformed, unknown or revoked admin key. Ingestion
+ * and instance keys are never admin keys, so they get null too.
+ */
+export async function authenticateAdminKeyOnly(
+  c: Context<AppEnv>,
+): Promise<{ tenant: TenantContext; scopes: AdminScope[] } | null> {
+  const raw = bearerAdminKey(c);
+  const db = c.var.db;
+  if (!raw || !db) return null;
+  const row = await storeFor(db).apiAdminAuth.findActiveAdminKeyByHash(hashApiKey(raw));
+  if (!row) return null;
+  touchLastUsed(db, row.id);
+  return {
+    tenant: {
+      id: row.tenantId,
+      slug: row.tenantSlug,
+      userId: "",
+      userRole: "owner",
+      instanceRole: null,
+      archived: row.tenantArchivedAt != null,
+      apiKeyId: row.id,
+    },
+    scopes: row.scopes.filter(isAdminScope),
+  };
+}

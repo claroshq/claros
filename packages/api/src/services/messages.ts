@@ -8,7 +8,7 @@
  * (drain or generation enqueue, the pending_approval outbox entry). Callers
  * map the result to their own answer: an HTTP status or an MCP tool result.
  */
-import { storeFor } from "@claros/store";
+import { storeFor, type MessageListRow } from "@claros/store";
 import { QUEUE, pendingApprovalBatch } from "@claros/core";
 import { renderMarkdownToHtml, markdownToText } from "@claros/brain-oss";
 import type { Db, EnqueueFn } from "../plugins/db.js";
@@ -208,4 +208,61 @@ export async function unapproveMessage(ctx: ServiceContext, id: string): Promise
   });
   if (!ok) return settle(ctx, id, null);
   return { kind: "ok", id, status: "pending_approval" };
+}
+
+// ---------------------------------------------------------------------------
+// Reads: the queue as GET /v1/messages lists it
+// ---------------------------------------------------------------------------
+
+interface QueueCursor {
+  created_at: string;
+  id: string;
+  /** 0 = critical-class flow, 1 = other (G20 order); absent in older cursors. */
+  rank?: number;
+}
+
+function encodeQueueCursor(createdAt: Date | string | null | undefined, id: string, rank: number): string {
+  const ts = createdAt instanceof Date ? createdAt.toISOString() : (createdAt ?? new Date(0).toISOString());
+  const payload: QueueCursor = { created_at: ts, id, rank };
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+}
+
+function decodeQueueCursor(cursor: string): QueueCursor | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
+    if (
+      typeof parsed !== "object" || parsed === null ||
+      typeof (parsed as Record<string, unknown>).created_at !== "string" ||
+      typeof (parsed as Record<string, unknown>).id !== "string"
+    ) return null;
+    return parsed as QueueCursor;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One page of the product's messages in `status`: critical-class flows
+ * first, then oldest first. An unreadable cursor starts from the first page.
+ */
+export async function listMessagesPage(
+  ctx: Pick<ServiceContext, "db" | "tenant">,
+  input: { status: string; limit: number; after?: string | null },
+): Promise<{ rows: MessageListRow[]; next_cursor: string | null }> {
+  const cursor = input.after ? decodeQueueCursor(input.after) : null;
+  const rows = await storeFor(ctx.db).apiMessages.listMessages({
+    tenantId: ctx.tenant.id,
+    status: input.status,
+    after: cursor ? { createdAt: cursor.created_at, id: cursor.id, rank: typeof cursor.rank === "number" ? cursor.rank : 1 } : null,
+    limit: input.limit + 1,
+  });
+  const hasNextPage = rows.length > input.limit;
+  const pageRows = hasNextPage ? rows.slice(0, input.limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  return {
+    rows: pageRows,
+    next_cursor: hasNextPage && lastRow
+      ? encodeQueueCursor(lastRow.created_at, lastRow.id, lastRow.flow_class === "critical" ? 0 : 1)
+      : null,
+  };
 }

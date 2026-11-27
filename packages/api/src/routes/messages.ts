@@ -47,6 +47,7 @@ import {
   editInputError,
   editMessage,
   isUuid,
+  listMessagesPage,
   parseBulkIds,
   regenerateMessage,
   rejectMessage,
@@ -208,40 +209,6 @@ function serializeMessageRow(r: MessageListRow, previewHtml: string | null = nul
 }
 
 // ---------------------------------------------------------------------------
-// Cursor helpers (same convention as GET /v1/suppressions and GET /v1/kb)
-// ---------------------------------------------------------------------------
-
-interface CursorPayload {
-  created_at: string;
-  id: string;
-  /** 0 = critical-class flow, 1 = other (G20 order); absent in older cursors. */
-  rank?: number;
-}
-
-function encodeCursor(createdAt: Date | string | null | undefined, id: string, rank: number): string {
-  const ts = createdAt instanceof Date
-    ? createdAt.toISOString()
-    : (createdAt ?? new Date(0).toISOString());
-  const payload: CursorPayload = { created_at: ts, id, rank };
-  return Buffer.from(JSON.stringify(payload)).toString("base64url");
-}
-
-function decodeCursor(cursor: string): CursorPayload | null {
-  try {
-    const json = Buffer.from(cursor, "base64url").toString("utf8");
-    const parsed = JSON.parse(json) as unknown;
-    if (
-      typeof parsed !== "object" || parsed === null ||
-      typeof (parsed as Record<string, unknown>).created_at !== "string" ||
-      typeof (parsed as Record<string, unknown>).id !== "string"
-    ) return null;
-    return parsed as CursorPayload;
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -269,31 +236,11 @@ export default function messagesRoutes() {
     const limit = isNaN(rawLimit) || rawLimit < 1
       ? DEFAULT_PAGE_SIZE
       : Math.min(rawLimit, MAX_PAGE_SIZE);
-    const fetchLimit = limit + 1;
-
     const statusFilter = query.status ?? "pending_approval";
-
-    let cursor: CursorPayload | null = null;
-    if (query.after) {
-      cursor = decodeCursor(query.after);
-    }
-
-    const rows = await storeFor(db).apiMessages.listMessages({
-      tenantId,
-      status: statusFilter,
-      after: cursor
-        ? { createdAt: cursor.created_at, id: cursor.id, rank: typeof cursor.rank === "number" ? cursor.rank : 1 }
-        : null,
-      limit: fetchLimit,
-    });
-
-    const hasNextPage = rows.length > limit;
-    const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
-
-    const lastRow = pageRows[pageRows.length - 1];
-    const nextCursor = hasNextPage && lastRow
-      ? encodeCursor(lastRow.created_at, lastRow.id, lastRow.flow_class === "critical" ? 0 : 1)
-      : null;
+    const { rows: pageRows, next_cursor: nextCursor } = await listMessagesPage(
+      { db, tenant: c.var.tenant! },
+      { status: statusFilter, limit, after: query.after },
+    );
 
     const previews = await buildPreviews(db, tenantId, pageRows);
     return c.json({

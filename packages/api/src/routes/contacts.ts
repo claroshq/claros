@@ -59,7 +59,7 @@ import type { AppContext } from "../http/env.js";
 import { RoleRouter, allowAdminKey, validatedBody } from "../http/router.js";
 import { validateBody } from "../http/validate.js";
 import type { ContactNoteRow } from "@claros/store";
-import { excludeContact } from "../services/contacts.js";
+import { contactTimelinePage, excludeContact, getContactDetail, topicJson } from "../services/contacts.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,38 +90,6 @@ const LIFECYCLE_STATES = [
 ] as const;
 
 const ENGAGEMENT_DEPTHS = ["power", "regular", "casual", "minimal"] as const;
-
-// ---------------------------------------------------------------------------
-// Cursor helpers (same convention as messages.ts / kb.ts)
-// ---------------------------------------------------------------------------
-
-interface CursorPayload {
-  created_at: string;
-  id: string;
-}
-
-function encodeCursor(createdAt: Date | string | null | undefined, id: string): string {
-  const ts = createdAt instanceof Date
-    ? createdAt.toISOString()
-    : (createdAt ?? new Date(0).toISOString());
-  const payload: CursorPayload = { created_at: ts, id };
-  return Buffer.from(JSON.stringify(payload)).toString("base64url");
-}
-
-function decodeCursor(cursor: string): CursorPayload | null {
-  try {
-    const json = Buffer.from(cursor, "base64url").toString("utf8");
-    const parsed = JSON.parse(json) as unknown;
-    if (
-      typeof parsed !== "object" || parsed === null ||
-      typeof (parsed as Record<string, unknown>).created_at !== "string" ||
-      typeof (parsed as Record<string, unknown>).id !== "string"
-    ) return null;
-    return parsed as CursorPayload;
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // List cursor: (sort key, id) for any sort
@@ -402,24 +370,11 @@ export default function contactsRoutes() {
       return c.json({ error: "Contact not found." }, 404);
     }
 
-    const contact = await storeFor(db).apiContacts.getContact({ tenantId, contactId: id });
-
-    if (contact === null) {
+    const detail = await getContactDetail({ db, tenant: c.var.tenant! }, id);
+    if (detail === null) {
       return c.json({ error: "Contact not found." }, 404);
     }
-
-    const memberships = await storeFor(db).apiContacts.listContactMemberships({ tenantId, contactId: id });
-
-    let suppression: Record<string, unknown> | null = null;
-    if (typeof contact.email === "string" && contact.email.length > 0) {
-      suppression = await storeFor(db).apiContacts.findSuppression({ tenantId, email: contact.email });
-    }
-
-    // Topic statuses (G8a): every topic of the product with the contact's
-    // explicit status, or the topic default ("default": true) when none is set.
-    const topics = (await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId: id })).map(topicJson);
-
-    return c.json({ contact: withPublicStates(contact, ["lifecycle_state"]), memberships, suppression, topics });
+    return c.json(detail);
   });
 
   /**
@@ -456,28 +411,7 @@ export default function contactsRoutes() {
     }
 
     const query = c.req.query();
-    const limit = clampLimit(query.limit);
-    const fetchLimit = limit + 1;
-    const cursor = query.after ? decodeCursor(query.after) : null;
-    const contactId = id;
-    // DESC keyset: rows strictly older than the cursor (applied per branch).
-    const rows = await storeFor(db).apiContacts.listContactTimeline({
-      tenantId,
-      contactId,
-      before: cursor ? { occurredAt: cursor.created_at, id: cursor.id } : null,
-      limit: fetchLimit,
-    });
-
-    const hasNextPage = rows.length > limit;
-    const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
-    const lastRow = pageRows[pageRows.length - 1] as
-      | { occurred_at: string; id: string }
-      | undefined;
-    const nextCursor = hasNextPage && lastRow
-      ? encodeCursor(lastRow.occurred_at, lastRow.id)
-      : null;
-
-    return c.json({ items: pageRows.map((r) => withPublicStates(r, ["from_state", "to_state"])), next_cursor: nextCursor });
+    return c.json(await contactTimelinePage({ db, tenant: c.var.tenant! }, id, clampLimit(query.limit), query.after));
   });
   /**
    * DELETE /v1/contacts/:ref (G12)
@@ -604,19 +538,6 @@ const NOTE_MAX_LENGTH = 5000;
 /** PUT /v1/contacts/:id/topics body: topic slug -> subscribed. */
 const topicsBodySchema = z.object({ topics: z.record(z.string(), z.boolean()) });
 
-/** A topic status as GET /v1/contacts/:id and PUT .../topics return it. */
-function topicJson(t: { topicId: string; slug: string; name: string; kind: string; status: string | null; defaultSubscribed: boolean; source: string | null; updatedAt: Date | null }) {
-  return {
-    topic_id: t.topicId,
-    slug: t.slug,
-    name: t.name,
-    kind: t.kind,
-    status: t.status ?? (t.defaultSubscribed ? "subscribed" : "unsubscribed"),
-    default: t.status === null,
-    source: t.source,
-    updated_at: t.updatedAt,
-  };
-}
 
 const noteBodySchema = z.object({
   body: z.string().max(NOTE_MAX_LENGTH, `A note is at most ${NOTE_MAX_LENGTH} characters.`),

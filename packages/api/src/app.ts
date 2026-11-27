@@ -44,6 +44,7 @@ import importRoutes from "./routes/import.js";
 import suppressionRoutes from "./routes/suppressions.js";
 import templatesRoutes from "./routes/templates.js";
 import messagesRoutes from "./routes/messages.js";
+import mcpRoutes from "./mcp/route.js";
 import unsubscribeRoutes from "./routes/unsubscribe.js";
 import ingestionRoutes from "./routes/ingestion.js";
 import resendWebhookRoutes from "./routes/webhooks/resend.js";
@@ -199,6 +200,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/suppressions", suppressionRoutes());
     app.route("/v1/templates", templatesRoutes());
     app.route("/v1/messages", messagesRoutes());
+    app.route("/v1/mcp", mcpRoutes());
     app.route("/v1/settings/brand", brandSettingsRoutes({ baseUrl }));
     app.route("/v1/settings", settingsRoutes());
     app.route("/v1/ingestion", ingestionRoutes());
