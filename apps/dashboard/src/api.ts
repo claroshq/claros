@@ -727,10 +727,12 @@ export interface KbEntryInput {
 export async function fetchKbEntries(
   after?: string,
   includeInactive = false,
+  limit?: number,
 ): Promise<KbListPage> {
   const params = new URLSearchParams();
   if (after) params.set("after", after);
   if (includeInactive) params.set("include_inactive", "true");
+  if (limit) params.set("limit", String(limit));
   const qs = params.size > 0 ? `?${params.toString()}` : "";
   const res = await apiFetch(`/v1/kb${qs}`);
   if (!res.ok) {
@@ -2004,9 +2006,11 @@ export interface SentLogFilters {
 export async function fetchSentLog(
   page: number,
   filters: SentLogFilters,
+  limit?: number,
 ): Promise<SentLogPage> {
   const params = new URLSearchParams();
   params.set("page", String(page));
+  if (limit) params.set("limit", String(limit));
   if (filters.status) params.set("status", filters.status);
   if (filters.flow_id) params.set("flow_id", filters.flow_id);
   if (filters.recipient) params.set("recipient", filters.recipient);

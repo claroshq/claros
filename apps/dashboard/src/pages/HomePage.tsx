@@ -5,32 +5,23 @@
  * into tiers (blocks sending, blocks AI only, requires file edit) and
  * includes the library flow installer as the fastest path to real behavior.
  *
- * After setup: an operational view answering "what needs me" - pending
- * approvals, failures, ingestion health, compile errors, and deliverability
- * signals. Every item links to where the problem is fixed.
+ * After setup: the overview in home/HomeOverview.tsx - what needs you
+ * (approvals, failures, compile errors, ingestion and deliverability
+ * signals), the week's numbers, recent activity, active flows, lifecycle
+ * movement, the knowledge base and the MCP setup card.
  *
  * The two modes share a single route (/home) and transition automatically.
  * The setup path is always reachable from the operational view via a quiet
  * link if anything regresses or was skipped.
  */
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Check,
   AlertTriangle,
-  Inbox,
-  XCircle,
-  Activity,
-  Zap,
   Mail,
   ChevronDown,
   ChevronRight,
-  ArrowRight,
-  ArrowUpRight,
-  Shield,
-  BookOpen,
-  MessagesSquare,
-  Lightbulb,
 } from "lucide-react";
 import { PageHeader } from "../components/page-header.js";
 import { Button } from "../components/ui/button.js";
@@ -44,12 +35,9 @@ import {
   useDiagnostics,
   useLibrary,
   useInstallLibrary,
-  useHomePendingMessages,
-  useHomeFailedMessages,
-  useHomeSending,
-  useHomeLifecycle,
 } from "../home.js";
 import type { Flow } from "../api.js";
+import { HomeOverview, Resources } from "./home/HomeOverview.js";
 
 // ---------------------------------------------------------------------------
 // Setup mode
@@ -337,62 +325,8 @@ function LibrarySection({
 }
 
 // ---------------------------------------------------------------------------
-// Operational mode - "What needs me" cards
+// Operational mode
 // ---------------------------------------------------------------------------
-
-function AttentionCard({
-  icon: Icon,
-  tone,
-  title,
-  description,
-  linkTo,
-  linkLabel,
-  badge,
-}: {
-  icon: React.ElementType;
-  tone: "accent" | "danger" | "warning" | "pop";
-  title: string;
-  description: string;
-  linkTo: string;
-  linkLabel: string;
-  badge?: React.ReactNode;
-}) {
-  const toneClasses: Record<typeof tone, string> = {
-    accent: "bg-accent-soft text-accent-text",
-    danger: "bg-danger-soft text-danger",
-    warning: "bg-warning-soft text-warning",
-    pop: "bg-pop-soft text-pop-text",
-  };
-  return (
-    <Link
-      to={linkTo}
-      className="group flex items-start gap-4 rounded-lg border border-border bg-card p-5 transition-colors duration-(--dur-fast) hover:bg-secondary"
-    >
-      <span
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-          toneClasses[tone],
-        )}
-      >
-        <Icon size={18} strokeWidth={1.5} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-[14px] font-medium text-foreground">{title}</p>
-          {badge}
-        </div>
-        <p className="mt-1 text-[13px] leading-[20px] text-muted-foreground">{description}</p>
-        <span className="mt-2 inline-flex items-center gap-1 text-[13px] text-accent-text">
-          {linkLabel}
-          <ArrowRight
-            size={12}
-            className="transition-transform duration-(--dur-fast) group-hover:translate-x-0.5"
-          />
-        </span>
-      </div>
-    </Link>
-  );
-}
 
 /**
  * Setup banner - shown at the top of the operational view while any
@@ -435,423 +369,6 @@ function SetupBanner({
         Finish setup
       </Button>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Resources section - docs, community, rotating tip
-// ---------------------------------------------------------------------------
-
-/**
- * Short product tips, rotated daily by day-of-year. Curated in code: no
- * backend, no LLM, always available offline. Keep each tip to one or two
- * sentences and ground it in a real product behavior.
- */
-const TIPS: string[] = [
-  "Install the library Welcome flow first. It sends real email with no LLM configured, so you can verify the whole pipeline end to end.",
-  "Use window_policy \"immediate\" for dunning and welcome emails. Delays there cost money; newsletters can wait for the send window.",
-  "Only one nurture-class flow can be active per contact. Splitting onboarding into nurture and critical classes keeps receipts and alerts flowing in parallel.",
-  "Set a flow's reentry_policy to \"cooldown\" when contacts can legitimately trigger it twice, like a trial that converts then churns and returns.",
-  "Approvals are the trust layer. Keep auto-approve off until a flow has drafted emails you would sign your name to.",
-  "The Knowledge Base is read at draft time. Add your pricing page and cancellation policy so drafts stop inventing answers.",
-  "At-risk contacts stopped engaging but have not gone quiet yet. A short, personal re-engagement flow beats a discount blast.",
-  "Critical-class messages bypass the throttle but never fairness. A big tenant cannot starve a small tenant's dunning emails.",
-  "Every outgoing email carries List-Unsubscribe headers automatically. Never remove the footer; the drain refuses to send without it.",
-  "Rotate ingest keys without downtime: create the new key, deploy it, then revoke the old one from the Integrate page.",
-  "Bounces and complaints compound. If this week's count rises above last week's, pause and review content before the next drain cycle.",
-  "Flow compile happens at save time, not send time. Fix compile errors early; a failed flow silently stops enrolling contacts.",
-];
-
-function tipOfTheDay(): string {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86_400_000);
-  return TIPS[dayOfYear % TIPS.length]!;
-}
-
-function ResourceCard({
-  icon: Icon,
-  title,
-  description,
-  href,
-  linkLabel,
-}: {
-  icon: React.ElementType;
-  title: string;
-  description: string;
-  href: string;
-  linkLabel: string;
-}) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="group rounded-lg border border-border bg-card p-5 transition-colors duration-(--dur-fast) hover:bg-secondary"
-    >
-      <span className="flex h-9 w-9 items-center justify-center rounded-md bg-accent-soft text-accent-text">
-        <Icon size={18} strokeWidth={1.5} />
-      </span>
-      <p className="mt-3 text-[14px] font-medium text-foreground">{title}</p>
-      <p className="mt-1 text-[13px] leading-[20px] text-muted-foreground">
-        {description}
-      </p>
-      <span className="mt-2 inline-flex items-center gap-1 text-[13px] text-accent-text">
-        {linkLabel}
-        <ArrowUpRight
-          size={12}
-          className="transition-transform duration-(--dur-fast) group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-        />
-      </span>
-    </a>
-  );
-}
-
-/**
- * The bottom band of the home screen: pointers out of the product to the
- * documentation and the community, plus a rotating tip. Renders in every
- * mode so the page never ends in dead space.
- */
-function ResourcesSection() {
-  return (
-    <div className="mt-8">
-      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        Resources
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <ResourceCard
-          icon={BookOpen}
-          title="Documentation"
-          description="Setup guides, the flow model, ingestion API reference, and self-hosting notes."
-          href="https://claros.org/docs"
-          linkLabel="claros.org/docs"
-        />
-        <ResourceCard
-          icon={MessagesSquare}
-          title="Ask the community"
-          description="Questions, flow recipes, and deliverability war stories from other Claros operators."
-          href="https://claros.org/community"
-          linkLabel="claros.org/community"
-        />
-        <div className="rounded-lg border border-border bg-card p-5 sm:col-span-2 lg:col-span-1">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-accent-soft text-accent-text">
-            <Lightbulb size={18} strokeWidth={1.5} />
-          </span>
-          <p className="mt-3 text-[14px] font-medium text-foreground">
-            Tip of the day
-          </p>
-          <p className="mt-1 text-[13px] leading-[20px] text-muted-foreground">
-            {tipOfTheDay()}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OperationalHome({
-  flows,
-  onShowSetup,
-  setupIncomplete,
-  setupDoneCount,
-  setupTotalCount,
-}: {
-  flows: Flow[];
-  onShowSetup: () => void;
-  setupIncomplete: boolean;
-  setupDoneCount: number;
-  setupTotalCount: number;
-}) {
-  const pending = useHomePendingMessages();
-  const failed = useHomeFailedMessages();
-  const ingest = useIngestStatus(false);
-  const sending = useHomeSending();
-  const lifecycle = useHomeLifecycle();
-
-  // Loading state - show skeleton before computing items
-  const isLoading = pending.isLoading || failed.isLoading || ingest.isLoading;
-  if (isLoading) {
-    return (
-      <div className="mx-auto max-w-6xl">
-        <PageHeader title="Home" />
-        <div className="space-y-3">
-          <Skeleton className="h-20 w-full rounded-lg" />
-          <Skeleton className="h-20 w-full rounded-lg" />
-          <Skeleton className="h-20 w-full rounded-lg" />
-        </div>
-      </div>
-    );
-  }
-
-  // Compute attention items
-  const items: React.ReactNode[] = [];
-
-  // 1. Messages waiting for approval
-  const pendingCount = pending.data?.messages.length ?? 0;
-  if (pendingCount > 0) {
-    items.push(
-      <AttentionCard
-        key="pending"
-        icon={Inbox}
-        tone="accent"
-        title={`${pendingCount} message${pendingCount === 1 ? "" : "s"} waiting for approval`}
-        description="Review and approve to send, or reject to discard."
-        linkTo="/approvals"
-        linkLabel="Approvals"
-        badge={<Badge variant="accent">{pendingCount}</Badge>}
-      />,
-    );
-  }
-
-  // 2. Failed messages
-  const failedCount = failed.data?.messages.length ?? 0;
-  if (failedCount > 0) {
-    const reasons = failed.data!.messages.slice(0, 3).map((m) => m.brain_reasoning).filter(Boolean);
-    const topReason = reasons[0] ?? "Check the Approvals page for details.";
-    items.push(
-      <AttentionCard
-        key="failed"
-        icon={XCircle}
-        tone="danger"
-        title={`${failedCount} message${failedCount === 1 ? "" : "s"} failed`}
-        description={topReason}
-        linkTo="/approvals"
-        linkLabel="Approvals"
-        badge={<Badge variant="danger">{failedCount}</Badge>}
-      />,
-    );
-  }
-
-  // 3. Flows with compile errors
-  const compileErrors = flows.filter((f) => f.compile_status === "failed" && f.status !== "archived");
-  if (compileErrors.length > 0) {
-    items.push(
-      <AttentionCard
-        key="compile-errors"
-        icon={AlertTriangle}
-        tone="warning"
-        title={`${compileErrors.length} flow${compileErrors.length === 1 ? "" : "s"} failed to compile`}
-        description={compileErrors[0]!.compile_error ?? `"${compileErrors[0]!.name}" needs attention.`}
-        linkTo={`/flows/${compileErrors[0]!.id}/edit`}
-        linkLabel="Flow editor"
-      />,
-    );
-  }
-
-  // 4. Events stopped arriving
-  const hasEventsHistorically = ingest.data?.last_event != null;
-  const eventsLast24h = ingest.data?.events_last_24h ?? 0;
-  if (hasEventsHistorically && eventsLast24h === 0) {
-    items.push(
-      <AttentionCard
-        key="events-stopped"
-        icon={Zap}
-        tone="warning"
-        title="No events received in the last 24 hours"
-        description="Events were arriving before. Check your integration or confirm the source is still sending."
-        linkTo="/integrate"
-        linkLabel="Integrate"
-      />,
-    );
-  }
-
-  // 5. Bounces or complaints rising (compare current 7d vs prior 7d)
-  if (sending.data) {
-    const { current, prior } = sending.data;
-    const currentBad = current.totals.bounced + current.totals.complained;
-    const priorBad = (prior.totals.bounced + prior.totals.complained) - currentBad;
-    // prior contains 14 days total; the "prior 7d" is the difference
-    const priorPeriodBad = Math.max(0, priorBad);
-    if (currentBad > 0 && currentBad > priorPeriodBad * 1.5 && currentBad >= 3) {
-      items.push(
-        <AttentionCard
-          key="deliverability"
-          icon={Shield}
-          tone="warning"
-          title={`${currentBad} bounce${currentBad === 1 ? "" : "s"}/complaint${currentBad === 1 ? "" : "s"} this week`}
-          description={
-            priorPeriodBad > 0
-              ? `Up from ${priorPeriodBad} in the prior 7 days. Review sending patterns.`
-              : "New this week. Check email content and recipient quality."
-          }
-          linkTo="/analytics"
-          linkLabel="Analytics"
-        />,
-      );
-    }
-  }
-
-  // 6. Contacts moving to at_risk (lifecycle movement)
-  if (lifecycle.data) {
-    const atRiskEntry = lifecycle.data.movement.per_state.find((s) => s.state === "at_risk");
-    const entered = atRiskEntry?.entered ?? 0;
-    if (entered >= 3) {
-      items.push(
-        <AttentionCard
-          key="at-risk"
-          icon={Activity}
-          tone="pop"
-          title={`${entered} contact${entered === 1 ? "" : "s"} moved to at-risk this week`}
-          description="These contacts have stopped engaging. Consider reaching out before they go dormant."
-          linkTo="/lifecycle"
-          linkLabel="Lifecycle"
-        />,
-      );
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeader
-        eyebrow="Overview"
-        title="Home"
-        subtitle={
-          items.length > 0
-            ? `${items.length} thing${items.length === 1 ? "" : "s"} need${items.length === 1 ? "s" : ""} attention`
-            : undefined
-        }
-      />
-
-      {setupIncomplete && (
-        <SetupBanner
-          doneCount={setupDoneCount}
-          totalCount={setupTotalCount}
-          onShowSetup={onShowSetup}
-        />
-      )}
-
-      {items.length > 0 ? (
-        <div className="space-y-3">{items}</div>
-      ) : (
-        <AllClearState flows={flows} eventsLast24h={eventsLast24h} sending={sending.data} />
-      )}
-
-      <ResourcesSection />
-    </div>
-  );
-}
-
-/**
- * The healthy install state. Nothing is wrong - but the page must not feel
- * empty. Show a factual status snapshot: the three numbers that tell you the
- * system is alive, plus the active flow list so there is something to read.
- */
-function AllClearState({
-  flows,
-  eventsLast24h,
-  sending,
-}: {
-  flows: Flow[];
-  eventsLast24h: number;
-  sending: { current: { totals: { sent: number; opened: number } } } | undefined;
-}) {
-  const activeFlows = flows.filter((f) => f.status === "active");
-  const activeCount = activeFlows.length;
-  const sentThisWeek = sending?.current.totals.sent ?? 0;
-
-  return (
-    <div className="space-y-4">
-      {/* Status banner */}
-      <div className="rounded-lg border border-border bg-card px-5 py-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
-            <Check size={14} strokeWidth={2.5} />
-          </span>
-          <p className="text-[14px] font-medium text-foreground">
-            Nothing needs attention
-          </p>
-          <span className="text-[13px] text-muted-foreground sm:ml-auto">
-            All systems operating normally.
-          </span>
-        </div>
-      </div>
-
-      {/* Three-metric snapshot */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatusMetric
-          label="Active flows"
-          value={activeCount}
-          linkTo="/flows"
-        />
-        <StatusMetric
-          label="Events (24h)"
-          value={eventsLast24h}
-          linkTo="/integrate"
-        />
-        <StatusMetric
-          label="Sent (7d)"
-          value={sentThisWeek}
-          linkTo="/analytics"
-        />
-      </div>
-
-      {/* Active flow list - gives the page something concrete to read */}
-      {activeFlows.length > 0 && (
-        <div className="rounded-lg border border-border bg-card">
-          <div className="border-b border-border px-5 py-3">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Active flows
-            </p>
-          </div>
-          <ul>
-            {activeFlows.map((flow, i) => (
-              <li
-                key={flow.id}
-                className={cn(
-                  "flex items-center justify-between px-5 py-3",
-                  i < activeFlows.length - 1 && "border-b border-border",
-                )}
-              >
-                <div>
-                  <Link
-                    to={`/flows/${flow.id}/edit`}
-                    className="text-[14px] font-medium text-foreground hover:text-accent-text"
-                  >
-                    {flow.name}
-                  </Link>
-                  <p className="mt-0.5 text-[12px] font-mono text-muted-foreground">
-                    {flow.trigger_type === "event"
-                      ? `on ${String((flow.trigger_config as Record<string, unknown>).event ?? "event")}`
-                      : flow.trigger_type.replace(/_/g, " ")}
-                  </p>
-                </div>
-                <Badge variant="success">Active</Badge>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusMetric({
-  label,
-  value,
-  linkTo,
-}: {
-  label: string;
-  value: number;
-  linkTo: string;
-}) {
-  return (
-    <Link
-      to={linkTo}
-      className="group rounded-lg border border-border bg-card px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-secondary sm:px-5 sm:py-4"
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground sm:text-[12px]">
-        {label}
-      </p>
-      <div className="mt-2 flex items-end justify-between">
-        <p className="font-display text-[22px] font-bold leading-none tracking-[-0.02em] text-foreground sm:text-[28px]">
-          {value.toLocaleString()}
-        </p>
-        <ArrowRight
-          size={14}
-          className="mb-0.5 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover:opacity-100"
-        />
-      </div>
-    </Link>
   );
 }
 
@@ -1021,7 +538,9 @@ function SetupHome({
         </div>
       </div>
 
-      <ResourcesSection />
+      <div className="mt-8 max-w-xl">
+        <Resources />
+      </div>
     </div>
   );
 }
@@ -1138,17 +657,22 @@ export default function HomePage() {
   ].filter(Boolean).length;
 
   return (
-    <OperationalHome
+    <HomeOverview
       flows={flows.data?.flows ?? []}
-      onShowSetup={() => {
-        setForceSetup(true);
-        // Clear dismissal so setup shows naturally until complete
-        setDismissed(false);
-        writeSetupDismissed(false);
-      }}
-      setupIncomplete={!canSend || !llm}
-      setupDoneCount={setupDoneCount}
-      setupTotalCount={setupTotalCount}
+      setupBanner={
+        !canSend || !llm ? (
+          <SetupBanner
+            doneCount={setupDoneCount}
+            totalCount={setupTotalCount}
+            onShowSetup={() => {
+              setForceSetup(true);
+              // Clear dismissal so setup shows naturally until complete
+              setDismissed(false);
+              writeSetupDismissed(false);
+            }}
+          />
+        ) : undefined
+      }
     />
   );
 }
