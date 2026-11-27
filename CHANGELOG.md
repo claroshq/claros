@@ -10,9 +10,11 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 - Dashboard, Sent Mail: a **Refresh** button re-reads the log without reloading the page. Messages are grouped by the day they were sent, with readable day headings (Today, Yesterday, the weekday within the last week, then the date), and the time column shows the time of day. Messages without a send time (failed, suppressed, still sending) are grouped under **Not sent**.
 - API: `GET /v1/sent-log?page=<n>` returns a numbered page (1-based, `limit` rows) with `page`, `page_size` and `total` (the count for the same filters). Without `page` the cursor response (`after`, `next_cursor`) is unchanged. Same on Postgres and D1; no migration.
+- API: `GET /v1/sent-log/:id` returns `preview_html`, the body in the email template as the recipient's client showed it (brand, eyebrow, preheader, footer, links tagged by `link_tracking`), and `preheader`, the step's inbox preview line. The template and brand are their current versions and the unsubscribe link is a placeholder. Same on Postgres and D1; no migration.
 
 ### Changed
 
+- Dashboard, Sent Mail message page: the mail comes first and is shown as received, in the email template, at its full height (it showed the bare body before, unlike the Approvals preview), with the subject, recipient, send time and preview line above it. Plain text and HTML source are tabs next to it. Details (recipient, person, flow and step, template or AI draft, created and sent times), the delivery timeline and the AI's reasoning move to a side column.
 - Dashboard, Sent Mail: numbered pages (Previous, page numbers, Next, and "1-50 of 312 messages") replace **Load more**. The page is in the URL (`/sent?page=3`), so going back from a message returns to the same page; changing a filter starts at page 1.
 
 ### Fixed

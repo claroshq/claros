@@ -1,8 +1,11 @@
 /**
  * GET /v1/sent-log: numbered pages (?page) next to the cursor (?after).
+ * GET /v1/sent-log/:id: the mail as received (preview_html).
  * Requires local Postgres (DATABASE_URL).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
+import { tenants, lifecycleMessages } from "@claros/db/schema";
 import { openDb, newProduct, app, newMessage, dropProduct, type TestDb, type TestProduct } from "./support/product.js";
 
 let pool: { end(): Promise<void> };
@@ -52,5 +55,34 @@ describe("GET /v1/sent-log", () => {
     expect(first.total).toBeUndefined();
     expect(first.next_cursor).not.toBeNull();
     expect(first.page).toBeUndefined();
+  });
+});
+
+describe("GET /v1/sent-log/:id", () => {
+  it("returns preview_html: the body in the email template with links tagged as sent", async () => {
+    const q = await newProduct(db, "sent-log-detail");
+    try {
+      await db
+        .update(tenants)
+        .set({ settings: { postal_address: "1 Test St", link_tracking: { domains: ["example.com"], params: { utm_source: "claros" }, click_id: true } } })
+        .where(eq(tenants.id, q.tenantId));
+      const { messageId } = await newMessage(db, q.tenantId, { status: "sent" });
+      await db
+        .update(lifecycleMessages)
+        .set({ bodyHtml: '<p>Hi <a href="https://example.com/start">start</a></p>' })
+        .where(eq(lifecycleMessages.id, messageId));
+
+      const a = await app(db);
+      const res = await a.inject({ method: "GET", url: `/v1/sent-log/${messageId}`, headers: { cookie: q.memberCookie } });
+      expect(res.statusCode).toBe(200);
+      const msg = (res.json() as { message: { body_html: string; preview_html: string | null; preheader: string | null } }).message;
+      expect(msg.body_html).toBe('<p>Hi <a href="https://example.com/start">start</a></p>');
+      expect(msg.preview_html).toMatch(/^<!DOCTYPE html>/);
+      expect(msg.preview_html).toContain("1 Test St");
+      expect(msg.preview_html).toContain(`https://example.com/start?utm_source=claros&amp;clr_cid=${messageId}`);
+      expect(msg.preheader).toBeNull();
+    } finally {
+      await dropProduct(db, q.tenantId);
+    }
   });
 });

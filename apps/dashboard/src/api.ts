@@ -1994,6 +1994,10 @@ export interface SentLogDetailResponse {
     feedback: string | null;
     subject: string | null;
     body_html: string | null;
+    /** The body in the email template, as the recipient's client showed it. */
+    preview_html: string | null;
+    /** The inbox preview line the step set, if any. */
+    preheader: string | null;
     body_text: string | null;
     brain_reasoning: string | null;
     brain_action_type: string | null;
