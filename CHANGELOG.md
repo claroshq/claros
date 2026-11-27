@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-11-27
+
+### Upgrade
+
+No migrations and no API change: the release only changes the dashboard. Upgrade as usual; a rollback to 0.13.1 is safe.
+
 ### Changed
 
 - Dashboard: the sidebar footer is a user menu. It opens upward with Settings, Documentation (claros.org, new tab), the theme (light, system, dark) and Log out; Settings moves there from the nav. Keyboard: arrows, Home, End, Enter, Escape.
@@ -436,7 +442,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.13.2...HEAD
+[0.13.2]: https://github.com/claroshq/claros/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/claroshq/claros/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/claroshq/claros/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/claroshq/claros/compare/v0.11.0...v0.12.0
