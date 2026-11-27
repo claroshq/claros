@@ -8,6 +8,8 @@ import {
   highlightedProduct,
   nextFocusIndex,
   productMonogram,
+  productHue,
+  PRODUCT_HUES,
   switcherProducts,
   type EntryInput,
 } from "../src/product-entry.js";
@@ -166,5 +168,19 @@ describe("switcherProducts", () => {
     expect(switcherProducts(products, "BILL").map((p) => p.slug)).toEqual(["acme-billing"]);
     expect(switcherProducts(products, "mail.acme").map((p) => p.slug)).toEqual(["acme-billing"]);
     expect(switcherProducts(products, " zet ").map((p) => p.slug)).toEqual(["zeta"]);
+  });
+});
+
+describe("productHue", () => {
+  it("is stable per id and always a listed hue", () => {
+    expect(productHue("abc")).toBe(productHue("abc"));
+    for (const id of ["a", "b", "tenant-1", "0f8e2c", ""]) {
+      expect(PRODUCT_HUES).toContain(productHue(id));
+    }
+  });
+
+  it("spreads ids across hues", () => {
+    const hues = new Set(Array.from({ length: 50 }, (_, i) => productHue(`id-${i}`)));
+    expect(hues.size).toBeGreaterThan(3);
   });
 });

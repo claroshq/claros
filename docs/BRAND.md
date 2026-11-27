@@ -104,6 +104,7 @@ Rules:
 | `--danger` / `-soft` | oklch(0.52 0.18 27) / oklch(0.935 0.025 27) | oklch(0.72 0.15 27) / oklch(0.31 0.05 27) | broken |
 | `--danger-fill` | oklch(0.52 0.18 27) | oklch(0.55 0.17 27) | destructive button fill |
 | `--chart-positive` / `--chart-negative` | oklch(0.72 0.08 185) / oklch(0.74 0.09 27) | oklch(0.8 0.07 185) / oklch(0.8 0.08 27) | direction-split chart bars: pastel step between the semantic `-soft` surfaces and the full tones |
+| `--product-dot-l` / `--product-dot-c` | 0.62 / 0.13 | 0.74 / 0.12 | product identity dot in the sidebar switcher: `oklch(l c hue)`, hue from a fixed set (225, 255, 285, 315, 345, 140, 110) picked per product id, clear of the semantic and coral hues so it never reads as a status |
 | `--skeleton` | oklch(0.935 0.004 264) | oklch(0.30 0.012 264) | loading placeholders |
 | `--selected` | oklch(0.93 0.012 255) | oklch(0.335 0.028 250) | selected state: active nav, selected rows. Neutral slate-blue, quieter than `--accent-soft` |
 | `--ring` | = `--accent` | = `--accent` | focus rings |

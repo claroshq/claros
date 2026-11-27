@@ -27,7 +27,7 @@ What the dashboard opens on depends on how many **active** (not archived) produc
 | Two or more | A full-screen product picker opens first. |
 | None | Instance admins get the picker, with "New product" and the archived products. Everyone else opens their current product, read-only. |
 
-The picker shows one card per active product: its brand logo (Settings, Branding; the two-letter monogram when there is none or it does not load), name, slug, public host and your role. The sidebar switcher uses the same logos. The product you chose last is highlighted and focused. Arrow keys move between cards, Enter opens one, and `1` to `9` open the matching product directly. Archived products sit in a collapsed "Archived" group and open read-only. Instance admins can create a product from the picker; it opens once created.
+The picker shows one card per active product: its brand logo (Settings, Branding; the two-letter monogram when there is none or it does not load), name, slug, public host and your role. The sidebar switcher is a one-line select: a color dot per product (stable across renames) and the product name. The product you chose last is highlighted and focused. Arrow keys move between cards, Enter opens one, and `1` to `9` open the matching product directly. Archived products sit in a collapsed "Archived" group and open read-only. Instance admins can create a product from the picker; it opens once created.
 
 The picker shows once per browser tab: reloading or navigating inside the app keeps the product you chose. Signing out and back in, or opening a new tab, shows it again.
 
