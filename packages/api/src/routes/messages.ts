@@ -271,8 +271,8 @@ export default function messagesRoutes() {
     if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
     const row = await storeFor(db).apiMessages.getMessage({ tenantId, messageId });
     if (!row) return c.json({ error: "Message not found." }, 404);
-    const previews = await buildPreviews(db, tenantId, [row]);
-    return c.json({ message: serializeMessageRow(row, previews.get(row.id) ?? null) });
+    const previews = await renderMessagePreviews(db, tenantId, [row]);
+    return c.json({ message: serializeMessageRow(row, previews.get(row.id)?.html ?? null) });
   });
 
   router.post("/:id/approve", "member", allowAdminKey("messages"), async (c) => {
