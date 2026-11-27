@@ -132,15 +132,17 @@ for (const factory of testBackends()) {
         { id: ids[2], tenantId: t, endpointId: ep, event: "message.sent", payload: {}, nextAttemptAt: later, createdAt: NOW },
       ]);
       const at = new Date(NOW.getTime() + 1000);
+      // The claim is global: a high limit so due rows other tests left in a
+      // shared database cannot take the slots of this tenant's rows.
       const [x, y] = await Promise.all([
-        b.store.workerWebhooks.claimDueDeliveries({ now: at, limit: 10, leaseMs: 60_000 }),
-        b.store.workerWebhooks.claimDueDeliveries({ now: at, limit: 10, leaseMs: 60_000 }),
+        b.store.workerWebhooks.claimDueDeliveries({ now: at, limit: 1000, leaseMs: 60_000 }),
+        b.store.workerWebhooks.claimDueDeliveries({ now: at, limit: 1000, leaseMs: 60_000 }),
       ]);
       const mine = [...x, ...y].filter((r) => r.tenantId === t);
       expect(mine.map((r) => r.id).sort()).toEqual([ids[0], ids[1]].sort());
       expect(mine[0]).toMatchObject({ attempts: 1, tenantSlug: expect.stringMatching(/^t-/), endpoint: { id: ep, kind: "webhook", secret: "enc", config: { sink: "statsraven" } } });
       // Leased: not claimable again until the lease ends.
-      expect((await b.store.workerWebhooks.claimDueDeliveries({ now: at, limit: 10, leaseMs: 60_000 })).filter((r) => r.tenantId === t)).toEqual([]);
+      expect((await b.store.workerWebhooks.claimDueDeliveries({ now: at, limit: 1000, leaseMs: 60_000 })).filter((r) => r.tenantId === t)).toEqual([]);
       await b.store.workerWebhooks.markDelivered({ id: ids[0]!, now: at });
       await b.store.workerWebhooks.markAttemptFailed({ id: ids[1]!, error: "HTTP 500", nextAttemptAt: null, now: at });
       const rows = await b.db.select().from(b.schema.webhookOutbox).where(eq(b.schema.webhookOutbox.tenantId, t));
