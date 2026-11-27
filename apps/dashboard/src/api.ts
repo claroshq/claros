@@ -1940,6 +1940,10 @@ export interface SentLogMessage {
 export interface SentLogPage {
   messages: SentLogMessage[];
   next_cursor: string | null;
+  /** Set when the list was requested by page number. */
+  page?: number;
+  page_size?: number;
+  total?: number;
 }
 
 export interface SentLogFilters {
@@ -1951,21 +1955,20 @@ export interface SentLogFilters {
   feedback?: string;
 }
 
-/** GET /v1/sent-log - cursor-paginated sent-mail log. */
+/** GET /v1/sent-log?page=<n> - one numbered page of the sent-mail log, with the total. */
 export async function fetchSentLog(
-  after: string | undefined,
+  page: number,
   filters: SentLogFilters,
 ): Promise<SentLogPage> {
   const params = new URLSearchParams();
-  if (after) params.set("after", after);
+  params.set("page", String(page));
   if (filters.status) params.set("status", filters.status);
   if (filters.flow_id) params.set("flow_id", filters.flow_id);
   if (filters.recipient) params.set("recipient", filters.recipient);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   if (filters.feedback) params.set("feedback", filters.feedback);
-  const qs = params.size > 0 ? `?${params.toString()}` : "";
-  const res = await apiFetch(`/v1/sent-log${qs}`);
+  const res = await apiFetch(`/v1/sent-log?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`/v1/sent-log returned ${res.status}`);
   }

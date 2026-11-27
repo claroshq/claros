@@ -6,12 +6,17 @@
  * what did it look like." Density and scannability over decoration.
  *
  * Filters: status, flow, recipient search, feedback.
- * Pagination: cursor-based infinite scroll via "Load more".
+ * Rows are grouped by the local day they were sent (Today, Yesterday, ...).
+ * Pagination: numbered pages (?page=N in the URL, so going back from a
+ * message returns to the same page). Refresh re-reads the current page.
  */
-import { useState, useMemo, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { Search, Send, SearchX } from "lucide-react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { Search, Send, SearchX, RefreshCw } from "lucide-react";
 import { PageHeader } from "../components/page-header.js";
+import { Pagination } from "../components/pagination.js";
+import { groupByDay } from "../day-groups.js";
+import { cn } from "@/lib/utils";
 import { EmptyState } from "../components/empty-state.js";
 import { Badge, type BadgeVariant } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
@@ -26,7 +31,7 @@ import {
   TableRow,
   TableCell,
 } from "../components/ui/table.js";
-import { useSentLog } from "../sent-log.js";
+import { useSentLog, SENT_LOG_PAGE_SIZE } from "../sent-log.js";
 import { useFlows } from "../flows.js";
 import type { SentLogFilters } from "../api.js";
 
@@ -64,12 +69,10 @@ function feedbackVariant(feedback: string | null): BadgeVariant {
   }
 }
 
-function formatDate(iso: string | null): string {
+/** Time of day; the day itself is the group heading. */
+function formatTime(iso: string | null): string {
   if (!iso) return "-";
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
+  return new Date(iso).toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -91,6 +94,10 @@ function recipientLabel(msg: {
 
 export default function SentLogPage() {
   const navigate = useNavigate();
+  const topRef = useRef<HTMLDivElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawPage = parseInt(searchParams.get("page") ?? "", 10);
+  const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -113,12 +120,58 @@ export default function SentLogPage() {
     [statusFilter, flowFilter, debouncedSearch, feedbackFilter],
   );
 
-  const list = useSentLog(filters);
+  function setPage(next: number) {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next <= 1) p.delete("page");
+        else p.set("page", String(next));
+        return p;
+      },
+      { replace: true },
+    );
+  }
+
+  // A filter change starts over at page 1. Skips the first run, so a
+  // ?page=N deep link (or going back from a message) keeps its page.
+  const filtersKey = JSON.stringify(filters);
+  const seenFilters = useRef(filtersKey);
+  useEffect(() => {
+    if (seenFilters.current === filtersKey) return;
+    seenFilters.current = filtersKey;
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey]);
+
+  const list = useSentLog(page, filters);
   const { data: flowsData } = useFlows();
   const flows = flowsData?.flows ?? [];
 
-  const allMessages = list.data?.pages.flatMap((p) => p.messages) ?? [];
-  const hasFilters = statusFilter || flowFilter || debouncedSearch || feedbackFilter;
+  const allMessages = list.data?.messages ?? [];
+  const total = list.data?.total ?? 0;
+  const pageSize = list.data?.page_size ?? SENT_LOG_PAGE_SIZE;
+  const hasFilters =
+    statusFilter || flowFilter || debouncedSearch || feedbackFilter;
+  const groups = groupByDay(allMessages, (m) => m.sent_at, "Not sent");
+
+  // A page past the end (rows deleted, or a stale link): go to the last page.
+  useEffect(() => {
+    if (
+      list.isSuccess &&
+      !list.isPlaceholderData &&
+      allMessages.length === 0 &&
+      total > 0
+    ) {
+      setPage(Math.ceil(total / pageSize));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    list.isSuccess,
+    list.isPlaceholderData,
+    allMessages.length,
+    total,
+    pageSize,
+  ]);
 
   function clearFilters() {
     setSearchInput("");
@@ -129,17 +182,30 @@ export default function SentLogPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div ref={topRef} className="mx-auto max-w-6xl">
       <PageHeader
         eyebrow="Delivery"
         title="Sent Mail"
         subtitle="Every message that left the pipeline: who received it, when, and what happened after."
         actions={
-          <Link to="/sent/suppressions">
-            <Button variant="outline" size="sm">
-              Suppressions
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => list.refetch()}
+              disabled={list.isFetching}
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw className={cn(list.isFetching && "animate-spin")} />
+              Refresh
             </Button>
-          </Link>
+            <Link to="/sent/suppressions">
+              <Button variant="outline" size="sm">
+                Suppressions
+              </Button>
+            </Link>
+          </>
         }
       />
 
@@ -219,14 +285,14 @@ export default function SentLogPage() {
       )}
 
       {/* Empty states */}
-      {list.isSuccess && allMessages.length === 0 && !hasFilters && (
+      {list.isSuccess && total === 0 && !hasFilters && (
         <EmptyState
           icon={Send}
           title="No messages sent yet"
           description="Every message that leaves the pipeline lands here: who received it, when, and what happened after. Messages appear once they clear the approval queue."
         />
       )}
-      {list.isSuccess && allMessages.length === 0 && hasFilters && (
+      {list.isSuccess && total === 0 && hasFilters && (
         <EmptyState
           icon={SearchX}
           title="No messages match"
@@ -243,7 +309,12 @@ export default function SentLogPage() {
       {/* Table */}
       {list.isSuccess && allMessages.length > 0 && (
         <>
-          <Table>
+          <Table
+            className={cn(
+              "transition-opacity duration-(--dur-fast)",
+              list.isPlaceholderData && "opacity-60",
+            )}
+          >
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Recipient</TableHead>
@@ -255,77 +326,96 @@ export default function SentLogPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allMessages.map((msg) => (
-                <TableRow
-                  key={msg.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/sent/${msg.id}`)}
-                >
-                  <TableCell className="max-w-[220px]">
-                    {msg.contact.name ? (
-                      <>
-                        <span className="block truncate font-medium text-foreground">
-                          {msg.contact.name}
-                        </span>
-                        <span className="block truncate font-mono text-[12px] text-muted-foreground">
-                          {msg.recipient_address ?? msg.contact.email ?? ""}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="block truncate font-mono text-[13px]">
-                        {recipientLabel(msg)}
+              {groups.map((group) => (
+                <React.Fragment key={group.key}>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6} className="bg-sunken/60 py-2">
+                      <span className="text-[13px] font-semibold text-foreground">
+                        {group.label}
                       </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-[250px] truncate">
-                    {msg.subject ?? "(no subject)"}
-                  </TableCell>
-                  <TableCell className="max-w-[150px] truncate">
-                    {msg.flow_name ? (
-                      <Link
-                        to={`/flows/${msg.flow_id}/edit`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-accent-text underline-offset-4 hover:underline"
-                      >
-                        {msg.flow_name}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(msg.status)}>{msg.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {msg.feedback ? (
-                      <Badge variant={feedbackVariant(msg.feedback)}>
-                        {msg.feedback}
-                      </Badge>
-                    ) : (
-                      <span className="text-subtle-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[13px] text-muted-foreground">
-                    {formatDate(msg.sent_at)}
-                  </TableCell>
-                </TableRow>
+                      {group.detail && (
+                        <span className="ml-2 text-[13px] text-muted-foreground">
+                          {group.detail}
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                  {group.rows.map((msg) => (
+                    <TableRow
+                      key={msg.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/sent/${msg.id}`)}
+                    >
+                      <TableCell className="max-w-[220px]">
+                        {msg.contact.name ? (
+                          <>
+                            <span className="block truncate font-medium text-foreground">
+                              {msg.contact.name}
+                            </span>
+                            <span className="block truncate font-mono text-[12px] text-muted-foreground">
+                              {msg.recipient_address ?? msg.contact.email ?? ""}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="block truncate font-mono text-[13px]">
+                            {recipientLabel(msg)}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-[250px] truncate">
+                        {msg.subject ?? "(no subject)"}
+                      </TableCell>
+                      <TableCell className="max-w-[150px] truncate">
+                        {msg.flow_name ? (
+                          <Link
+                            to={`/flows/${msg.flow_id}/edit`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-accent-text underline-offset-4 hover:underline"
+                          >
+                            {msg.flow_name}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(msg.status)}>
+                          {msg.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {msg.feedback ? (
+                          <Badge variant={feedbackVariant(msg.feedback)}>
+                            {msg.feedback}
+                          </Badge>
+                        ) : (
+                          <span className="text-subtle-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-mono text-[13px] text-muted-foreground">
+                        {formatTime(msg.sent_at)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </React.Fragment>
               ))}
             </TableBody>
           </Table>
 
-          {/* Load more */}
-          {list.hasNextPage && (
-            <div className="mt-4 flex justify-center">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => list.fetchNextPage()}
-                disabled={list.isFetchingNextPage}
-              >
-                {list.isFetchingNextPage ? "Loading..." : "Load more"}
-              </Button>
-            </div>
-          )}
+          <Pagination
+            className="mt-4"
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={(p) => {
+              setPage(p);
+              // The shell scrolls <main>, not the window.
+              const scroller = topRef.current?.closest("main");
+              if (scroller) scroller.scrollTo({ top: 0 });
+              else window.scrollTo({ top: 0 });
+            }}
+            noun="messages"
+          />
         </>
       )}
     </div>

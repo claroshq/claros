@@ -14,6 +14,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { D1Db } from "./db.js";
 import type {
   ApiSentLogQueries,
+  SentLogFilter,
   SentLogRow,
   SentLogDetailRow,
   SentLogEventRow,
@@ -44,42 +45,47 @@ function withDates<T>(row: Record<string, unknown>, cols: string[]): T {
   return out as T;
 }
 
+/** WHERE conditions of the sent-log list (and its count). */
+function sentLogConditions(tenantId: string, filter: SentLogFilter, withCursor: boolean): SQL[] {
+  const conditions: SQL[] = [sql`m.tenant_id = ${tenantId}`];
+
+  if (filter.status !== null) {
+    conditions.push(sql`m.status = ${filter.status}`);
+  } else {
+    conditions.push(sql`m.status IN ('sending', 'sent', 'failed', 'suppressed')`);
+  }
+  if (filter.flowId !== null) {
+    conditions.push(sql`m.flow_id = ${filter.flowId.toLowerCase()}`);
+  }
+  if (filter.recipient !== null) {
+    const pattern = `%${filter.recipient}%`;
+    conditions.push(sql`(
+      m.recipient_address LIKE ${pattern} ESCAPE '\\'
+      OR c.email LIKE ${pattern} ESCAPE '\\'
+      OR c.name LIKE ${pattern} ESCAPE '\\'
+    )`);
+  }
+  if (filter.from !== null) conditions.push(sql`m.sent_at >= ${tsMs(filter.from)}`);
+  if (filter.to !== null) conditions.push(sql`m.sent_at <= ${tsMs(filter.to)}`);
+  if (filter.feedback !== null) {
+    if (filter.feedback === "opened") {
+      conditions.push(sql`m.feedback IN ('opened', 'clicked')`);
+    } else {
+      conditions.push(sql`m.feedback = ${filter.feedback}`);
+    }
+  }
+  if (withCursor && filter.before !== null) {
+    conditions.push(
+      sql`(m.sent_at, m.id) < (${tsMs(filter.before.sentAt)}, ${filter.before.id.toLowerCase()})`,
+    );
+  }
+  return conditions;
+}
+
 export function d1ApiSentLog(db: D1Db): ApiSentLogQueries {
   return {
-    async listSentMessages({ tenantId, filter, limit }) {
-      const conditions: SQL[] = [sql`m.tenant_id = ${tenantId}`];
-
-      if (filter.status !== null) {
-        conditions.push(sql`m.status = ${filter.status}`);
-      } else {
-        conditions.push(sql`m.status IN ('sending', 'sent', 'failed', 'suppressed')`);
-      }
-      if (filter.flowId !== null) {
-        conditions.push(sql`m.flow_id = ${filter.flowId.toLowerCase()}`);
-      }
-      if (filter.recipient !== null) {
-        const pattern = `%${filter.recipient}%`;
-        conditions.push(sql`(
-          m.recipient_address LIKE ${pattern} ESCAPE '\\'
-          OR c.email LIKE ${pattern} ESCAPE '\\'
-          OR c.name LIKE ${pattern} ESCAPE '\\'
-        )`);
-      }
-      if (filter.from !== null) conditions.push(sql`m.sent_at >= ${tsMs(filter.from)}`);
-      if (filter.to !== null) conditions.push(sql`m.sent_at <= ${tsMs(filter.to)}`);
-      if (filter.feedback !== null) {
-        if (filter.feedback === "opened") {
-          conditions.push(sql`m.feedback IN ('opened', 'clicked')`);
-        } else {
-          conditions.push(sql`m.feedback = ${filter.feedback}`);
-        }
-      }
-      if (filter.before !== null) {
-        conditions.push(
-          sql`(m.sent_at, m.id) < (${tsMs(filter.before.sentAt)}, ${filter.before.id.toLowerCase()})`,
-        );
-      }
-
+    async listSentMessages({ tenantId, filter, limit, offset }) {
+      const conditions = sentLogConditions(tenantId, filter, true);
       const rows = await db.all<Record<string, unknown>>(sql`
         SELECT m.id, m.tenant_id, m.contact_id, m.flow_id,
                f.name AS flow_name,
@@ -95,8 +101,21 @@ export function d1ApiSentLog(db: D1Db): ApiSentLogQueries {
         WHERE ${sql.join(conditions, sql` AND `)}
         ORDER BY m.sent_at DESC NULLS LAST, m.id DESC
         LIMIT ${limit}
+        OFFSET ${Math.max(0, offset ?? 0)}
       `);
       return rows.map((r) => withDates<SentLogRow>(r, ["sent_at", "created_at"]));
+    },
+
+    async countSentMessages({ tenantId, filter }) {
+      const conditions = sentLogConditions(tenantId, filter, false);
+      const join = filter.recipient !== null
+        ? sql`LEFT JOIN contacts c ON c.id = m.contact_id AND c.tenant_id = m.tenant_id`
+        : sql``;
+      const rows = await db.all<{ n: number }>(sql`
+        SELECT count(*) AS n FROM lifecycle_messages m ${join}
+        WHERE ${sql.join(conditions, sql` AND `)}
+      `);
+      return Number(rows[0]?.n ?? 0);
     },
 
     async getSentMessage({ tenantId, messageId }) {

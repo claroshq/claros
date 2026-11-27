@@ -85,7 +85,15 @@ export type SentLogEventRow = {
 
 export interface ApiSentLogQueries {
   /** One page of the tenant's sent-mail log, newest sent_at first (NULLS LAST, then id DESC). */
-  listSentMessages(input: { tenantId: string; filter: SentLogFilter; limit: number }): Promise<SentLogRow[]>;
+  listSentMessages(input: {
+    tenantId: string;
+    filter: SentLogFilter;
+    limit: number;
+    /** Rows to skip (numbered pages); 0 or omitted for none. */
+    offset?: number;
+  }): Promise<SentLogRow[]>;
+  /** How many rows listSentMessages would return for the filter without a limit (the cursor is ignored). */
+  countSentMessages(input: { tenantId: string; filter: SentLogFilter }): Promise<number>;
   /** One message of the tenant with contact and flow names, or null. */
   getSentMessage(input: { tenantId: string; messageId: string }): Promise<SentLogDetailRow | null>;
   /** The message's events in chronological order (at most 100). */
