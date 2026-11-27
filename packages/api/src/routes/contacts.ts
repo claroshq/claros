@@ -59,6 +59,7 @@ import type { AppContext } from "../http/env.js";
 import { RoleRouter, allowAdminKey, validatedBody } from "../http/router.js";
 import { validateBody } from "../http/validate.js";
 import type { ContactNoteRow } from "@claros/store";
+import { excludeContact } from "../services/contacts.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -503,18 +504,10 @@ export default function contactsRoutes() {
    * Undo with DELETE /v1/suppressions/:email (cancelled messages stay).
    */
   router.post("/:id/exclude", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
     const ref = decodeURIComponent(c.req.param("id")!);
-    const contact = await storeFor(db).apiContacts.findContactByRef({ tenantId, ref });
-    if (!contact) return c.json({ error: "Contact not found." }, 404);
-    const out = await storeFor(db).apiContacts.excludeContact({
-      tenantId,
-      contactId: contact.id,
-      email: contact.email,
-      now: new Date(),
-    });
-    return c.json({ id: contact.id, external_id: contact.externalId, suppressed: out.suppressed, cancelled: out.cancelled });
+    const out = await excludeContact({ db: c.var.db, tenant: c.var.tenant! }, ref);
+    if (!out) return c.json({ error: "Contact not found." }, 404);
+    return c.json(out);
   });
 
   /**

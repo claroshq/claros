@@ -32,16 +32,29 @@ import { storeFor } from "@claros/store";
 import type { Db } from "../plugins/db.js";
 import { RoleRouter, allowAdminKey } from "../http/router.js";
 import {
-  QUEUE,
-  pendingApprovalBatch,
   wrapInShell,
   resolveMessageLayout,
   buildShellComplianceHtml,
   stepPresentation,
   type BrandSettings,
 } from "@claros/core";
-import { renderMarkdownToHtml, markdownToText } from "@claros/brain-oss";
-import { actorOf } from "../http/admin-auth.js";
+import {
+  ACTION_TYPE_RE,
+  BULK_MAX_IDS,
+  approveMessage,
+  approveMessages,
+  cancelMessage,
+  editInputError,
+  editMessage,
+  isUuid,
+  parseBulkIds,
+  regenerateMessage,
+  rejectMessage,
+  rejectMessages,
+  unapproveMessage,
+  type MessageActionResult,
+  type ServiceContext,
+} from "../services/messages.js";
 import { loadCustomLayout } from "./layouts.js";
 import type { AppContext } from "../http/env.js";
 
@@ -54,9 +67,6 @@ const DEFAULT_PAGE_SIZE = 50;
 
 /** Maximum page size for GET /v1/messages list. */
 const MAX_PAGE_SIZE = 200;
-
-/** Maximum ids accepted by the bulk approve/reject endpoints. */
-const BULK_MAX_IDS = 100;
 
 /** Row shape of the message list query (joined with contacts). */
 type MessageListRow = Record<string, unknown> & {
@@ -308,33 +318,11 @@ export default function messagesRoutes() {
    * Response: { approved: string[], skipped: string[] }
    */
   router.post("/bulk/approve", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-
     const ids = parseBulkIds((c.var.body as { ids?: unknown } | null | undefined)?.ids);
     if (!ids) {
       return c.json({ error: `Body must be { ids: string[] } with 1-${BULK_MAX_IDS} uuid values.` }, 400);
     }
-
-    const now = new Date();
-    const approved = await storeFor(db).apiMessages.approveMessages({ tenantId, ids, now, actor: actorOf(c.var.tenant!) });
-
-    const enqueue = c.var.enqueue;
-    if (enqueue) {
-      for (const id of approved) {
-        await enqueue(
-          QUEUE.DRAIN_MESSAGE,
-          { tenant_id: tenantId, message_id: id },
-          { singletonKey: id, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
-        ).catch(() => {});
-      }
-    }
-
-    const approvedSet = new Set(approved);
-    return c.json({
-      approved,
-      skipped: ids.filter((id) => !approvedSet.has(id)),
-    });
+    return c.json(await approveMessages(serviceContext(c), ids));
   });
 
   /**
@@ -347,21 +335,11 @@ export default function messagesRoutes() {
    * Response: { rejected: string[], skipped: string[] }
    */
   router.post("/bulk/reject", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-
     const ids = parseBulkIds((c.var.body as { ids?: unknown } | null | undefined)?.ids);
     if (!ids) {
       return c.json({ error: `Body must be { ids: string[] } with 1-${BULK_MAX_IDS} uuid values.` }, 400);
     }
-
-    const now = new Date();
-    const rejected = await storeFor(db).apiMessages.rejectMessages({ tenantId, ids, now, actor: actorOf(c.var.tenant!) });
-    const rejectedSet = new Set(rejected);
-    return c.json({
-      rejected,
-      skipped: ids.filter((id) => !rejectedSet.has(id)),
-    });
+    return c.json(await rejectMessages(serviceContext(c), ids));
   });
 
   /**
@@ -375,52 +353,10 @@ export default function messagesRoutes() {
    * If the message is in a different non-approved status: 409 Conflict.
    */
   router.post("/:id/approve", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-    const messageId = c.req.param("id")!;
-
-    // Validate UUID format to avoid Postgres errors
-    if (!isUuid(messageId)) {
-      return c.json({ error: "Message not found." }, 404);
-    }
-
-    const now = new Date();
-
-    // Attempt CAS: pending_approval -> approved
-    if (await storeFor(db).apiMessages.approveMessage({ tenantId, messageId, now, actor: actorOf(c.var.tenant!) })) {
-      // Transition succeeded - enqueue targeted drain for immediate send
-      const enqueue = c.var.enqueue;
-      if (enqueue) {
-        await enqueue(
-          QUEUE.DRAIN_MESSAGE,
-          { tenant_id: tenantId, message_id: messageId },
-          { singletonKey: messageId, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
-        ).catch(() => {});
-      }
-      return c.json({ message: "Message approved.", id: messageId, status: "approved" });
-    }
-
-    // CAS did not match. Determine why: not found, wrong tenant, or different status.
-    const currentStatus = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
-
-    if (currentStatus === null) {
-      return c.json({ error: "Message not found." }, 404);
-    }
-
-    // Idempotent: already approved is a no-op
-    if (currentStatus === "approved") {
-      return c.json({ message: "Message already approved.", id: messageId, status: "approved" });
-    }
-
-    // Any other status: conflict (e.g., already sent, rejected, etc.)
-    return c.json(
-      {
-        error: `Cannot approve message in status '${currentStatus}'.`,
-        id: messageId,
-        status: currentStatus,
-      },
-      409,
-    );
+    const r = await approveMessage(serviceContext(c), c.req.param("id")!);
+    if (r.kind === "ok") return c.json({ message: "Message approved.", id: r.id, status: "approved" });
+    if (r.kind === "already") return c.json({ message: "Message already approved.", id: r.id, status: "approved" });
+    return actionError(c, r, "approve");
   });
 
   /**
@@ -434,42 +370,10 @@ export default function messagesRoutes() {
    * If the message is in any other status: 409 Conflict.
    */
   router.post("/:id/reject", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-    const messageId = c.req.param("id")!;
-
-    if (!isUuid(messageId)) {
-      return c.json({ error: "Message not found." }, 404);
-    }
-
-    const now = new Date();
-
-    // Attempt CAS: pending_approval -> rejected
-    if (await storeFor(db).apiMessages.rejectMessage({ tenantId, messageId, now, actor: actorOf(c.var.tenant!) })) {
-      return c.json({ message: "Message rejected.", id: messageId, status: "rejected" });
-    }
-
-    // Determine cause of CAS failure
-    const currentStatus = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
-
-    if (currentStatus === null) {
-      return c.json({ error: "Message not found." }, 404);
-    }
-
-    // Idempotent: already rejected is a no-op
-    if (currentStatus === "rejected") {
-      return c.json({ message: "Message already rejected.", id: messageId, status: "rejected" });
-    }
-
-    // Any other status: conflict
-    return c.json(
-      {
-        error: `Cannot reject message in status '${currentStatus}'.`,
-        id: messageId,
-        status: currentStatus,
-      },
-      409,
-    );
+    const r = await rejectMessage(serviceContext(c), c.req.param("id")!);
+    if (r.kind === "ok") return c.json({ message: "Message rejected.", id: r.id, status: "rejected" });
+    if (r.kind === "already") return c.json({ message: "Message already rejected.", id: r.id, status: "rejected" });
+    return actionError(c, r, "reject");
   });
 
   /**
@@ -525,38 +429,17 @@ export default function messagesRoutes() {
    * message is no longer pending_approval.
    */
   router.patch("/:id", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
     const messageId = c.req.param("id")!;
     if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
     const body = (c.var.body ?? {}) as Record<string, unknown>;
-    const subject = body.subject;
-    const markdown = body.body_markdown;
-    if (subject === undefined && markdown === undefined) {
-      return c.json({ error: "Body must contain 'subject' and/or 'body_markdown'." }, 400);
-    }
-    if (subject !== undefined && (typeof subject !== "string" || subject.trim().length === 0 || subject.length > 300)) {
-      return c.json({ error: "'subject' must be a non-empty string of at most 300 characters." }, 400);
-    }
-    if (markdown !== undefined && (typeof markdown !== "string" || markdown.trim().length === 0 || markdown.length > 50_000)) {
-      return c.json({ error: "'body_markdown' must be a non-empty string of at most 50000 characters." }, 400);
-    }
-    const current = await storeFor(db).apiMessages.getMessageContent({ tenantId, messageId });
-    if (!current) return c.json({ error: "Message not found." }, 404);
-    if (current.status !== "pending_approval") {
-      return c.json({ error: `Cannot edit message in status '${current.status}'.`, id: messageId, status: current.status }, 409);
-    }
-    const edited = await storeFor(db).apiMessages.editMessage({
-      tenantId,
-      messageId,
-      subject: typeof subject === "string" ? subject.trim() : current.subject ?? "",
-      bodyHtml: typeof markdown === "string" ? renderMarkdownToHtml(markdown) : current.bodyHtml ?? "",
-      bodyText: typeof markdown === "string" ? markdownToText(markdown) : current.bodyText ?? "",
-      actor: actorOf(c.var.tenant!),
-      now: new Date(),
+    const invalid = editInputError(body.subject, body.body_markdown);
+    if (invalid) return c.json({ error: invalid }, 400);
+    const r = await editMessage(serviceContext(c), messageId, {
+      subject: body.subject as string | undefined,
+      markdown: body.body_markdown as string | undefined,
     });
-    if (!edited) return stale(c, db, tenantId, messageId, "edit");
-    return c.json({ message: "Message edited.", id: messageId, status: "pending_approval" });
+    if (r.kind === "ok") return c.json({ message: "Message edited.", id: messageId, status: "pending_approval" });
+    return actionError(c, r, "edit");
   });
 
   /**
@@ -567,25 +450,15 @@ export default function messagesRoutes() {
    * drafts that action and skips its decide step. 409 when stale.
    */
   router.post("/:id/regenerate", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
     const messageId = c.req.param("id")!;
     if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
     const raw = (c.var.body as { action_type?: unknown } | null | undefined)?.action_type;
-    if (raw !== undefined && raw !== null && (typeof raw !== "string" || !/^[a-z0-9_]{1,64}$/.test(raw))) {
+    if (raw !== undefined && raw !== null && (typeof raw !== "string" || !ACTION_TYPE_RE.test(raw))) {
       return c.json({ error: "'action_type' must match [a-z0-9_]{1,64}." }, 400);
     }
     const actionType = typeof raw === "string" ? raw : null;
-    const ok = await storeFor(db).apiMessages.regenerateMessage({ tenantId, messageId, actionType, now: new Date() });
-    if (!ok) return stale(c, db, tenantId, messageId, "regenerate");
-    const enqueue = c.var.enqueue;
-    if (enqueue) {
-      await enqueue(
-        QUEUE.PROCESS_MESSAGE,
-        { tenant_id: tenantId, message_id: messageId },
-        { singletonKey: messageId, retryLimit: 2, retryDelay: 10, expireInMinutes: 5 },
-      ).catch(() => {});
-    }
+    const r = await regenerateMessage(serviceContext(c), messageId, actionType);
+    if (r.kind !== "ok") return actionError(c, r, "regenerate");
     return c.json({ message: "Message sent back for a new draft.", id: messageId, status: "pending_generation", forced_action_type: actionType });
   });
 
@@ -596,16 +469,10 @@ export default function messagesRoutes() {
    * go out. Already cancelled answers 200; any other status 409.
    */
   router.post("/:id/cancel", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-    const messageId = c.req.param("id")!;
-    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
-    if (await storeFor(db).apiMessages.cancelMessage({ tenantId, messageId, actor: actorOf(c.var.tenant!), now: new Date() })) {
-      return c.json({ message: "Message cancelled.", id: messageId, status: "cancelled" });
-    }
-    const status = await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
-    if (status === "cancelled") return c.json({ message: "Message already cancelled.", id: messageId, status });
-    return stale(c, db, tenantId, messageId, "cancel", status);
+    const r = await cancelMessage(serviceContext(c), c.req.param("id")!);
+    if (r.kind === "ok") return c.json({ message: "Message cancelled.", id: r.id, status: "cancelled" });
+    if (r.kind === "already") return c.json({ message: "Message already cancelled.", id: r.id, status: r.status });
+    return actionError(c, r, "cancel");
   });
 
   /**
@@ -615,58 +482,21 @@ export default function messagesRoutes() {
    * 409 when it is no longer approved (for example already sending).
    */
   router.post("/:id/unapprove", "member", allowAdminKey("messages"), async (c) => {
-    const db: Db = c.var.db;
-    const tenantId = c.var.tenant!.id;
-    const messageId = c.req.param("id")!;
-    if (!isUuid(messageId)) return c.json({ error: "Message not found." }, 404);
-    const now = new Date();
-    const batch = pendingApprovalBatch(now);
-    const ok = await storeFor(db).apiMessages.unapproveMessage({
-      tenantId,
-      messageId,
-      now,
-      outbox: [{ event: "message.pending_approval", payload: { message_id: messageId }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt, batched: true }],
-    });
-    if (!ok) return stale(c, db, tenantId, messageId, "unapprove");
-    return c.json({ message: "Message back in review.", id: messageId, status: "pending_approval" });
+    const r = await unapproveMessage(serviceContext(c), c.req.param("id")!);
+    if (r.kind !== "ok") return actionError(c, r, "unapprove");
+    return c.json({ message: "Message back in review.", id: r.id, status: "pending_approval" });
   });
 
   return router.app;
 }
 
+function serviceContext(c: AppContext): ServiceContext {
+  return { db: c.var.db, tenant: c.var.tenant!, enqueue: c.var.enqueue };
+}
+
 /** 404 for an unknown message, else 409 naming its current status. */
-async function stale(
-  c: AppContext,
-  db: Db,
-  tenantId: string,
-  messageId: string,
-  action: string,
-  known?: string | null,
-): Promise<Response> {
-  const status = known !== undefined ? known : await storeFor(db).apiMessages.getMessageStatus({ tenantId, messageId });
-  if (status === null) return c.json({ error: "Message not found." }, 404);
-  return c.json({ error: `Cannot ${action} message in status '${status}'.`, id: messageId, status }, 409);
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isUuid(value: string): boolean {
-  return UUID_RE.test(value);
-}
-
-/** Validate a bulk-endpoint ids array: 1..BULK_MAX_IDS unique uuids. */
-function parseBulkIds(value: unknown): string[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > BULK_MAX_IDS) {
-    return null;
-  }
-  const ids: string[] = [];
-  for (const item of value) {
-    if (typeof item !== "string" || !isUuid(item)) return null;
-    ids.push(item);
-  }
-  return [...new Set(ids)];
+function actionError(c: AppContext, r: MessageActionResult, action: string): Response {
+  if (r.kind === "not_found") return c.json({ error: "Message not found." }, 404);
+  const status = r.kind === "ok" ? "" : r.status;
+  return c.json({ error: `Cannot ${action} message in status '${status}'.`, id: r.id, status }, 409);
 }

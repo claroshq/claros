@@ -67,6 +67,7 @@ import {
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 import { OpenAICompatibleProvider, draft } from "@claros/brain-oss";
 import type { Db } from "../plugins/db.js";
+import { setFlowStatus } from "../services/flows.js";
 
 const UUID_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -293,28 +294,12 @@ export default function flowsRoutes() {
    */
   for (const [action, target] of [["pause", "paused"], ["resume", "active"]] as const) {
     r.post(`/:ref/${action}`, "member", allowAdminKey("config"), async (c) => {
-      const db: Db = c.var.db;
-      const tenantId = c.var.tenant!.id;
       const ref = decodeURIComponent(c.req.param("ref")!);
-      const current = UUID_REF.test(ref)
-        ? await storeFor(db).apiFlows.findFlow({ tenantId, id: ref.toLowerCase() })
-        : ((await storeFor(db).apiFlows.listFlows({ tenantId, includeArchived: false })).find((f) => f.slug === ref) ?? null);
-      if (!current) return c.json({ error: "Flow not found." }, 404);
-      const from = current.status as FlowStatus;
-      if (from === target) return c.json(serializeFlow(current));
-      const transitionError = validateStatusTransition(from, target);
-      if (transitionError) return c.json({ error: transitionError }, 422);
-      if (target === "active" && (current.compileStatus !== "ready" || current.compiledPlan === null)) {
-        return c.json({ error: "Cannot activate a flow without a compiled plan." }, 422);
-      }
-      const updated = await storeFor(db).apiFlows.updateFlow({
-        tenantId,
-        id: current.id,
-        patch: { status: target, updatedAt: new Date() },
-        expectedStatus: from,
-      });
-      if (!updated) return c.json({ error: "Flow status was modified concurrently. Retry the request." }, 409);
-      return c.json(serializeFlow(updated));
+      const r = await setFlowStatus({ db: c.var.db, tenant: c.var.tenant! }, ref, target);
+      if (r.kind === "not_found") return c.json({ error: "Flow not found." }, 404);
+      if (r.kind === "invalid") return c.json({ error: r.error }, 422);
+      if (r.kind === "conflict") return c.json({ error: "Flow status was modified concurrently. Retry the request." }, 409);
+      return c.json(serializeFlow(r.flow));
     });
   }
 
