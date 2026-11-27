@@ -6,6 +6,12 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-27
+
+### Upgrade
+
+No migrations and no API change: the release only changes the dashboard. Upgrade as usual; a rollback to 0.12.0 is safe.
+
 ### Changed
 
 - Dashboard: a visual revision of the light theme and of type and spacing in both themes. The canvas is now a cool grey with white cards (a 1px edge and a hairline contact shadow) and a white sidebar split off by a 1px rule, so cards, chrome and content separate; before, cards sat at 1.02:1 against a near-white page. Text is darker and heavier (secondary text from 7.4:1 to 11.8:1 on cards, body weight 450) and the type scale moved up two steps (body and table cells 16px, page titles 40px, micro labels 12px); the content column widens from 1152px to 1440px. Cards are named in sentence case instead of uppercase micro labels; Home and Analytics metrics are 40px tabular numbers with sans captions. Spacing is wider (40px between sections) and controls are 40px tall. Tables, the approval queue and knowledge base groups sit in cards; the sidebar groups its items under Build, Monitor and Setup. Home's recent activity folds a run of knowledge base edits into one row with the titles listed. The brand lockup is unchanged. No API change, no migration.
@@ -414,7 +420,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/claroshq/claros/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/claroshq/claros/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/claroshq/claros/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/claroshq/claros/compare/v0.9.0...v0.10.0
