@@ -24,7 +24,7 @@ export function PageHeader({ eyebrow, title, subtitle, actions }: PageHeaderProp
     <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-[13px] font-semibold uppercase leading-4 tracking-[0.07em] text-accent-text">
+          <p className="text-[14px] font-semibold uppercase leading-4 tracking-[0.07em] text-accent-text">
             {eyebrow}
           </p>
         )}
@@ -32,7 +32,7 @@ export function PageHeader({ eyebrow, title, subtitle, actions }: PageHeaderProp
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-2.5 text-[17px] leading-[26px] text-muted-foreground">
+          <p className="mt-2.5 text-[18px] leading-[26px] text-muted-foreground">
             {subtitle}
           </p>
         )}

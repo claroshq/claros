@@ -15,13 +15,13 @@ export default function NotFoundPage() {
       <h1 className="mt-2 text-[22px] font-semibold tracking-[-0.015em] text-foreground">
         This page does not exist
       </h1>
-      <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-muted-foreground">
+      <p className="mt-2 max-w-sm text-[16px] leading-relaxed text-muted-foreground">
         The route you opened matches nothing in this workspace. It may have
         moved, or the link may be wrong.
       </p>
       <Link
         to="/"
-        className="mt-6 text-[16px] text-accent-text underline underline-offset-4"
+        className="mt-6 text-[17px] text-accent-text underline underline-offset-4"
       >
         Back to home
       </Link>

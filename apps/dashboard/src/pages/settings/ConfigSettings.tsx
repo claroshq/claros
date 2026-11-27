@@ -39,7 +39,7 @@ export default function ConfigSettings() {
       configured={null}
     >
       <div className="space-y-4">
-        <p className="text-[15px] leading-relaxed text-muted-foreground">
+        <p className="text-[16px] leading-relaxed text-muted-foreground">
           The export holds the current configuration{product ? ` of ${product}` : ""} without secrets (webhook, analytics
           and data source secrets stay on the server). Edit it, then preview and apply it:
         </p>

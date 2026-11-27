@@ -47,7 +47,7 @@ export function Section({
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">{title}</h2>
+            <h2 className="text-[22px] font-semibold leading-[30px] tracking-[-0.015em] text-foreground">{title}</h2>
             {configured !== null && (
               <Badge variant={configured ? "success" : "warning"}>
                 {configured ? "configured" : "not configured"}
@@ -55,7 +55,7 @@ export function Section({
             )}
           </div>
           {description && (
-            <p className="mt-1 max-w-prose text-[15px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 max-w-prose text-[16px] leading-relaxed text-muted-foreground">
               {description}
             </p>
           )}
@@ -88,7 +88,7 @@ export function Notice({
       className={cn("flex items-start gap-2.5 rounded-md border px-4 py-3", box, className)}
     >
       <Icon size={14} className={cn("mt-0.5 shrink-0", variant === "warning" ? "text-warning" : "text-muted-foreground")} />
-      <p className="text-[15px] leading-relaxed text-foreground">{children}</p>
+      <p className="text-[16px] leading-relaxed text-foreground">{children}</p>
     </div>
   );
 }
@@ -124,10 +124,10 @@ export function SummaryItem({
 }) {
   return (
     <div className={span ? "col-span-full" : undefined}>
-      <dt className="text-[14px] text-muted-foreground">{label}</dt>
+      <dt className="text-[15px] text-muted-foreground">{label}</dt>
       <dd
         className={cn(
-          "mt-0.5 text-[15px] text-foreground",
+          "mt-0.5 text-[16px] text-foreground",
           mono && "font-mono text-[14px]",
         )}
       >
@@ -144,7 +144,7 @@ export function FormError({ message }: { message: string | null }) {
       className="mt-4 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5"
       role="alert"
     >
-      <p className="text-[15px] text-foreground">{message}</p>
+      <p className="text-[16px] text-foreground">{message}</p>
     </div>
   );
 }

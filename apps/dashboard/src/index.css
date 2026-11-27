@@ -62,8 +62,8 @@
   /* Text. --fg-subtle is for placeholders and disabled labels only, never
    * for content the user must read. */
   --fg:        oklch(0.205 0.013 264);
-  --fg-muted:  oklch(0.38 0.024 264);
-  --fg-subtle: oklch(0.5 0.022 264);
+  --fg-muted:  oklch(0.34 0.024 264);
+  --fg-subtle: oklch(0.46 0.022 264);
 
   /* Brand accent: signal cyan (heritage logo hue). Used for links, focus,
    * active states, chips, and the mark. --accent-deep is the primary-button
@@ -254,9 +254,11 @@ body {
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 16px;
+  /* Instrument Sans at 400 reads thin on macOS at UI sizes; 450 keeps
+   * body copy solid without looking bold. Headings set their own weight. */
+  font-weight: 450;
   margin: 0;
   padding: 0;
-  -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
 

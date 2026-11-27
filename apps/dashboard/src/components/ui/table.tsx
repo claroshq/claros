@@ -31,7 +31,7 @@ const Table = React.forwardRef<
     <table
       ref={ref}
       className={cn(
-        "w-full text-[15px]",
+        "w-full text-[16px]",
         framed
           ? "[&_td]:first:pl-5 [&_td]:last:pr-5 [&_th]:first:pl-5 [&_th]:last:pr-5"
           : "[&_td]:first:pl-0 [&_td]:last:pr-0 [&_th]:first:pl-0 [&_th]:last:pr-0",

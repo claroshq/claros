@@ -94,8 +94,8 @@ Rules:
 | `--border` | oklch(0.87 0.011 260) | oklch(0.335 0.013 264) | decorative container edges |
 | `--border-strong` | oklch(0.6 0.016 262) | oklch(0.53 0.015 264) | control boundaries (3:1+) |
 | `--fg` | oklch(0.205 0.013 264) | oklch(0.945 0.005 264) | primary text |
-| `--fg-muted` | oklch(0.38 0.024 264) | oklch(0.715 0.014 264) | secondary text (9:1+ in light) |
-| `--fg-subtle` | oklch(0.5 0.022 264) | oklch(0.63 0.014 264) | small de-emphasized text, timestamps, placeholders, disabled labels |
+| `--fg-muted` | oklch(0.34 0.024 264) | oklch(0.715 0.014 264) | secondary text (11:1+ on cards in light) |
+| `--fg-subtle` | oklch(0.46 0.022 264) | oklch(0.63 0.014 264) | small de-emphasized text, timestamps, placeholders, disabled labels |
 | `--accent` | oklch(0.6 0.13 225) | oklch(0.78 0.12 220) | signal cyan: dots, chips, the mark |
 | `--accent-text` | oklch(0.45 0.12 240) | oklch(0.8 0.11 222) | links, active text (4.5:1+) |
 | `--accent-fg` | oklch(0.2 0.03 240) | oklch(0.2 0.04 240) | text on accent fills |
@@ -166,13 +166,13 @@ Fonts (self-hosted via fontsource, licences in `public/fonts-license.txt`):
 | Page title | 40 / 46 (32 / 38 below sm) | Bricolage 700 | -0.03em | one per page, top of content (PageHeader) |
 | Detail title | 34 / 40 | Bricolage 700 | -0.025em | title of a record page (person, flow, entry, sent mail) |
 | Metric | 40 / 46 (32 / 38 below sm) | Instrument 600, tabular | -0.03em | KPI numbers on Home and Analytics |
-| Section title | 20 / 28 | Instrument 600 | -0.015em | headings between card groups, large card titles |
-| Card title | 17 / 24 | Instrument 600 | -0.01em | the name of a card or panel, sentence case |
-| Emphasis | 16 / 24 | Instrument 600 | 0 | list item titles, empty-state headings |
-| Body | 15-16 / 24 | Instrument 400 | 0 | default UI text, descriptions, forms |
-| Small | 14-15 / 20-22 | Instrument 400/500 | 0 | nav (15), table cells (15), secondary lines (14) |
+| Section title | 22 / 30 | Instrument 600 | -0.015em | headings between card groups, large card titles |
+| Card title | 18 / 26 | Instrument 600 | -0.01em | the name of a card or panel, sentence case |
+| Emphasis | 17 / 26 | Instrument 600 | 0 | list item titles, empty-state headings |
+| Body | 16-17 / 24-26 | Instrument 450 | 0 | default UI text, descriptions, forms |
+| Small | 15-16 / 22-24 | Instrument 450/500 | 0 | nav (16), table cells (16), secondary lines (15) |
 | Micro | 12 / 16 | Instrument 600 | +0.06em, uppercase | table headers, nav group labels, eyebrows (13) |
-| Mono data | 13-14 / 20 | JetBrains Mono 400 | 0 | IDs, emails, event names, trigger types |
+| Mono data | 14-15 / 22 | JetBrains Mono 450 | 0 | IDs, emails, event names, trigger types |
 
 Rules:
 
@@ -190,23 +190,27 @@ Rules:
 5. Uppercase exists only in micro labels. Never uppercase a sentence.
 6. Mono is for machine data only. Prose that happens to sit next to data
    ("vs the week before", "last event 1h ago", relative times) is sans.
-7. The 2026-11 revision raised the whole scale one step (body 14 -> 15,
-   cells 13 -> 15, micro 11 -> 12, page title 28 -> 40): the old scale
-   read as small and pale on a 1440px screen. Do not drift back below it.
+7. The 2026-11 revision raised the whole scale two steps (body 14 -> 16,
+   cells 13 -> 16, micro 11 -> 12, page title 28 -> 40) and the base
+   weight to 450 without `-webkit-font-smoothing: antialiased`: the old
+   scale read as small, thin and pale on a 1512px laptop screen. Do not
+   drift back below it.
 
 ## 5. Spacing, radii, borders, elevation
 
 Spacing uses the Tailwind 4px scale with these conventions:
 
-- Page padding: 64px x 56px at lg (`lg:px-16 lg:py-14`), 32px x 40px at sm,
-  16px x 28px on phones. Content column: `max-w-6xl mx-auto`.
+- Page padding: 48px at lg (`lg:px-12 lg:py-12`), 64px x 56px at 2xl, 32px
+  x 40px at sm, 16px x 28px on phones. Content column: `max-w-[90rem]
+  mx-auto` (1440px): the earlier `max-w-6xl` (1152px) wrapped flow names
+  and squeezed tables on wide screens.
 - Page header to content: 40px (`mb-10`).
 - Between sections: 40px. Between cards in a column or grid: 20px. Between
   form fields: 16-20px. Inside cards: 24px (card header rows 16px x 24px).
 - Table cell padding: 14px vertical, 12px horizontal (`py-3.5 px-3`), first
   and last columns inset 20px in a framed table.
 - List rows inside cards: 52-60px.
-- Sidebar width 264px, lockup band 64px, nav items 40px.
+- Sidebar width 248px, lockup band 64px, nav items 40px.
 
 Radii: `--radius-sm` 6px (small chips, toggle segments), `--radius-md` 8px
 (buttons, inputs, banners), `--radius-lg` 12px (cards, panels). Status
@@ -272,7 +276,7 @@ both canvases (measured below).
 
 ## 9. Data density
 
-- Tables: 15px cells, ~52px row rhythm, 12px micro-label headers, 1px
+- Tables: 16px cells, ~52px row rhythm, 12px micro-label headers, 1px
   `--border` separators, `--bg-hover` row hover. A table standing on the
   canvas is framed (white card, edge, card shadow); a table inside a card
   passes `framed={false}`. No zebra striping (zebra adds a surface per row
@@ -406,7 +410,7 @@ Usage:
 
 ## 12. Layout
 
-- Shell: a single chrome column. The 264px sidebar (white in light,
+- Shell: a single chrome column. The 248px sidebar (white in light,
   recessed in dark, a 1px `--border` rule on its right edge) carries the brand lockup
   at the top, navigation in the middle, and a footer with the theme toggle,
   the signed-in user, and sign out. There is no horizontal header: it would
@@ -415,7 +419,7 @@ Usage:
   comparable product puts it. (This replaces an earlier version of this
   rule that prescribed a 64px header with a right-aligned cluster; the
   header did no work proportional to its cost.)
-- Nav items: 40px tall, 15px at weight 500, 18px icons in `--fg-subtle`,
+- Nav items: 40px tall, 16px at weight 500, 18px icons in `--fg-subtle`,
   8px radius. Active item: the `--selected` fill (neutral slate-blue tint,
   not cyan) with `--fg` text at weight 600 and the icon in accent-text.
   Groups after the first carry a 12px micro label (Build, Monitor, Setup)
@@ -464,19 +468,19 @@ modifier, and no blended backdrop.
 |---|---|---|---|
 | body text on bg | 16.10 | 4.5 | PASS |
 | body text on raised | 17.92 | 4.5 | PASS |
-| muted text on bg | 9.00 | 4.5 | PASS |
-| muted text on raised | 10.02 | 4.5 | PASS |
-| subtle text (placeholder) on bg | 5.39 | 3 | PASS |
-| subtle text on raised (timestamps on cards) | 6.00 | 4.5 | PASS |
+| muted text on bg | 10.57 | 4.5 | PASS |
+| muted text on raised | 11.77 | 4.5 | PASS |
+| subtle text (placeholder) on bg | 6.41 | 3 | PASS |
+| subtle text on raised (timestamps on cards) | 7.13 | 4.5 | PASS |
 | border vs bg (card edge on canvas, decorative) | 1.33 | n/a | decorative |
 | raised vs bg (card off canvas, decorative) | 1.11 | n/a | decorative |
-| subtle text on sunken (badge/login footer) | 5.19 | 3 | PASS |
-| subtle dot on sunken (badge dot) | 5.19 | 3 | PASS |
+| subtle text on sunken (badge/login footer) | 6.16 | 3 | PASS |
+| subtle dot on sunken (badge dot) | 6.16 | 3 | PASS |
 | accent text (link) on bg | 6.48 | 4.5 | PASS |
 | accent text on accent-soft | 5.91 | 4.5 | PASS |
 | fg on selected (active nav) | 14.82 | 4.5 | PASS |
-| muted text on accent-soft (queue item meta) | 8.22 | 4.5 | PASS |
-| muted text on sunken (chips) | 8.66 | 4.5 | PASS |
+| muted text on accent-soft (queue item meta) | 9.65 | 4.5 | PASS |
+| muted text on sunken (chips) | 10.17 | 4.5 | PASS |
 | fg on sunken (active nav) | 15.49 | 4.5 | PASS |
 | bg on fg (active nav block) | 16.10 | 4.5 | PASS |
 | warning text on raised (badge on card) | 6.97 | 4.5 | PASS |
@@ -496,9 +500,9 @@ modifier, and no blended backdrop.
 | body text on danger-soft (banner) | 14.68 | 4.5 | PASS |
 | body text on warning-soft (banner) | 14.79 | 4.5 | PASS |
 | body text on success-soft (grid cell) | 14.72 | 4.5 | PASS |
-| muted text on success-soft (grid cell meta) | 8.23 | 4.5 | PASS |
-| muted text on warning-soft (grid cell meta) | 8.27 | 4.5 | PASS |
-| muted text on danger-soft (grid cell meta) | 8.21 | 4.5 | PASS |
+| muted text on success-soft (grid cell meta) | 9.67 | 4.5 | PASS |
+| muted text on warning-soft (grid cell meta) | 9.71 | 4.5 | PASS |
+| muted text on danger-soft (grid cell meta) | 9.64 | 4.5 | PASS |
 | white text on danger-fill (button) | 6.59 | 4.5 | PASS |
 | border vs bg (input boundary) | 3.55 | 3 | PASS |
 | border vs raised (card edge, decorative, 1.4.11 n/a) | 1.48 | n/a | decorative |

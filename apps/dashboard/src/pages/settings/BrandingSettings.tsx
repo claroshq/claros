@@ -116,7 +116,7 @@ export default function BrandingSettings() {
       <form onSubmit={handleSave} className="space-y-4" noValidate>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1.5 block text-[15px] font-medium text-foreground">
+            <label className="mb-1.5 block text-[16px] font-medium text-foreground">
               Brand name
             </label>
             <Input
@@ -125,12 +125,12 @@ export default function BrandingSettings() {
               placeholder={tenant.name}
               disabled={patch.isPending}
             />
-            <p className="mt-1 text-[13px] text-muted-foreground">
+            <p className="mt-1 text-[14px] text-muted-foreground">
               Shown in the email header. Defaults to workspace name.
             </p>
           </div>
           <div>
-            <label className="mb-1.5 block text-[15px] font-medium text-foreground">
+            <label className="mb-1.5 block text-[16px] font-medium text-foreground">
               Accent color
             </label>
             <div className="flex items-center gap-2">
@@ -149,7 +149,7 @@ export default function BrandingSettings() {
                 />
               )}
             </div>
-            <p className="mt-1 text-[13px] text-muted-foreground">
+            <p className="mt-1 text-[14px] text-muted-foreground">
               Hex color for the top accent bar. Default: blue.
             </p>
           </div>
@@ -170,7 +170,7 @@ export default function BrandingSettings() {
         />
 
         <div>
-          <label className="mb-1.5 block text-[15px] font-medium text-foreground">
+          <label className="mb-1.5 block text-[16px] font-medium text-foreground">
             External logo URL
           </label>
           <Input
@@ -179,13 +179,13 @@ export default function BrandingSettings() {
             placeholder="https://example.com/logo.png"
             disabled={patch.isPending}
           />
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-[14px] text-muted-foreground">
             Optional: an absolute URL to a logo hosted elsewhere. When set, it replaces the uploaded logo in mail. If there is no logo, the brand name is shown as text.
           </p>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[15px] font-medium text-foreground">
+          <label className="mb-1.5 block text-[16px] font-medium text-foreground">
             Footer text
           </label>
           <Input
@@ -194,14 +194,14 @@ export default function BrandingSettings() {
             placeholder="You are receiving this because you have an account with us."
             disabled={patch.isPending}
           />
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-[14px] text-muted-foreground">
             Custom explanation in the email footer. Default: generic account message.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1.5 block text-[15px] font-medium text-foreground">
+            <label className="mb-1.5 block text-[16px] font-medium text-foreground">
               Reply-to address
             </label>
             <Input
@@ -210,15 +210,15 @@ export default function BrandingSettings() {
               placeholder="support@example.com"
               disabled={patch.isPending}
             />
-            <p className="mt-1 text-[13px] text-muted-foreground">
+            <p className="mt-1 text-[14px] text-muted-foreground">
               If set, replies go here instead of the from address.
             </p>
           </div>
         </div>
 
         <div>
-          <p className="mb-1.5 block text-[15px] font-medium text-foreground">Template</p>
-          <p className="text-[14px] text-muted-foreground">
+          <p className="mb-1.5 block text-[16px] font-medium text-foreground">Template</p>
+          <p className="text-[15px] text-muted-foreground">
             The layout around every email (narrow or wide, header, footer) is chosen and edited on the{" "}
             <Link to="/templates" className="text-accent-text underline">Templates</Link> page. These brand settings fill it in.
           </p>
@@ -230,17 +230,17 @@ export default function BrandingSettings() {
             {patch.isPending ? "Saving..." : "Save brand"}
           </Button>
           {saved && (
-            <span className="text-[14px] text-success" role="status">Saved.</span>
+            <span className="text-[15px] text-success" role="status">Saved.</span>
           )}
         </div>
       </form>
 
       {/* Test send */}
       <div className="mt-6 border-t border-border pt-5">
-        <h3 className="text-[15px] font-medium text-foreground">
+        <h3 className="text-[16px] font-medium text-foreground">
           Send a test email
         </h3>
-        <p className="mt-1 text-[14px] text-muted-foreground">
+        <p className="mt-1 text-[15px] text-muted-foreground">
           See what your emails look like in a real inbox. Requires transport and postal address to be configured.
         </p>
         <form onSubmit={handleTestSend} className="mt-3 flex items-end gap-3">
@@ -258,12 +258,12 @@ export default function BrandingSettings() {
           </Button>
         </form>
         {testSent && (
-          <p className="mt-2 text-[14px] text-success" role="status">
+          <p className="mt-2 text-[15px] text-success" role="status">
             Test email sent to {testTo}. Check your inbox.
           </p>
         )}
         {testError && (
-          <p className="mt-2 text-[14px] text-danger">{testError}</p>
+          <p className="mt-2 text-[15px] text-danger">{testError}</p>
         )}
       </div>
     </Section>
@@ -417,7 +417,7 @@ function LogoUpload({
 
   return (
     <div>
-      <label className="mb-1.5 block text-[15px] font-medium text-foreground">Logo</label>
+      <label className="mb-1.5 block text-[16px] font-medium text-foreground">Logo</label>
       <input
         ref={input}
         type="file"
@@ -463,15 +463,15 @@ function LogoUpload({
           )}
         </div>
       </div>
-      <p className="mt-1 text-[13px] text-muted-foreground">
+      <p className="mt-1 text-[14px] text-muted-foreground">
         PNG or JPEG, up to {formatBytes(LOGO_MAX_BYTES)}. Served by Claros, so mail does not depend on another site.
         {logo && ` Current: ${logo.content_type === "image/png" ? "PNG" : "JPEG"}, ${logo.width} x ${logo.height} px, ${formatBytes(logo.size)}.`}
         {logo && !logo.in_use && " Not used in mail: the external logo URL below replaces it."}
       </p>
       {logo && !pending && (
         <div className="mt-3">
-          <p className="text-[14px] font-medium text-foreground">Dark mode</p>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
+          <p className="text-[15px] font-medium text-foreground">Dark mode</p>
+          <p className="mt-0.5 text-[14px] text-muted-foreground">
             {darkLogo
               ? "Apple Mail and Outlook show the right-hand version when the reader uses dark mode. Gmail and other apps show the logo."
               : "No dark-mode version: every mail app shows the logo as it is, also in dark mode."}
@@ -609,16 +609,16 @@ function LogoReview({
 
   return (
     <div className="mt-3 rounded-md border border-border p-4">
-      <p className="text-[15px] font-medium text-foreground">
+      <p className="text-[16px] font-medium text-foreground">
         {background ? `This logo has a solid ${bgName} background` : "This logo is hard to read in dark mode"}
       </p>
-      <p className="mt-1 text-[14px] text-muted-foreground">
+      <p className="mt-1 text-[15px] text-muted-foreground">
         {background
           ? `In dark mode, mail apps darken the email but not images, so the background shows as a ${bgName} box around the logo. Claros can make it transparent and add a light version for dark mode. Check both previews.`
           : "Parts of it are dark, so they get lost on a dark background. Claros can add a light version for dark mode. Check both previews."}
       </p>
       <div className="mt-3">{logoUrl && <LogoSwatches src={logoUrl} darkSrc={darkUrl} alt="Logo to upload" height={height} />}</div>
-      <div className="mt-3 space-y-1.5 text-[14px] text-foreground">
+      <div className="mt-3 space-y-1.5 text-[15px] text-foreground">
         {background && (
           <>
             <label className="flex items-center gap-2">
@@ -634,7 +634,7 @@ function LogoReview({
               />
               Also clear the background color inside the logo, such as the holes in letters
             </label>
-            <p className="pl-6 text-[13px] text-muted-foreground">
+            <p className="pl-6 text-[14px] text-muted-foreground">
               Turn this off if the logo has white parts of its own that should stay.
             </p>
           </>
@@ -648,7 +648,7 @@ function LogoReview({
           />
           Add a dark-mode version with the dark parts turned light
         </label>
-        <p className="pl-6 text-[13px] text-muted-foreground">
+        <p className="pl-6 text-[14px] text-muted-foreground">
           {darkAvailable
             ? "Apple Mail and Outlook show it when the reader uses dark mode. Gmail and some other apps do not tell the email, so they show the logo."
             : "Needs a transparent background."}
@@ -667,7 +667,7 @@ function LogoReview({
           Cancel
         </Button>
         {prepared && (
-          <span className="text-[13px] text-muted-foreground">
+          <span className="text-[14px] text-muted-foreground">
             {prepared.logo.type === "image/png" ? "PNG" : "JPEG"}, {formatBytes(prepared.logo.size)}
             {useDark && prepared.dark && `; dark version ${formatBytes(prepared.dark.size)}`}
           </span>

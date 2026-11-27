@@ -147,7 +147,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
       role="alert"
     >
-      <p className="text-[16px] text-foreground">
+      <p className="text-[17px] text-foreground">
         Failed to load flows: {message}
       </p>
       <Button variant="outline" size="sm" onClick={onRetry}>
@@ -220,7 +220,7 @@ export default function FlowsPage() {
   const checklist = useSetupChecklist(count);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[90rem]">
       <FlowsHeader count={count} />
 
       {checklist.visible && (
@@ -243,7 +243,7 @@ export default function FlowsPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[16px] text-foreground">{actionError}</p>
+          <p className="text-[17px] text-foreground">{actionError}</p>
         </div>
       )}
 
@@ -268,7 +268,7 @@ export default function FlowsPage() {
               <TableHead>Compiled</TableHead>
               <TableHead>Trigger</TableHead>
               <TableHead>Approval</TableHead>
-              <TableHead className="text-right">Created</TableHead>
+              <TableHead className="hidden text-right 2xl:table-cell">Created</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -283,7 +283,7 @@ export default function FlowsPage() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/flows/${flow.id}/edit`)}
                 >
-                  <TableCell className="font-medium text-foreground">
+                  <TableCell className="min-w-[15rem] font-semibold text-foreground">
                     <Link
                       to={`/flows/${flow.id}/edit`}
                       className="text-foreground"
@@ -316,7 +316,7 @@ export default function FlowsPage() {
                   <TableCell className="text-muted-foreground">
                     {flow.approval_mode}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-[14px] text-muted-foreground">
+                  <TableCell className="hidden whitespace-nowrap text-right font-mono text-[14px] text-muted-foreground 2xl:table-cell">
                     {formatDate(flow.created_at)}
                   </TableCell>
                   <TableCell

@@ -27,7 +27,7 @@ const KINDS: ReadonlyArray<{ value: TopicKind; label: string; hint: string }> = 
   },
 ];
 
-const LABEL = "mb-1.5 block text-[15px] font-medium text-foreground";
+const LABEL = "mb-1.5 block text-[16px] font-medium text-foreground";
 
 export default function TopicsSettings() {
   const { data, isLoading, error } = useTopics();
@@ -81,12 +81,12 @@ function TopicRow({ topic }: { topic: Topic }) {
     <li className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[16px] font-medium text-foreground">{topic.name}</span>
+          <span className="text-[17px] font-medium text-foreground">{topic.name}</span>
           <span className="font-mono text-[14px] text-muted-foreground">{topic.slug}</span>
           {!topic.default_subscribed && <Badge variant="muted">opt-in</Badge>}
           {topic.mirror_only && <Badge variant="muted">mirror only</Badge>}
         </div>
-        {topic.description && <p className="mt-0.5 text-[14px] text-muted-foreground">{topic.description}</p>}
+        {topic.description && <p className="mt-0.5 text-[15px] text-muted-foreground">{topic.description}</p>}
         <FormError message={err} />
       </div>
       <div className="flex items-center gap-3">
@@ -100,7 +100,7 @@ function TopicRow({ topic }: { topic: Topic }) {
         >
           {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
         </Select>
-        <label className="flex items-center gap-2 text-[15px] text-foreground">
+        <label className="flex items-center gap-2 text-[16px] text-foreground">
           <input
             type="checkbox"
             checked={topic.default_subscribed}
@@ -111,7 +111,7 @@ function TopicRow({ topic }: { topic: Topic }) {
           Subscribed by default
         </label>
         <label
-          className="flex items-center gap-2 text-[15px] text-foreground"
+          className="flex items-center gap-2 text-[16px] text-foreground"
           title="The topic only mirrors consent (for example a newsletter tool's list). No flow may send on it."
         >
           <input
@@ -160,7 +160,7 @@ function NewTopicForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} noValidate className="mt-6 space-y-4 rounded-md border border-border p-4">
-      <h3 className="text-[17px] font-semibold text-foreground">New topic</h3>
+      <h3 className="text-[18px] font-semibold text-foreground">New topic</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label htmlFor="topic-name" className={LABEL}>Name</label>
@@ -184,7 +184,7 @@ function NewTopicForm({ onDone }: { onDone: () => void }) {
             className="font-mono"
             disabled={create.isPending}
           />
-          <p className="mt-1 text-[14px] text-muted-foreground">Used in identify traits: topics: {"{"} "{slug || "slug"}": true {"}"}. Fixed after creation.</p>
+          <p className="mt-1 text-[15px] text-muted-foreground">Used in identify traits: topics: {"{"} "{slug || "slug"}": true {"}"}. Fixed after creation.</p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -193,7 +193,7 @@ function NewTopicForm({ onDone }: { onDone: () => void }) {
           <Select id="topic-kind" value={kind} onChange={(e) => setKind(e.target.value as TopicKind)} disabled={create.isPending}>
             {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
           </Select>
-          <p className="mt-1 text-[14px] text-muted-foreground">{KINDS.find((k) => k.value === kind)?.hint}</p>
+          <p className="mt-1 text-[15px] text-muted-foreground">{KINDS.find((k) => k.value === kind)?.hint}</p>
         </div>
         <div>
           <label htmlFor="topic-description" className={LABEL}>
@@ -202,7 +202,7 @@ function NewTopicForm({ onDone }: { onDone: () => void }) {
           <Input id="topic-description" value={description} onChange={(e) => setDescription(e.target.value)} disabled={create.isPending} />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-[15px] text-foreground">
+      <label className="flex items-center gap-2 text-[16px] text-foreground">
         <input
           type="checkbox"
           checked={defaultSubscribed}

@@ -179,7 +179,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   <span
                     key={item.path}
                     aria-disabled="true"
-                    className="flex h-10 items-center gap-3 rounded-md px-3 text-[15px] text-subtle-foreground select-none"
+                    className="flex h-10 items-center gap-3 rounded-md px-3 text-[16px] text-subtle-foreground select-none"
                   >
                     <Icon size={18} strokeWidth={1.75} />
                     {item.label}
@@ -195,7 +195,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   to={item.path}
                   className={({ isActive }) =>
                     [
-                      "group flex h-10 items-center gap-3 rounded-md px-3 text-[15px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "group flex h-10 items-center gap-3 rounded-md px-3 text-[16px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "is-active bg-selected font-semibold text-foreground"
                         : "font-medium text-muted-foreground hover:bg-sunken hover:text-foreground",
@@ -211,7 +211,7 @@ export default function ShellPage({ me }: ShellPageProps) {
                   {badge && (
                     <span
                       aria-label={`${badge} waiting`}
-                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-[13px] font-semibold tabular-nums text-accent-text"
+                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-[14px] font-semibold tabular-nums text-accent-text"
                     >
                       {badge}
                     </span>
@@ -226,12 +226,12 @@ export default function ShellPage({ me }: ShellPageProps) {
       {/* Footer: appearance, identity, session */}
       <div className="shrink-0 space-y-3 border-t border-border px-3 pb-4 pt-4">
         <div className="flex items-center justify-between px-3">
-          <span className="text-[14px] font-medium text-muted-foreground">Theme</span>
+          <span className="text-[15px] font-medium text-muted-foreground">Theme</span>
           <ThemeToggle />
         </div>
         <div className="flex items-center gap-1 rounded-md pl-3">
           <span
-            className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground"
+            className="min-w-0 flex-1 truncate text-[16px] text-muted-foreground"
             title={me.user.email}
           >
             {me.user.email}
@@ -254,7 +254,7 @@ export default function ShellPage({ me }: ShellPageProps) {
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
       {/* Desktop sidebar: always visible at lg+ */}
-      <aside className="hidden w-[264px] shrink-0 flex-col border-r border-border bg-sidebar lg:flex">
+      <aside className="hidden w-[248px] shrink-0 flex-col border-r border-border bg-sidebar lg:flex">
         {sidebarContent}
       </aside>
 
@@ -289,7 +289,7 @@ export default function ShellPage({ me }: ShellPageProps) {
           <BrandLockup markSize={22} />
         </header>
 
-        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-7 sm:px-8 sm:py-10 lg:px-16 lg:py-14">
+        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-7 sm:px-8 sm:py-10 lg:px-12 lg:py-12 2xl:px-16 2xl:py-14">
           <Outlet />
         </main>
       </div>

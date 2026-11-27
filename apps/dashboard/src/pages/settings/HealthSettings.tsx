@@ -60,7 +60,7 @@ export default function HealthSettings() {
   if (products.data && !isAdmin) {
     return (
       <Section title="Health" configured={null}>
-        <p className="text-[15px] text-muted-foreground">Only instance admins see the health of this install.</p>
+        <p className="text-[16px] text-muted-foreground">Only instance admins see the health of this install.</p>
       </Section>
     );
   }
@@ -116,7 +116,7 @@ function OpenAlerts({ data }: { data: HealthResponse }) {
   const open = data.alerts.open;
   return (
     <>
-      <div className="mb-4 flex flex-wrap gap-6 text-[15px]">
+      <div className="mb-4 flex flex-wrap gap-6 text-[16px]">
         <p>
           <span className="font-mono text-[14px] text-foreground">{open.length}</span>{" "}
           <span className="text-muted-foreground">open alert{open.length === 1 ? "" : "s"}</span>
@@ -128,10 +128,10 @@ function OpenAlerts({ data }: { data: HealthResponse }) {
         {!data.settings.enabled && <Badge variant="warning">alert mail off</Badge>}
       </div>
       {open.length === 0 ? (
-        <p className="text-[15px] text-muted-foreground">No open alerts.</p>
+        <p className="text-[16px] text-muted-foreground">No open alerts.</p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-left text-[14px]">
+          <table className="w-full text-left text-[15px]">
             <thead>
               <tr className="bg-sunken text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 <th className="px-4 py-2">Alert</th>
@@ -146,7 +146,7 @@ function OpenAlerts({ data }: { data: HealthResponse }) {
                 <tr key={a.fingerprint} className="border-t border-border align-top">
                   <td className="px-4 py-2.5">
                     <p className="text-foreground">{a.message}</p>
-                    <p className="mt-0.5 font-mono text-[13px] text-muted-foreground">
+                    <p className="mt-0.5 font-mono text-[14px] text-muted-foreground">
                       {a.kind}
                       {productLabel(a.product) ? ` · ${productLabel(a.product)}` : ""}
                       {a.muted_until ? ` · muted until ${when(a.muted_until)}` : ""}
@@ -155,8 +155,8 @@ function OpenAlerts({ data }: { data: HealthResponse }) {
                   <td className="px-4 py-2.5">
                     <Badge variant={severityVariant(a.severity)}>{a.severity}</Badge>
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-[13px] text-muted-foreground">{a.count}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-[13px] text-muted-foreground">{when(a.last_at)}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[14px] text-muted-foreground">{a.count}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[14px] text-muted-foreground">{when(a.last_at)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -178,7 +178,7 @@ function OpenAlerts({ data }: { data: HealthResponse }) {
           </table>
         </div>
       )}
-      {error && <p className="mt-2 text-[14px] text-danger">{error}</p>}
+      {error && <p className="mt-2 text-[15px] text-danger">{error}</p>}
     </>
   );
 }
@@ -186,7 +186,7 @@ function OpenAlerts({ data }: { data: HealthResponse }) {
 function TickTable({ data }: { data: HealthResponse }) {
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-left text-[14px]">
+      <table className="w-full text-left text-[15px]">
         <thead>
           <tr className="bg-sunken text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             <th className="px-4 py-2">Job</th>
@@ -198,7 +198,7 @@ function TickTable({ data }: { data: HealthResponse }) {
         <tbody>
           {data.ticks.map((t) => (
             <tr key={t.name} className="border-t border-border">
-              <td className="px-4 py-2.5 font-mono text-[13px] text-foreground">{t.name}</td>
+              <td className="px-4 py-2.5 font-mono text-[14px] text-foreground">{t.name}</td>
               <td className="px-4 py-2.5">
                 {t.last_run_at === null ? (
                   <Badge variant="muted">not run yet</Badge>
@@ -208,10 +208,10 @@ function TickTable({ data }: { data: HealthResponse }) {
                   <Badge variant="success">on time</Badge>
                 )}
               </td>
-              <td className="px-4 py-2.5 text-right font-mono text-[13px] text-muted-foreground">
+              <td className="px-4 py-2.5 text-right font-mono text-[14px] text-muted-foreground">
                 {t.interval_minutes >= 60 ? `${t.interval_minutes / 60}h` : `${t.interval_minutes}m`}
               </td>
-              <td className="px-4 py-2.5 text-right font-mono text-[13px] text-muted-foreground">{when(t.last_run_at)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-[14px] text-muted-foreground">{when(t.last_run_at)}</td>
             </tr>
           ))}
         </tbody>
@@ -222,11 +222,11 @@ function TickTable({ data }: { data: HealthResponse }) {
 
 function EventTable({ data }: { data: HealthResponse }) {
   if (data.events.length === 0) {
-    return <p className="text-[15px] text-muted-foreground">No events in the past 7 days.</p>;
+    return <p className="text-[16px] text-muted-foreground">No events in the past 7 days.</p>;
   }
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-left text-[14px]">
+      <table className="w-full text-left text-[15px]">
         <thead>
           <tr className="bg-sunken text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             <th className="px-4 py-2">Event</th>
@@ -239,7 +239,7 @@ function EventTable({ data }: { data: HealthResponse }) {
             <tr key={e.id} className="border-t border-border align-top">
               <td className="px-4 py-2.5">
                 <p className="text-foreground">{e.message}</p>
-                <p className="mt-0.5 font-mono text-[13px] text-muted-foreground">
+                <p className="mt-0.5 font-mono text-[14px] text-muted-foreground">
                   {e.kind}
                   {productLabel(e.product) ? ` · ${productLabel(e.product)}` : ""}
                 </p>
@@ -247,7 +247,7 @@ function EventTable({ data }: { data: HealthResponse }) {
               <td className="px-4 py-2.5">
                 <Badge variant={severityVariant(e.severity)}>{e.severity}</Badge>
               </td>
-              <td className="px-4 py-2.5 text-right font-mono text-[13px] text-muted-foreground">{when(e.at)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-[14px] text-muted-foreground">{when(e.at)}</td>
             </tr>
           ))}
         </tbody>
@@ -302,12 +302,12 @@ function AlertSettings({ data }: { data: HealthResponse }) {
           save.mutate();
         }}
       >
-        <label className="flex items-center gap-2 text-[15px] text-foreground">
+        <label className="flex items-center gap-2 text-[16px] text-foreground">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Send alert mail and the daily digest
         </label>
         <div>
-          <label htmlFor="alerts-email" className="text-[14px] font-medium text-foreground">
+          <label htmlFor="alerts-email" className="text-[15px] font-medium text-foreground">
             Recipient
           </label>
           <Input
@@ -318,12 +318,12 @@ function AlertSettings({ data }: { data: HealthResponse }) {
             placeholder={data.settings.default_email ?? "ops@example.com"}
             className="mt-1 max-w-[22rem]"
           />
-          <p className="mt-1 text-[14px] text-muted-foreground">
+          <p className="mt-1 text-[15px] text-muted-foreground">
             Empty: the oldest instance admin{data.settings.default_email ? ` (${data.settings.default_email})` : ""}.
           </p>
         </div>
         <div>
-          <label htmlFor="alerts-via" className="text-[14px] font-medium text-foreground">
+          <label htmlFor="alerts-via" className="text-[15px] font-medium text-foreground">
             Send through
           </label>
           <div className="mt-1 max-w-[22rem]">
@@ -341,9 +341,9 @@ function AlertSettings({ data }: { data: HealthResponse }) {
           <Button size="sm" type="submit" disabled={save.isPending}>
             {save.isPending ? "Saving..." : "Save alert settings"}
           </Button>
-          {saved && <span className="text-[14px] text-muted-foreground">Saved.</span>}
+          {saved && <span className="text-[15px] text-muted-foreground">Saved.</span>}
         </div>
-        {error && <p className="text-[14px] text-danger">{error}</p>}
+        {error && <p className="text-[15px] text-danger">{error}</p>}
       </form>
     </Section>
   );

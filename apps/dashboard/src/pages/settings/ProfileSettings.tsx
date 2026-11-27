@@ -96,8 +96,8 @@ export default function ProfileSettings() {
       )}
 
       <div className="mt-6 border-t border-border pt-5">
-        <h3 className="text-[15px] font-medium text-foreground">Change login email</h3>
-        <p className="mt-1 text-[14px] text-muted-foreground">
+        <h3 className="text-[16px] font-medium text-foreground">Change login email</h3>
+        <p className="mt-1 text-[15px] text-muted-foreground">
           A verification link goes to the new address. Nothing switches until you confirm.
         </p>
         <div className="mt-3 flex items-center gap-2">
@@ -116,7 +116,7 @@ export default function ProfileSettings() {
             Request change
           </Button>
         </div>
-        {emailMsg && <p className="mt-2 text-[14px] text-muted-foreground" role="status">{emailMsg}</p>}
+        {emailMsg && <p className="mt-2 text-[15px] text-muted-foreground" role="status">{emailMsg}</p>}
       </div>
     </Section>
   );
