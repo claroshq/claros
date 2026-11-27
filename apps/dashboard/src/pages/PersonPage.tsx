@@ -15,7 +15,8 @@
  */
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Zap, RefreshCw, Mail, X, Pencil } from "lucide-react";
+import { Zap, RefreshCw, Mail, X, Pencil, History } from "lucide-react";
+import { EmptyState } from "../components/empty-state.js";
 import {
   useContact,
   useContactTimeline,
@@ -568,12 +569,12 @@ export default function PersonPage() {
           )}
 
           {!timeline.isLoading && !timeline.isError && items.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border-strong px-6 py-12 text-center">
-              <p className="text-body text-muted-foreground">
-                Nothing has happened to this person yet. Events, lifecycle
-                changes, and messages will appear here in order.
-              </p>
-            </div>
+            <EmptyState
+              compact
+              icon={History}
+              title="No activity yet"
+              description="Nothing has happened to this person yet. Events, lifecycle changes, and messages will appear here in order."
+            />
           )}
 
           {items.length > 0 && (

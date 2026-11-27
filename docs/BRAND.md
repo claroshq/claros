@@ -237,8 +237,10 @@ Borders and elevation:
   outline buttons) and is measured at 3:1+ against the canvas. This split
   exists because a single border token either fails WCAG 1.4.11 on inputs
   or makes every card edge shout.
-- Empty states use a dashed `--border-strong` frame: the dashed edge says
-  "content will live here" without inventing a new color.
+- Empty states are a regular card (`bg-card`, 1px `--border`,
+  `shadow-card`), left-aligned on the page's left edge like every other
+  screen: an accent-soft icon tile, then title, muted copy and the optional
+  action beside it. No dashed frames, no centered layout.
 
 ## 6. Iconography
 

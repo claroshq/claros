@@ -2,11 +2,11 @@
  * Empty state.
  *
  * The one sanctioned empty-state pattern (docs/BRAND.md section 5): a
- * dashed border-strong frame saying "content will live here", an icon in
- * an accent-soft container so the state has a face, a 16px medium title,
- * one or two lines of muted copy, and an optional primary action. List
- * pages render this instead of ad-hoc centered text so every empty screen
- * in the product reads as the same voice.
+ * regular card (bg-card, 1px border, shadow-card), left-aligned like every
+ * other screen. An icon in an accent-soft tile gives the state a face, then
+ * a medium title, one or two lines of muted copy and an optional action, all
+ * on the same left edge as the page header above it. List pages render this
+ * instead of ad-hoc text so every empty screen reads as the same voice.
  */
 import React from "react";
 
@@ -21,23 +21,25 @@ export function EmptyState({
   title: string;
   description: string;
   action?: React.ReactNode;
-  /** Tighter vertical rhythm for inline (non-page) empties. */
+  /** Tighter padding for inline (non-page) empties. */
   compact?: boolean;
 }) {
   return (
     <div
-      className={`flex flex-col items-center justify-center rounded-lg border border-dashed border-border-strong text-center ${
-        compact ? "px-6 py-12" : "px-6 py-24"
+      className={`flex items-start gap-4 rounded-lg border border-border bg-card shadow-card ${
+        compact ? "p-5" : "p-6"
       }`}
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
         <Icon size={20} strokeWidth={1.5} />
       </span>
-      <p className="mt-4 text-title font-medium text-foreground">{title}</p>
-      <p className="mt-2 max-w-md text-body leading-relaxed text-muted-foreground">
-        {description}
-      </p>
-      {action && <div className="mt-6">{action}</div>}
+      <div className="min-w-0 pt-0.5">
+        <p className="text-title font-medium text-foreground">{title}</p>
+        <p className="mt-1 max-w-2xl text-body leading-relaxed text-muted-foreground">
+          {description}
+        </p>
+        {action && <div className="mt-4">{action}</div>}
+      </div>
     </div>
   );
 }

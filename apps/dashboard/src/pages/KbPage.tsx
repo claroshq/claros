@@ -129,7 +129,7 @@ function KbEmptyState({ includeInactive }: { includeInactive: boolean }) {
       title={includeInactive ? "No entries at all" : "No active entries"}
       description="The knowledge base is the corpus the AI writes from: your product facts, your playbooks, your voice. Import what you already have (Markdown, CSV, JSONL) or write the first entry, so drafts have something true to say."
       action={
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link to="/kb/import">
             <Button size="sm">
               <Upload size={16} strokeWidth={1.5} />

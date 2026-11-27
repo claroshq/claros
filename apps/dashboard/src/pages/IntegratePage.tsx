@@ -187,7 +187,7 @@ function SnippetCard({ publishableKey, rawKey, onCreateKey, creating }: {
       </p>
 
       {publishableKey === null ? (
-        <div className="mt-4 rounded-md border border-dashed border-border-strong p-4">
+        <div className="mt-4 rounded-md bg-muted p-4">
           <p className="text-body text-muted-foreground">
             You need a publishable key first. Publishable keys are safe to
             embed in a web page: they can write events and nothing else.

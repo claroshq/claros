@@ -362,7 +362,7 @@ export default function AnalyticsPage() {
               <h2 className="text-heading font-semibold tracking-[-0.015em] text-foreground">
                 Opens and clicks per day
               </h2>
-              <div className="mt-4 rounded-md border border-dashed border-border-strong px-6 py-10 text-center">
+              <div className="mt-4 rounded-md bg-muted px-4 py-3">
                 <p className="text-body text-muted-foreground">
                   No delivery events recorded yet. Open and click trends appear
                   here once your transport provider reports engagement events
@@ -379,7 +379,7 @@ export default function AnalyticsPage() {
             </h2>
             <div className="mt-4 min-w-0 overflow-x-auto">
               {query.data.per_flow.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border-strong px-6 py-10 text-center">
+                <div className="rounded-md bg-muted px-4 py-3">
                   <p className="text-body text-muted-foreground">
                     No flow activity in this range. When flows send, their
                     performance breaks down here.
