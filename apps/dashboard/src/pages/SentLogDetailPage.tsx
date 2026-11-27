@@ -134,12 +134,12 @@ export default function SentLogDetailPage() {
       <div className="mx-auto max-w-4xl">
         <Link
           to={back.to}
-          className="mb-4 inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"
+          className="mb-4 inline-flex items-center gap-1.5 text-[15px] text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft size={14} /> {back.label}
         </Link>
         <div className="rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
-          <p className="text-[15px] text-foreground">
+          <p className="text-[16px] text-foreground">
             Message not found or failed to load.
           </p>
         </div>
@@ -154,7 +154,7 @@ export default function SentLogDetailPage() {
     <div className="mx-auto max-w-6xl">
       <Link
         to={back.to}
-        className="mb-4 inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex items-center gap-1.5 text-[15px] text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft size={14} /> {back.label}
       </Link>
@@ -172,7 +172,7 @@ export default function SentLogDetailPage() {
 
       {msg.status === "failed" && (
         <div className="mb-6 rounded-md border border-warning bg-warning-soft px-4 py-3" role="alert">
-          <p className="text-[14px] text-foreground">
+          <p className="text-[15px] text-foreground">
             This message failed.{" "}
             <Link to="/approvals" className="text-accent-text underline underline-offset-4">
               View Approvals
@@ -194,7 +194,7 @@ export default function SentLogDetailPage() {
 
         <aside className="space-y-6">
           <SideSection title="Details">
-            <dl className="space-y-2.5 text-[13px]">
+            <dl className="space-y-2.5 text-[14px]">
               <DetailRow label="To">
                 <span className="break-all font-mono">{msg.recipient_address ?? msg.contact.email ?? "-"}</span>
               </DetailRow>
@@ -231,7 +231,7 @@ export default function SentLogDetailPage() {
 
           <SideSection title="Timeline">
             {events.length === 0 ? (
-              <p className="text-[13px] text-subtle-foreground">
+              <p className="text-[14px] text-subtle-foreground">
                 {msg.feedback
                   ? `Highest engagement: ${msg.feedback} (no event-level timestamps available for this message).`
                   : "No delivery events recorded. The transport may not report events, or the message was sent before event logging was enabled."}
@@ -247,7 +247,7 @@ export default function SentLogDetailPage() {
 
           {msg.brain_reasoning && (
             <SideSection title="Why this mail">
-              <p className="max-h-60 overflow-auto whitespace-pre-wrap text-[13px] leading-[20px] text-muted-foreground">
+              <p className="max-h-60 overflow-auto whitespace-pre-wrap text-[14px] leading-[22px] text-muted-foreground">
                 {msg.brain_reasoning}
               </p>
             </SideSection>
@@ -264,8 +264,8 @@ export default function SentLogDetailPage() {
 
 function SideSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{title}</h2>
+    <section className="rounded-lg border border-border bg-card shadow-card p-5">
+      <h2 className="mb-3 text-[16px] font-semibold leading-6 text-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -310,17 +310,17 @@ function TimelineEvent({ event, last }: { event: MessageEvent; last: boolean }) 
         <Icon size={12} strokeWidth={1.5} />
       </span>
       <div className="min-w-0 flex-1 pt-0.5">
-        <p className="text-[14px] text-foreground">
+        <p className="text-[15px] text-foreground">
           <Badge variant={eventVariant(event.event_type)} className="mr-2">
             {label}
           </Badge>
           {event.metadata && typeof (event.metadata as Record<string, unknown>).url === "string" ? (
-            <span className="font-mono text-[12px] text-muted-foreground">
+            <span className="font-mono text-[13px] text-muted-foreground">
               {(event.metadata as Record<string, string>).url}
             </span>
           ) : null}
           {event.metadata && typeof (event.metadata as Record<string, unknown>).bounce_type === "string" ? (
-            <span className="font-mono text-[12px] text-muted-foreground">
+            <span className="font-mono text-[13px] text-muted-foreground">
               {(event.metadata as Record<string, string>).bounce_type}
               {typeof (event.metadata as Record<string, unknown>).bounce_message === "string"
                 ? ` - ${(event.metadata as Record<string, string>).bounce_message}`
@@ -328,7 +328,7 @@ function TimelineEvent({ event, last }: { event: MessageEvent; last: boolean }) 
             </span>
           ) : null}
         </p>
-        <p className="mt-1 font-mono text-[12px] text-subtle-foreground">
+        <p className="mt-1 font-mono text-[13px] text-subtle-foreground">
           {formatDateTime(event.occurred_at)}
         </p>
       </div>
@@ -360,7 +360,7 @@ function MailView({
 
   if (!previewHtml && !bodyText) {
     return (
-      <p className="rounded-lg border border-border bg-card p-5 text-[14px] text-muted-foreground">
+      <p className="rounded-lg border border-border bg-card shadow-card p-5 text-[15px] text-muted-foreground">
         No content available (the message may have been suppressed or skipped before content generation).
       </p>
     );
@@ -368,18 +368,18 @@ function MailView({
 
   return (
     <section className="min-w-0">
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
         <div className="border-b border-border px-5 py-4">
-          <p className="text-[16px] font-semibold text-foreground">{subject ?? "(no subject)"}</p>
-          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+          <p className="text-[17px] font-semibold text-foreground">{subject ?? "(no subject)"}</p>
+          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[14px] text-muted-foreground">
             <span className="min-w-0 truncate">
               To <span className="font-mono text-foreground">{to ?? "-"}</span>
             </span>
-            <span className="font-mono text-[12px]">{formatDateTime(date)}</span>
+            <span className="font-mono text-[13px]">{formatDateTime(date)}</span>
           </div>
           {preheader && (
-            <p className="mt-2 truncate text-[13px] text-subtle-foreground">
-              <span className="mr-1.5 text-[11px] font-semibold uppercase tracking-[0.06em]">Preview line</span>
+            <p className="mt-2 truncate text-[14px] text-subtle-foreground">
+              <span className="mr-1.5 text-[12px] font-semibold uppercase tracking-[0.06em]">Preview line</span>
               {preheader}
             </p>
           )}
@@ -404,17 +404,17 @@ function MailView({
 
         {tab === "preview" && previewHtml && <MailFrame html={previewHtml} />}
         {tab === "text" && bodyText && (
-          <pre className="max-h-[720px] overflow-auto whitespace-pre-wrap bg-card p-5 font-mono text-[13px] leading-[20px] text-foreground">
+          <pre className="max-h-[720px] overflow-auto whitespace-pre-wrap bg-card p-5 font-mono text-[14px] leading-[22px] text-foreground">
             {bodyText}
           </pre>
         )}
         {tab === "html" && previewHtml && (
-          <pre className="max-h-[720px] overflow-auto whitespace-pre-wrap break-all bg-card p-5 font-mono text-[12px] text-muted-foreground">
+          <pre className="max-h-[720px] overflow-auto whitespace-pre-wrap break-all bg-card p-5 font-mono text-[13px] text-muted-foreground">
             {previewHtml}
           </pre>
         )}
       </div>
-      <p className="mt-2 text-[12px] text-subtle-foreground">
+      <p className="mt-2 text-[13px] text-subtle-foreground">
         Rendered with the flow&apos;s current email template and brand. The unsubscribe link was signed for this
         recipient when it was sent and is a placeholder here.
       </p>
@@ -462,7 +462,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`px-3 pb-2 pt-1 text-[13px] font-medium transition-colors duration-150 ${
+      className={`px-3 pb-2 pt-1 text-[14px] font-medium transition-colors duration-150 ${
         active
           ? "border-b-2 border-foreground text-foreground"
           : "text-muted-foreground hover:text-foreground"

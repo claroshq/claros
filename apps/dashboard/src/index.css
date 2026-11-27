@@ -21,20 +21,25 @@
 :root {
   color-scheme: light;
 
-  /* Surfaces. Three-step lift in light: sidebar (--bg-sunken) is
-   * recessed, canvas (--bg) is the marketing-white, cards (--bg-raised)
-   * are pure white. Canvas is lightened to 0.992 to match the landing page's
-   * airy white (claros-web/src/styles/global.css) while the sidebar stays
-   * at 0.95 for a crisp split (ratio ~1.13). Cards stay white and rely on
-   * the 1px border plus the 0.8% lift off the canvas. */
-  --bg:        oklch(0.992 0.002 264);
-  --bg-raised: oklch(1 0 0);
-  --bg-sunken: oklch(0.95 0.003 264);
+  /* Surfaces. Light grounds the canvas and lifts the chrome: the canvas
+   * (--bg) is a cool grey, cards (--bg-raised) are white with a 1px edge
+   * and a hairline shadow, and the sidebar (--bg-sidebar) is white too,
+   * split from the canvas by a 1px rule. The earlier near-white canvas
+   * (0.992) left cards 1.02:1 off the page, so nothing separated.
+   * --bg-sunken stays the recessed step for chips, wells and disabled
+   * fills on white. */
+  --bg:         oklch(0.963 0.005 258);
+  --bg-raised:  oklch(1 0 0);
+  --bg-sunken:  oklch(0.95 0.005 258);
+  --bg-sidebar: var(--bg-raised);
+  /* Hover wash for rows and quiet controls on white: one notch under the
+   * card, so a row acknowledges the pointer on cards and sidebar alike. */
+  --bg-hover:   oklch(0.975 0.004 258);
 
   /* Borders. --border is decorative (container edges); --border-strong is
    * the boundary of interactive controls and passes WCAG 1.4.11 (3:1). */
-  --border:        oklch(0.846 0.007 264);
-  --border-strong: oklch(0.62 0.014 264);
+  --border:        oklch(0.87 0.011 260);
+  --border-strong: oklch(0.6 0.016 262);
 
   /* Loading placeholders. One step away from the canvas in the "content
    * will appear here" direction: greyer in light, lighter in dark. */
@@ -52,13 +57,13 @@
    * deliberately quieter than --accent-soft so it never reads as raw cyan.
    * Slightly darker than the new --bg-sunken (0.95) so the active nav
    * lifts off the sidebar. */
-  --selected: oklch(0.93 0.012 255);
+  --selected: oklch(0.935 0.016 252);
 
   /* Text. --fg-subtle is for placeholders and disabled labels only, never
    * for content the user must read. */
-  --fg:        oklch(0.24 0.014 264);
-  --fg-muted:  oklch(0.452 0.016 264);
-  --fg-subtle: oklch(0.53 0.015 264);
+  --fg:        oklch(0.205 0.013 264);
+  --fg-muted:  oklch(0.38 0.024 264);
+  --fg-subtle: oklch(0.5 0.022 264);
 
   /* Brand accent: signal cyan (heritage logo hue). Used for links, focus,
    * active states, chips, and the mark. --accent-deep is the primary-button
@@ -80,13 +85,13 @@
   /* Semantic. Text/dot forms; -soft surfaces are banners and tinted chips.
    * Success hue sits between green and the brand cyan (185) so semantic
    * color reads as part of the same family, not a foreign accent. */
-  --success:      oklch(0.5 0.11 185);
+  --success:      oklch(0.47 0.1 185);
   --success-soft: oklch(0.93 0.025 185);
   --warning:      oklch(0.47 0.1 72);
   --warning-soft: oklch(0.935 0.025 80);
-  --danger:       oklch(0.52 0.18 27);
+  --danger:       oklch(0.5 0.18 27);
   --danger-soft:  oklch(0.935 0.025 27);
-  --danger-fill:  oklch(0.52 0.18 27);
+  --danger-fill:  oklch(0.5 0.18 27);
 
   /* Direction-split chart bars: pastel step between the -soft surfaces and
    * the full semantic tones. Full --success/--danger read harsh at bar
@@ -102,8 +107,11 @@
 
   --ring: var(--accent);
 
-  /* Overlay elevation (dropdowns, dialogs). Surfaces themselves stay flat. */
-  --overlay-shadow: 0 8px 24px -8px oklch(0.24 0.014 264 / 0.18);
+  /* Elevation. Overlays (dropdowns, dialogs) float; cards get a hairline
+   * contact shadow in light only, so white on grey reads as a sheet
+   * rather than a box outline. Dark relies on the surface step. */
+  --overlay-shadow: 0 8px 24px -8px oklch(0.205 0.013 264 / 0.18);
+  --card-shadow: 0 1px 2px oklch(0.205 0.013 264 / 0.06);
 
   /* Motion */
   --dur-fast: 120ms;
@@ -132,7 +140,7 @@
 
   --fg:        oklch(0.945 0.005 264);
   --fg-muted:  oklch(0.715 0.014 264);
-  --fg-subtle: oklch(0.6 0.014 264);
+  --fg-subtle: oklch(0.63 0.014 264);
 
   --accent:         oklch(0.78 0.12 220);
   --accent-text:    oklch(0.8 0.11 222);
@@ -161,6 +169,9 @@
   --product-dot-c: 0.12;
 
   --overlay-shadow: 0 8px 24px -8px oklch(0 0 0 / 0.55);
+  --card-shadow: none;
+  --bg-hover: oklch(0.262 0.012 264);
+  --bg-sidebar: var(--bg-sunken);
 }
 
 /*
@@ -176,15 +187,16 @@
 @theme inline {
   --color-background:              var(--bg);
   --color-foreground:              var(--fg);
-  /* Cards lift off the canvas with a white fill plus a 1px border.
-   * Canvas is 0.985 (near-white), so white cards read as elevation, not
-   * as a grey slab. See BRAND.md section 2. */
+  /* Cards are white sheets on the grey canvas: white fill, 1px border and
+   * the hairline card shadow. See BRAND.md section 2. */
   --color-card:                    var(--bg-raised);
   --color-primary:                 var(--accent-deep);
   --color-primary-foreground:      var(--accent-deep-fg);
   --color-secondary:               var(--bg-raised);
   --color-secondary-foreground:    var(--fg);
   --color-sunken:                  var(--bg-sunken);
+  --color-sidebar:                 var(--bg-sidebar);
+  --color-hover:                   var(--bg-hover);
   --color-sunken-hover:            var(--sunken-hover);
   --color-skeleton:                var(--skeleton);
   --color-selected:                var(--selected);
@@ -221,6 +233,7 @@
   --radius-lg: 12px;
 
   --shadow-overlay: var(--overlay-shadow);
+  --shadow-card: var(--card-shadow);
 
   --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
   --font-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", system-ui, sans-serif;

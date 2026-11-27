@@ -101,14 +101,14 @@ function LlmSection() {
               <SummaryItem label="Endpoint" mono span>{llm.base_url}</SummaryItem>
             )}
           </SummaryList>
-          <p className="mt-4 text-[13px] text-muted-foreground">
+          <p className="mt-4 text-[14px] text-muted-foreground">
             Drafts and compiles run on this provider. The key is stored encrypted and never displayed.
             {llm.provider === "anthropic" && " Anthropic has no embeddings API; for semantic knowledge base search, set up Embeddings below."}
           </p>
         </>
       )}
       {saved && !formVisible && (
-        <p className="mt-3 text-[13px] text-success" role="status">
+        <p className="mt-3 text-[14px] text-success" role="status">
           Saved. The key was verified with the provider before storing.
         </p>
       )}
@@ -122,7 +122,7 @@ function LlmSection() {
         <form onSubmit={handleSubmit} noValidate className="mt-2 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="llm-provider" className="mb-1.5 block text-[14px] font-medium text-foreground">
+              <label htmlFor="llm-provider" className="mb-1.5 block text-[15px] font-medium text-foreground">
                 Provider
               </label>
               <Select
@@ -137,7 +137,7 @@ function LlmSection() {
               </Select>
             </div>
             <div>
-              <label htmlFor="llm-api-key" className="mb-1.5 block text-[14px] font-medium text-foreground">
+              <label htmlFor="llm-api-key" className="mb-1.5 block text-[15px] font-medium text-foreground">
                 API key{" "}
                 {defaults.keyOptional ? (
                   <span className="font-normal text-muted-foreground">(optional for a local install)</span>
@@ -151,13 +151,13 @@ function LlmSection() {
           {isCustom && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="llm-base-url" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                <label htmlFor="llm-base-url" className="mb-1.5 block text-[15px] font-medium text-foreground">
                   Base URL <span className="text-danger" aria-hidden="true">*</span>
                 </label>
                 <Input id="llm-base-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-endpoint.example.com/v1" disabled={put.isPending} required />
               </div>
               <div>
-                <label htmlFor="llm-model" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                <label htmlFor="llm-model" className="mb-1.5 block text-[15px] font-medium text-foreground">
                   Model <span className="text-danger" aria-hidden="true">*</span>
                 </label>
                 <Input id="llm-model" value={model} onChange={(e) => setModel(e.target.value)} disabled={put.isPending} required />
@@ -165,24 +165,24 @@ function LlmSection() {
             </div>
           )}
           {!isCustom && effectiveModel !== null && effectiveBaseUrl !== null && (
-            <p className="text-[14px] text-muted-foreground">
-              Claros will use <span className="font-mono text-[13px]">{effectiveModel}</span>
+            <p className="text-[15px] text-muted-foreground">
+              Claros will use <span className="font-mono text-[14px]">{effectiveModel}</span>
               {" via "}
-              <span className="font-mono text-[13px]">{effectiveBaseUrl}</span>.
+              <span className="font-mono text-[14px]">{effectiveBaseUrl}</span>.
             </p>
           )}
           {!isCustom && (
             <details className="rounded-md border border-border px-3.5 py-2.5">
-              <summary className="cursor-pointer text-[14px] font-medium text-foreground">
+              <summary className="cursor-pointer text-[15px] font-medium text-foreground">
                 Advanced
               </summary>
-              <p className="mt-2 text-[14px] text-muted-foreground">
+              <p className="mt-2 text-[15px] text-muted-foreground">
                 The defaults work for almost everyone. Only change these if you
                 know why.
               </p>
               <div className="mt-3 grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="llm-model-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                  <label htmlFor="llm-model-adv" className="mb-1.5 block text-[15px] font-medium text-foreground">
                     Model
                   </label>
                   <Input
@@ -194,7 +194,7 @@ function LlmSection() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="llm-base-url-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                  <label htmlFor="llm-base-url-adv" className="mb-1.5 block text-[15px] font-medium text-foreground">
                     Base URL
                   </label>
                   <Input

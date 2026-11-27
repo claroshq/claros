@@ -132,7 +132,7 @@ export default function EmbeddingsSettings() {
             {current.base_url && <SummaryItem label="Endpoint" mono span>{current.base_url}</SummaryItem>}
           </SummaryList>
           {!own && (
-            <p className="mt-4 text-[13px] text-muted-foreground">
+            <p className="mt-4 text-[14px] text-muted-foreground">
               Served by the LLM provider above with the same key. Set up a
               separate provider here to embed with a different one.
             </p>
@@ -148,14 +148,14 @@ export default function EmbeddingsSettings() {
         </Notice>
       )}
       {note && !formVisible && (
-        <p className="mt-3 text-[13px] text-success" role="status">{note}</p>
+        <p className="mt-3 text-[14px] text-success" role="status">{note}</p>
       )}
       {!formVisible && <FormError message={error} />}
       {formVisible && (
         <form onSubmit={handleSubmit} noValidate className="mt-2 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="emb-provider" className="mb-1.5 block text-[14px] font-medium text-foreground">
+              <label htmlFor="emb-provider" className="mb-1.5 block text-[15px] font-medium text-foreground">
                 Provider
               </label>
               <Select
@@ -170,7 +170,7 @@ export default function EmbeddingsSettings() {
               </Select>
             </div>
             <div>
-              <label htmlFor="emb-api-key" className="mb-1.5 block text-[14px] font-medium text-foreground">
+              <label htmlFor="emb-api-key" className="mb-1.5 block text-[15px] font-medium text-foreground">
                 API key{" "}
                 {defaults.keyOptional ? (
                   <span className="font-normal text-muted-foreground">(optional for a local server)</span>
@@ -184,13 +184,13 @@ export default function EmbeddingsSettings() {
           {isCustom ? (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="emb-base-url" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                <label htmlFor="emb-base-url" className="mb-1.5 block text-[15px] font-medium text-foreground">
                   Base URL <span className="text-danger" aria-hidden="true">*</span>
                 </label>
                 <Input id="emb-base-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-endpoint.example.com/v1" disabled={busy} required />
               </div>
               <div>
-                <label htmlFor="emb-model" className="mb-1.5 block text-[14px] font-medium text-foreground">
+                <label htmlFor="emb-model" className="mb-1.5 block text-[15px] font-medium text-foreground">
                   Model <span className="text-danger" aria-hidden="true">*</span>
                 </label>
                 <Input id="emb-model" value={model} onChange={(e) => setModel(e.target.value)} disabled={busy} required />
@@ -198,20 +198,20 @@ export default function EmbeddingsSettings() {
             </div>
           ) : (
             <details className="rounded-md border border-border px-3.5 py-2.5">
-              <summary className="cursor-pointer text-[14px] font-medium text-foreground">Advanced</summary>
+              <summary className="cursor-pointer text-[15px] font-medium text-foreground">Advanced</summary>
               <div className="mt-3 grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="emb-model-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">Model</label>
+                  <label htmlFor="emb-model-adv" className="mb-1.5 block text-[15px] font-medium text-foreground">Model</label>
                   <Input id="emb-model-adv" value={model} onChange={(e) => setModel(e.target.value)} placeholder={defaults.model ?? ""} disabled={busy} />
                 </div>
                 <div>
-                  <label htmlFor="emb-base-url-adv" className="mb-1.5 block text-[14px] font-medium text-foreground">Base URL</label>
+                  <label htmlFor="emb-base-url-adv" className="mb-1.5 block text-[15px] font-medium text-foreground">Base URL</label>
                   <Input id="emb-base-url-adv" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={defaults.baseUrl ?? ""} disabled={busy} />
                 </div>
               </div>
             </details>
           )}
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-[14px] text-muted-foreground">
             The model must return 1536-dimension vectors. Saving checks this
             with one embedding call. Changing the model re-embeds every entry.
           </p>

@@ -65,29 +65,35 @@ interface NavItem {
  *   3. Watching: audience, delivery and reporting.
  *   4. Setup: integration and settings, visited rarely after day one.
  * Before setup is complete, Home's setup checklist links to Integrate.
- * Groups render with a thin divider and no headings.
+ * The first group has no heading; the rest carry a micro label, which
+ * scans faster than bare dividers once the list passes a dozen items.
  */
-const NAV_GROUPS: NavItem[][] = [
-  [
+interface NavGroup {
+  heading: string | null;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  { heading: null, items: [
     { label: "Home", path: "/home", icon: Home, enabled: true },
     { label: "Approvals", path: "/approvals", icon: Inbox, enabled: true },
-  ],
-  [
+  ] },
+  { heading: "Build", items: [
     { label: "Flows", path: "/flows", icon: Workflow, enabled: true },
     { label: "Templates", path: "/templates", icon: LayoutTemplate, enabled: true },
     { label: "Knowledge Base", path: "/kb", icon: BookOpen, enabled: true },
-  ],
-  [
+  ] },
+  { heading: "Monitor", items: [
     { label: "People", path: "/people", icon: Users, enabled: true },
     { label: "Lifecycle", path: "/lifecycle", icon: Activity, enabled: true },
     { label: "Sent Mail", path: "/sent", icon: Send, enabled: true },
     { label: "Analytics", path: "/analytics", icon: BarChart3, enabled: true },
-  ],
-  [
+  ] },
+  { heading: "Setup", items: [
     { label: "Integrate", path: "/integrate", icon: Plug, enabled: true },
     { label: "Connect your AI", path: "/connect-ai", icon: Bot, enabled: true },
     { label: "Settings", path: "/settings", icon: Settings, enabled: true },
-  ],
+  ] },
 ];
 
 /**
@@ -144,7 +150,7 @@ export default function ShellPage({ me }: ShellPageProps) {
           type="button"
           onClick={closeSidebar}
           aria-label="Close menu"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-secondary hover:text-foreground lg:hidden"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-hover hover:text-foreground lg:hidden"
         >
           <X size={20} strokeWidth={1.5} />
         </button>
@@ -154,13 +160,18 @@ export default function ShellPage({ me }: ShellPageProps) {
       <ProductSwitcher currentProductId={me.user.tenantId} />
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {NAV_GROUPS.map((group, gi) => (
+      <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2">
+        {NAV_GROUPS.map((group) => (
           <div
-            key={group[0]!.path}
-            className={gi > 0 ? "mt-2 space-y-0.5 border-t border-border pt-2" : "space-y-0.5"}
+            key={group.items[0]!.path}
+            className={group.heading ? "mt-6 space-y-[3px]" : "space-y-[3px]"}
           >
-            {group.map((item) => {
+            {group.heading && (
+              <p className="mb-2 px-3 text-[12px] font-semibold uppercase leading-4 tracking-[0.06em] text-subtle-foreground">
+                {group.heading}
+              </p>
+            )}
+            {group.items.map((item) => {
               const Icon = item.icon;
 
               if (!item.enabled) {
@@ -168,9 +179,9 @@ export default function ShellPage({ me }: ShellPageProps) {
                   <span
                     key={item.path}
                     aria-disabled="true"
-                    className="flex items-center gap-3 rounded-md px-3 py-2 text-[14px] text-subtle-foreground select-none"
+                    className="flex h-10 items-center gap-3 rounded-md px-3 text-[15px] text-subtle-foreground select-none"
                   >
-                    <Icon size={16} strokeWidth={1.75} />
+                    <Icon size={18} strokeWidth={1.75} />
                     {item.label}
                   </span>
                 );
@@ -184,19 +195,23 @@ export default function ShellPage({ me }: ShellPageProps) {
                   to={item.path}
                   className={({ isActive }) =>
                     [
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-[14px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "group flex h-10 items-center gap-3 rounded-md px-3 text-[15px] transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
-                        ? "bg-selected font-semibold text-foreground"
+                        ? "is-active bg-selected font-semibold text-foreground"
                         : "font-medium text-muted-foreground hover:bg-sunken hover:text-foreground",
                     ].join(" ")
                   }
                 >
-                  <Icon size={16} strokeWidth={1.75} />
+                  <Icon
+                    size={18}
+                    strokeWidth={1.75}
+                    className="shrink-0 text-subtle-foreground group-hover:text-foreground group-[.is-active]:text-accent-text"
+                  />
                   {item.label}
                   {badge && (
                     <span
                       aria-label={`${badge} waiting`}
-                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-[12px] font-semibold tabular-nums text-accent-text"
+                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-soft px-1.5 text-[13px] font-semibold tabular-nums text-accent-text"
                     >
                       {badge}
                     </span>
@@ -209,16 +224,14 @@ export default function ShellPage({ me }: ShellPageProps) {
       </nav>
 
       {/* Footer: appearance, identity, session */}
-      <div className="shrink-0 border-t border-border px-3 py-3">
-        <div className="flex items-center justify-between px-1 pb-2">
-          <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Theme
-          </span>
+      <div className="shrink-0 space-y-3 border-t border-border px-3 pb-4 pt-4">
+        <div className="flex items-center justify-between px-3">
+          <span className="text-[14px] font-medium text-muted-foreground">Theme</span>
           <ThemeToggle />
         </div>
-        <div className="flex items-center gap-1 rounded-md px-1 py-1">
+        <div className="flex items-center gap-1 rounded-md pl-3">
           <span
-            className="min-w-0 flex-1 truncate text-[14px] text-muted-foreground"
+            className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground"
             title={me.user.email}
           >
             {me.user.email}
@@ -229,9 +242,9 @@ export default function ShellPage({ me }: ShellPageProps) {
             disabled={signOut.pending}
             title={signOut.pending ? "Signing out..." : "Sign out"}
             aria-label="Sign out"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-subtle-foreground"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-subtle-foreground"
           >
-            <LogOut size={16} strokeWidth={1.5} />
+            <LogOut size={17} strokeWidth={1.5} />
           </button>
         </div>
       </div>
@@ -241,7 +254,7 @@ export default function ShellPage({ me }: ShellPageProps) {
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
       {/* Desktop sidebar: always visible at lg+ */}
-      <aside className="hidden w-60 flex-col bg-sunken lg:flex">
+      <aside className="hidden w-[264px] shrink-0 flex-col border-r border-border bg-sidebar lg:flex">
         {sidebarContent}
       </aside>
 
@@ -255,7 +268,7 @@ export default function ShellPage({ me }: ShellPageProps) {
             aria-hidden="true"
           />
           {/* Sidebar panel */}
-          <aside className="relative flex w-72 max-w-[85vw] flex-col bg-sunken shadow-overlay">
+          <aside className="relative flex w-72 max-w-[85vw] flex-col bg-sidebar shadow-overlay">
             {sidebarContent}
           </aside>
         </div>
@@ -264,19 +277,19 @@ export default function ShellPage({ me }: ShellPageProps) {
       {/* Content column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Mobile top bar: visible below lg */}
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4 lg:hidden">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-sidebar px-4 lg:hidden">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open menu"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors duration-(--dur-fast) hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Menu size={20} strokeWidth={1.5} />
           </button>
           <BrandLockup markSize={22} />
         </header>
 
-        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-7 sm:px-8 sm:py-10 lg:px-16 lg:py-14">
           <Outlet />
         </main>
       </div>

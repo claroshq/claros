@@ -59,7 +59,7 @@ function TemplateCard({ t }: { t: LayoutSummary }) {
   const open = () => navigate(`/templates/${encodeURIComponent(t.ref)}`);
 
   return (
-    <li className="flex flex-col rounded-lg border border-border bg-card p-4">
+    <li className="flex flex-col rounded-lg border border-border bg-card shadow-card p-4">
       <button
         type="button"
         onClick={open}
@@ -69,14 +69,14 @@ function TemplateCard({ t }: { t: LayoutSummary }) {
         {t.preview_html ? <ScaledPreview html={t.preview_html} width={t.width} title={`${t.name} preview`} /> : <Skeleton className="h-[280px] w-full" />}
       </button>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <p className="mr-auto text-[15px] font-medium text-foreground">{t.name}</p>
+        <p className="mr-auto text-[16px] font-medium text-foreground">{t.name}</p>
         {t.in_use && <Badge variant="success">In use</Badge>}
         {(t.flow_count ?? 0) > 0 && <Badge variant="accent">{t.flow_count === 1 ? "1 flow" : `${t.flow_count} flows`}</Badge>}
         <Badge variant="neutral">{t.width === "wide" ? "Wide" : "Narrow"}</Badge>
         <Badge variant={t.kind === "custom" ? "accent" : "muted"}>{t.kind === "custom" ? "Custom" : "Built-in"}</Badge>
       </div>
-      {t.description && <p className="mt-2 text-[13px] leading-[20px] text-muted-foreground">{t.description}</p>}
-      {error && <p className="mt-2 text-[13px] text-danger" role="alert">{error}</p>}
+      {t.description && <p className="mt-2 text-[14px] leading-[22px] text-muted-foreground">{t.description}</p>}
+      {error && <p className="mt-2 text-[14px] text-danger" role="alert">{error}</p>}
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
         <Button size="sm" variant="outline" onClick={open}>
           <Sparkles strokeWidth={1.5} />
@@ -148,8 +148,8 @@ export function LayoutsPage() {
             role="tab"
             aria-selected={filter === f}
             onClick={() => setFilter(f)}
-            className={`h-8 rounded-sm px-3 text-[13px] font-medium transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              filter === f ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+            className={`h-8 rounded-sm px-3 text-[14px] font-medium transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              filter === f ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {f === "all" ? "All" : f === "narrow" ? "Narrow" : "Wide"}
@@ -170,7 +170,7 @@ export function LayoutsPage() {
       )}
 
       {q.isError && (
-        <div className="flex items-center justify-between gap-4 rounded-md border border-danger bg-danger-soft px-4 py-3 text-[14px] text-foreground" role="alert">
+        <div className="flex items-center justify-between gap-4 rounded-md border border-danger bg-danger-soft px-4 py-3 text-[15px] text-foreground" role="alert">
           <span>Could not load templates: {q.error.message}</span>
           <Button size="sm" variant="outline" onClick={() => void q.refetch()}>Try again</Button>
         </div>
@@ -186,7 +186,7 @@ export function LayoutsPage() {
         </ul>
       )}
 
-      <p className="mt-8 text-[13px] text-muted-foreground">
+      <p className="mt-8 text-[14px] text-muted-foreground">
         Templates use your <Link to="/settings/branding" className="text-accent-text underline">branding</Link> (logo, accent color, footer text). Every template keeps the unsubscribe link and postal address. A flow can use its own template: choose it in the flow&apos;s delivery settings.
       </p>
     </div>

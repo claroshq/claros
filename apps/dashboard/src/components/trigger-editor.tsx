@@ -43,14 +43,14 @@ const RECENCY_BUCKET_OPTIONS = [
   { value: "dormant", label: "Dormant (4x+ the rhythm quiet)" },
 ];
 
-const LABEL = "mb-1.5 block text-[14px] font-medium text-foreground";
-const HINT = "mt-1.5 text-[13px] text-muted-foreground";
+const LABEL = "mb-1.5 block text-[15px] font-medium text-foreground";
+const HINT = "mt-1.5 text-[14px] text-muted-foreground";
 
 function CheckList({ options, selected, onChange, disabled, idPrefix, label = (o) => o }: { options: readonly string[]; selected: string[]; onChange: (v: string[]) => void; disabled?: boolean; idPrefix: string; label?: (o: string) => string }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1.5">
       {options.map((o) => (
-        <label key={o} htmlFor={`${idPrefix}-${o}`} className="flex items-center gap-1.5 text-[14px] text-foreground">
+        <label key={o} htmlFor={`${idPrefix}-${o}`} className="flex items-center gap-1.5 text-[15px] text-foreground">
           <input
             id={`${idPrefix}-${o}`}
             type="checkbox"
@@ -59,7 +59,7 @@ function CheckList({ options, selected, onChange, disabled, idPrefix, label = (o
             onChange={(e) => onChange(e.target.checked ? [...selected, o] : selected.filter((x) => x !== o))}
             className="rounded border-input"
           />
-          <span className="font-mono text-[13px]">{label(o)}</span>
+          <span className="font-mono text-[14px]">{label(o)}</span>
         </label>
       ))}
     </div>
@@ -113,15 +113,15 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
                 onClick={() => onChange({ type: opt.value, config: defaultTriggerConfig(opt.value) })}
                 className={`rounded-lg border p-4 text-left transition-colors ${selected ? "border-accent bg-accent/5" : "border-border bg-card hover:border-border-strong"}`}
               >
-                <p className="text-[15px] font-semibold text-foreground">{opt.label}</p>
-                <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">{opt.description}</p>
+                <p className="text-[16px] font-semibold text-foreground">{opt.label}</p>
+                <p className="mt-1 text-[15px] leading-relaxed text-muted-foreground">{opt.description}</p>
               </button>
             );
           })}
         </div>
       )}
 
-      <div className="space-y-4 rounded-lg border border-border bg-card p-5">
+      <div className="space-y-4 rounded-lg border border-border bg-card shadow-card p-5">
         {draft.type === "lifecycle_transition" && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -154,7 +154,7 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
 
         {draft.type === "segment" && (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-4 text-[14px] text-foreground">
+            <div className="flex flex-wrap gap-4 text-[15px] text-foreground">
               <label className="flex items-center gap-1.5">
                 <input type="radio" name="seg-mode" checked={segmentByState(c)} disabled={disabled} onChange={() => onChange({ type: "segment", config: { lifecycle_states: [], where: c.where } })} />
                 By lifecycle state
@@ -199,7 +199,7 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
         )}
 
         {draft.type === "manual" && (
-          <p className="text-[14px] text-muted-foreground">
+          <p className="text-[15px] text-muted-foreground">
             Contacts enter when you enroll them through the API. The conditions below filter who may enter.
           </p>
         )}

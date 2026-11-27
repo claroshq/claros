@@ -28,18 +28,18 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:bg-sunken disabled:text-muted-foreground",
         outline:
-          "border border-input bg-transparent text-foreground hover:bg-secondary disabled:text-muted-foreground disabled:border-border",
+          "border border-input bg-transparent text-foreground hover:bg-hover disabled:text-muted-foreground disabled:border-border",
         secondary:
           "bg-secondary text-secondary-foreground border border-border hover:bg-sunken disabled:text-muted-foreground",
         ghost:
-          "text-muted-foreground hover:bg-secondary hover:text-foreground disabled:text-subtle-foreground",
+          "text-muted-foreground hover:bg-hover hover:text-foreground disabled:text-subtle-foreground",
         link: "text-accent-text underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline",
       },
       size: {
-        default: "h-9 px-4",
-        sm: "h-8 px-3 text-[14px]",
-        lg: "h-10 px-6",
-        icon: "h-9 w-9",
+        default: "h-10 px-4",
+        sm: "h-9 px-3.5 text-[14px]",
+        lg: "h-11 px-6",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: {

@@ -23,7 +23,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       role="radiogroup"
       aria-label="Theme"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5",
+        "inline-flex items-center gap-0.5 rounded-md bg-sunken p-0.5",
         className,
       )}
     >
@@ -36,9 +36,9 @@ export function ThemeToggle({ className }: { className?: string }) {
           title={label}
           onClick={() => setMode(m)}
           className={cn(
-            "flex h-6 w-6 items-center justify-center rounded-sm transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex h-7 w-8 items-center justify-center rounded-sm transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             mode === m
-              ? "bg-secondary text-foreground"
+              ? "bg-card text-foreground shadow-card ring-1 ring-border"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

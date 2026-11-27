@@ -2,18 +2,17 @@
  * Table components.
  *
  * Density rules:
- *   - Header cells are micro labels: 11px, 600, uppercase, tracked out,
+ *   - Header cells are micro labels: 12px, 600, uppercase, tracked out,
  *     muted. They are furniture, not content, so they step back.
- *   - Body cells are 13px with a 12px row rhythm (py-3, h-12 total).
- *   - Row separators are 1px --border; there is no outer frame, no zebra
- *     striping. Zebra stripes add a surface per row and still fail to
- *     outperform whitespace plus hover.
- *   - The first and last columns sit flush with the table's edges (no
- *     outer padding): the header labels and the data share one vertical
- *     axis with the content around the table, which is what makes a
- *     borderless table read as composed rather than floating.
- *   - Row hover raises the row to --bg-raised. Selected state is not used
- *     yet; when it arrives it uses --accent-soft.
+ *   - Body cells are 15px on a ~52px row rhythm (py-3.5).
+ *   - Row separators are 1px --border; no zebra striping. Zebra stripes add
+ *     a surface per row and still fail to outperform whitespace plus hover.
+ *   - A table standing on the page canvas is framed: a white card with the
+ *     1px edge and the card shadow, first and last columns inset 20px. On
+ *     the grey canvas an unframed table floats. A table already inside a
+ *     card passes framed={false}: no frame, columns flush with the card's
+ *     own padding.
+ *   - Row hover is the --bg-hover wash. Selected state uses --accent-soft.
  */
 import * as React from "react";
 
@@ -21,13 +20,21 @@ import { cn } from "@/lib/utils";
 
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  React.HTMLAttributes<HTMLTableElement> & { framed?: boolean }
+>(({ className, framed = true, ...props }, ref) => (
+  <div
+    className={cn(
+      "relative w-full overflow-auto",
+      framed && "rounded-lg border border-border bg-card shadow-card",
+    )}
+  >
     <table
       ref={ref}
       className={cn(
-        "w-full text-[14px] [&_td]:first:pl-0 [&_td]:last:pr-0 [&_th]:first:pl-0 [&_th]:last:pr-0",
+        "w-full text-[15px]",
+        framed
+          ? "[&_td]:first:pl-5 [&_td]:last:pr-5 [&_th]:first:pl-5 [&_th]:last:pr-5"
+          : "[&_td]:first:pl-0 [&_td]:last:pr-0 [&_th]:first:pl-0 [&_th]:last:pr-0",
         className,
       )}
       {...props}
@@ -63,7 +70,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b border-border transition-colors duration-(--dur-fast) hover:bg-secondary data-[state=selected]:bg-accent-soft",
+      "border-b border-border transition-colors duration-(--dur-fast) hover:bg-hover data-[state=selected]:bg-accent-soft",
       className,
     )}
     {...props}
@@ -78,7 +85,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-10 px-3 text-left align-middle text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "h-11 px-3 text-left align-middle text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground [&:has([role=checkbox])]:pr-0",
       className,
     )}
     {...props}
@@ -93,7 +100,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "px-3 py-3 align-middle [&:has([role=checkbox])]:pr-0",
+      "px-3 py-3.5 align-middle [&:has([role=checkbox])]:pr-0",
       className,
     )}
     {...props}

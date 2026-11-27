@@ -140,7 +140,7 @@ function FlowNameInput({ value, onChange, disabled }: { value: string; onChange:
       placeholder="Name this flow"
       disabled={disabled}
       aria-label="Flow name"
-      className="-ml-2 w-full min-w-0 rounded-md bg-transparent px-2 py-1 font-display text-[26px] font-bold leading-[32px] tracking-[-0.02em] text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 hover:bg-sunken focus:bg-sunken disabled:hover:bg-transparent sm:text-[28px] sm:leading-[34px]"
+      className="-ml-2 w-full min-w-0 rounded-md bg-transparent px-2 py-1 font-display text-[34px] font-bold leading-[40px] tracking-[-0.025em] text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 hover:bg-sunken focus:bg-sunken disabled:hover:bg-transparent sm:text-[28px] sm:leading-[34px]"
     />
   );
 }
@@ -173,7 +173,7 @@ function MoreMenu({ items }: { items: Array<{ label: string; onClick: () => void
         <MoreHorizontal />
       </Button>
       {open && (
-        <div role="menu" className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-card p-1 shadow-(--overlay-shadow)">
+        <div role="menu" className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-card shadow-card p-1 shadow-(--overlay-shadow)">
           {items.map((i) => (
             <button
               key={i.label}
@@ -183,7 +183,7 @@ function MoreMenu({ items }: { items: Array<{ label: string; onClick: () => void
                 setOpen(false);
                 i.onClick();
               }}
-              className={`block w-full rounded-md px-3 py-2 text-left text-[14px] hover:bg-sunken ${i.danger ? "text-danger" : "text-foreground"}`}
+              className={`block w-full rounded-md px-3 py-2 text-left text-[15px] hover:bg-sunken ${i.danger ? "text-danger" : "text-foreground"}`}
             >
               {i.label}
             </button>
@@ -203,14 +203,14 @@ function StartScreen({ hasLlm, dateTraits, onPick }: { hasLlm: boolean; dateTrai
   const pickRecipe = (r: Recipe) => onPick(draftFromRecipe(r, () => newCopySlug()), 0);
   return (
     <div className="mx-auto max-w-5xl">
-      <Link to="/flows" className="text-[14px] text-muted-foreground transition-colors hover:text-foreground">&larr; Flows</Link>
-      <h1 className="mt-3 font-display text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-foreground">New flow</h1>
-      <p className="mt-1 max-w-2xl text-[15px] text-muted-foreground">
+      <Link to="/flows" className="text-[15px] text-muted-foreground transition-colors hover:text-foreground">&larr; Flows</Link>
+      <h1 className="mt-3 font-display text-[34px] font-bold leading-[40px] tracking-[-0.025em] text-foreground">New flow</h1>
+      <p className="mt-1 max-w-2xl text-[16px] text-muted-foreground">
         A flow sends a short sequence of emails to the contacts who match its trigger. Start from an example and change it, or describe what you want.
       </p>
 
-      <h2 className="mt-8 text-[16px] font-semibold text-foreground">Start from an example</h2>
-      <p className="mt-0.5 text-[14px] text-muted-foreground">Each fills the trigger and the emails with sample copy you edit before saving. Nothing sends until you activate the flow.</p>
+      <h2 className="mt-8 text-[17px] font-semibold text-foreground">Start from an example</h2>
+      <p className="mt-0.5 text-[15px] text-muted-foreground">Each fills the trigger and the emails with sample copy you edit before saving. Nothing sends until you activate the flow.</p>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {RECIPES.map((r) => {
           const blocked = r.needsLlm === true && !hasLlm;
@@ -220,23 +220,23 @@ function StartScreen({ hasLlm, dateTraits, onPick }: { hasLlm: boolean; dateTrai
               type="button"
               disabled={blocked}
               onClick={() => pickRecipe(r)}
-              className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border"
+              className="rounded-xl border border-border bg-card shadow-card p-4 text-left transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border"
             >
               <span className="flex items-center gap-2">
-                <span className="text-[15px] font-semibold text-foreground">{r.title}</span>
+                <span className="text-[16px] font-semibold text-foreground">{r.title}</span>
                 {r.needsLlm && <Badge variant="accent">AI drafted</Badge>}
               </span>
-              <span className="mt-1 block text-[14px] leading-relaxed text-muted-foreground">{r.description}</span>
+              <span className="mt-1 block text-[15px] leading-relaxed text-muted-foreground">{r.description}</span>
               <span className="mt-3 flex flex-wrap gap-1">
                 {r.build().emails.map((e, i) => (
-                  <span key={i} className="rounded bg-sunken px-1.5 py-0.5 text-[12px] text-muted-foreground">
+                  <span key={i} className="rounded bg-sunken px-1.5 py-0.5 text-[13px] text-muted-foreground">
                     {i === 0 ? describeDelay(e.delay) : `then ${describeDelay(e.delay)}`}
                   </span>
                 ))}
               </span>
-              {blocked && <span className="mt-2 block text-[12px] text-muted-foreground">Needs an LLM provider (Settings, LLM).</span>}
+              {blocked && <span className="mt-2 block text-[13px] text-muted-foreground">Needs an LLM provider (Settings, LLM).</span>}
               {r.needsDateTrait && dateTraits.length === 0 && (
-                <span className="mt-2 block text-[12px] text-muted-foreground">Needs a date trait such as trial_ends_at in settings.date_traits.</span>
+                <span className="mt-2 block text-[13px] text-muted-foreground">Needs a date trait such as trial_ends_at in settings.date_traits.</span>
               )}
             </button>
           );
@@ -244,12 +244,12 @@ function StartScreen({ hasLlm, dateTraits, onPick }: { hasLlm: boolean; dateTrai
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h2 className="text-[16px] font-semibold text-foreground">Or describe it</h2>
-          <p className="mt-0.5 text-[14px] text-muted-foreground">Claros compiles the description into emails you can read and change before anything sends.</p>
+        <div className="rounded-xl border border-border bg-card shadow-card p-5">
+          <h2 className="text-[17px] font-semibold text-foreground">Or describe it</h2>
+          <p className="mt-0.5 text-[15px] text-muted-foreground">Claros compiles the description into emails you can read and change before anything sends.</p>
           <Textarea
             aria-label="Describe the flow"
-            className="mt-3 text-[15px] leading-relaxed"
+            className="mt-3 text-[16px] leading-relaxed"
             rows={5}
             value={prompt}
             disabled={!hasLlm}
@@ -260,12 +260,12 @@ function StartScreen({ hasLlm, dateTraits, onPick }: { hasLlm: boolean; dateTrai
             <Button type="button" disabled={!hasLlm || prompt.trim() === ""} onClick={() => onPick({ ...emptyDraft(), prompt: prompt.trim() }, "trigger")}>
               Continue
             </Button>
-            <span className="text-[13px] text-muted-foreground">{hasLlm ? "Next: pick the trigger, then create the flow to compile." : "Needs an LLM provider (Settings, LLM)."}</span>
+            <span className="text-[14px] text-muted-foreground">{hasLlm ? "Next: pick the trigger, then create the flow to compile." : "Needs an LLM provider (Settings, LLM)."}</span>
           </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h2 className="text-[16px] font-semibold text-foreground">Or start blank</h2>
-          <p className="mt-0.5 text-[14px] text-muted-foreground">Pick a trigger and write the emails yourself.</p>
+        <div className="rounded-xl border border-border bg-card shadow-card p-5">
+          <h2 className="text-[17px] font-semibold text-foreground">Or start blank</h2>
+          <p className="mt-0.5 text-[15px] text-muted-foreground">Pick a trigger and write the emails yourself.</p>
           <Button type="button" variant="outline" className="mt-3" onClick={() => onPick(emptyDraft(), "trigger")}>
             Start blank
           </Button>
@@ -665,7 +665,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
     <div className="mx-auto max-w-7xl">
       {/* Header */}
       <div>
-        <Link to="/flows" className="text-[14px] text-muted-foreground transition-colors hover:text-foreground">&larr; Flows</Link>
+        <Link to="/flows" className="text-[15px] text-muted-foreground transition-colors hover:text-foreground">&larr; Flows</Link>
         <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -683,14 +683,14 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
                 </Link>
               )}
             </div>
-            {nameProblem && <p className="mt-1 text-[13px] text-danger" role="alert">Give the flow a name.</p>}
-            <p className="mt-1.5 max-w-3xl text-[15px] leading-relaxed text-muted-foreground">{summarizeFlow(draft)}</p>
+            {nameProblem && <p className="mt-1 text-[14px] text-danger" role="alert">Give the flow a name.</p>}
+            <p className="mt-1.5 max-w-3xl text-[16px] leading-relaxed text-muted-foreground">{summarizeFlow(draft)}</p>
           </div>
           {flow && !archived && (
             <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-1.5">
               {confirmArchive ? (
                 <>
-                  <span className="text-[14px] text-muted-foreground">Archive for good? It cannot be undone.</span>
+                  <span className="text-[15px] text-muted-foreground">Archive for good? It cannot be undone.</span>
                   <Button size="sm" variant="destructive" disabled={transitionBusy} onClick={() => void archive()}>Archive</Button>
                   <Button size="sm" variant="ghost" onClick={() => setConfirmArchive(false)}>Cancel</Button>
                 </>
@@ -730,12 +730,12 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
       {/* Banners */}
       <div className="mt-5 space-y-3 empty:hidden">
         {flow?.slug && !archived && !configNoticeDismissed && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-warning bg-warning-soft px-4 py-2.5 text-[14px] text-foreground" role="note">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-warning bg-warning-soft px-4 py-2.5 text-[15px] text-foreground" role="note">
             <span className="min-w-0 flex-1 basis-96">
-              <span className="font-semibold">Managed in config as code</span> (slug <code className="font-mono text-[13px]">{flow.slug}</code>). The next{" "}
-              <code className="font-mono text-[13px]">claros apply</code> of a document that lists this flow replaces edits made here. Change the document, or export it again after editing.
+              <span className="font-semibold">Managed in config as code</span> (slug <code className="font-mono text-[14px]">{flow.slug}</code>). The next{" "}
+              <code className="font-mono text-[14px]">claros apply</code> of a document that lists this flow replaces edits made here. Change the document, or export it again after editing.
             </span>
-            <Link to="/settings/config" className="shrink-0 text-[14px] font-medium text-accent-text hover:underline">Config as code</Link>
+            <Link to="/settings/config" className="shrink-0 text-[15px] font-medium text-accent-text hover:underline">Config as code</Link>
             <button
               type="button"
               aria-label="Dismiss"
@@ -748,12 +748,12 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
           </div>
         )}
         {archived && (
-          <p className="rounded-lg border border-border bg-secondary px-4 py-2.5 text-[14px] text-muted-foreground" role="note">
+          <p className="rounded-lg border border-border bg-secondary px-4 py-2.5 text-[15px] text-muted-foreground" role="note">
             This flow is archived. Archived is final; nothing here can be changed.
           </p>
         )}
         {flow?.status === "active" && dirty && (
-          <p className="rounded-lg border border-border bg-sunken px-4 py-2.5 text-[14px] text-muted-foreground" role="note">
+          <p className="rounded-lg border border-border bg-sunken px-4 py-2.5 text-[15px] text-muted-foreground" role="note">
             The flow keeps running on the saved version until you save.
           </p>
         )}
@@ -768,7 +768,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
             type="button"
             aria-selected={tab === value}
             onClick={() => setTab(value)}
-            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[15px] font-medium transition-colors ${tab === value ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[16px] font-medium transition-colors ${tab === value ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
           >
             {label}
           </button>
@@ -780,12 +780,12 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
           <DeliverySettings draft={draft} onChange={(patch) => update(patch)} topics={topics.data?.topics ?? []} templates={layouts.data ?? null} disabled={disabled} flow={flow} />
         </div>
       ) : json !== null ? (
-        <div className="mt-6 rounded-xl border border-border bg-card p-5">
-          <h2 className="text-[17px] font-semibold text-foreground">The emails as JSON</h2>
-          <p className="mt-0.5 text-[14px] text-muted-foreground">
+        <div className="mt-6 rounded-xl border border-border bg-card shadow-card p-5">
+          <h2 className="text-[18px] font-semibold text-foreground">The emails as JSON</h2>
+          <p className="mt-0.5 text-[15px] text-muted-foreground">
             The steps and exit conditions in the config document shape (see the Flows guide). Applying puts them in the draft; saving stores them.
           </p>
-          <Textarea aria-label="Steps as JSON" className="mt-3 min-h-[28rem] font-mono text-[12px]" value={json} onChange={(e) => setJson(e.target.value)} />
+          <Textarea aria-label="Steps as JSON" className="mt-3 min-h-[28rem] font-mono text-[13px]" value={json} onChange={(e) => setJson(e.target.value)} />
           <div className="mt-3 flex gap-2">
             <Button type="button" onClick={applyJson}>Apply to draft</Button>
             <Button type="button" variant="ghost" onClick={() => setJson(null)}>Cancel</Button>
@@ -804,8 +804,8 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
             canAddAi={hasLlm}
             disabled={disabled}
           />
-          <div ref={panelRef} className="scroll-mt-6 rounded-xl border border-border bg-card p-5 sm:p-6">
-            {panel ?? <p className="text-[14px] text-muted-foreground">Select a part of the flow on the left to edit it.</p>}
+          <div ref={panelRef} className="scroll-mt-6 rounded-xl border border-border bg-card shadow-card p-5 sm:p-6">
+            {panel ?? <p className="text-[15px] text-muted-foreground">Select a part of the flow on the left to edit it.</p>}
           </div>
         </div>
       )}
@@ -814,7 +814,7 @@ function FlowWorkspace({ flow, initialDraft, initialSelection, templates, initia
       {!archived && (dirty || error || notice) && (
         <div className="sticky bottom-0 z-20 mt-8 border-t border-border bg-background/95 py-3 backdrop-blur">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="min-w-0 flex-1 basis-64 text-[14px]" role="status">
+            <div className="min-w-0 flex-1 basis-64 text-[15px]" role="status">
               {error ? (
                 <span className="text-danger">{error}</span>
               ) : notice ? (
@@ -898,7 +898,7 @@ export default function FlowEditorPage() {
   if (flowQuery.isError) {
     return (
       <div className="mx-auto max-w-7xl rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
-        <p className="text-[15px] text-foreground">Failed to load flow: {flowQuery.error instanceof Error ? flowQuery.error.message : "unknown error"}</p>
+        <p className="text-[16px] text-foreground">Failed to load flow: {flowQuery.error instanceof Error ? flowQuery.error.message : "unknown error"}</p>
       </div>
     );
   }

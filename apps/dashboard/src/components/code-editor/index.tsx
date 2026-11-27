@@ -22,7 +22,7 @@ export const HtmlCodeEditor = forwardRef<CodeEditorHandle, HtmlCodeEditorProps>(
       onFocus={props.onFocus}
       placeholder={props.placeholder}
       style={{ minHeight: (props.minHeight ?? 260) + 18 }}
-      className="font-mono text-[13px] leading-relaxed"
+      className="font-mono text-[14px] leading-relaxed"
     />
   );
   return (

@@ -67,17 +67,17 @@ function StatCard({
   sparkLabel?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground sm:text-[12px]">
+    <div className="rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
+      <p className="text-[15px] font-semibold text-muted-foreground">
         {label}
       </p>
-      <p className="mt-2 font-display text-[22px] font-bold leading-none tracking-[-0.02em] text-foreground sm:text-[28px]">
+      <p className="mt-2.5 text-[32px] font-semibold leading-[38px] tracking-[-0.03em] tabular-nums text-foreground sm:text-[40px] sm:leading-[46px]">
         {value}
       </p>
       {delta && (
         <p
           className={cn(
-            "mt-1.5 font-mono text-[11px] font-medium sm:text-[12px]",
+            "mt-2 text-[15px] font-medium leading-[22px]",
             delta.tone === "good"
               ? "text-success"
               : delta.tone === "bad"
@@ -88,12 +88,12 @@ function StatCard({
           {delta.text}
         </p>
       )}
-      {sub && <p className="mt-1.5 font-mono text-[11px] text-muted-foreground sm:text-[12px]">{sub}</p>}
+      {sub && <p className="mt-0.5 text-[14px] text-muted-foreground">{sub}</p>}
       {spark && sparkLabel && (
-        <div className="mt-3">
+        <div className="mt-4">
           {spark.reduce((a, d) => a + d.count, 0) === 0 ? (
             <p
-              className="flex items-center text-[12px] text-subtle-foreground"
+              className="flex items-center text-[13px] text-subtle-foreground"
               style={{ height: "36px" }}
             >
               No data in this range
@@ -172,7 +172,7 @@ export default function AnalyticsPage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[15px] text-foreground">
+          <p className="text-[16px] text-foreground">
             Failed to load analytics:{" "}
             {query.error instanceof Error ? query.error.message : "Unknown error"}
           </p>
@@ -288,24 +288,24 @@ export default function AnalyticsPage() {
               );
             })()}
             {query.data.totals.sent > 0 && query.data.totals.sent < LOW_VOLUME_SENT && (
-              <p className="mt-3 text-[13px] text-muted-foreground">
+              <p className="mt-3 text-[14px] text-muted-foreground">
                 Rates are hidden below {LOW_VOLUME_SENT} sends; a percentage
                 over a handful of messages is noise. Read the counts.
               </p>
             )}
             {(query.data.totals.suppressed > 0 || query.data.totals.failed > 0) && (
-              <p className="mt-3 text-[14px] text-muted-foreground">
+              <p className="mt-3 text-[15px] text-muted-foreground">
                 Also in range:{" "}
-                <span className="font-mono text-[13px]">{query.data.totals.suppressed}</span>{" "}
+                <span className="font-mono text-[14px]">{query.data.totals.suppressed}</span>{" "}
                 suppressed,{" "}
-                <span className="font-mono text-[13px]">{query.data.totals.failed}</span>{" "}
+                <span className="font-mono text-[14px]">{query.data.totals.failed}</span>{" "}
                 failed.
               </p>
             )}
           </section>
 
           {/* Sends per day */}
-          <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-5 sm:p-6">
+          <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
             <h2 className="text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
               Sends per day
             </h2>
@@ -321,7 +321,7 @@ export default function AnalyticsPage() {
 
           {/* Opens and clicks per day (from message_events) */}
           {query.data.engagement_days.length > 0 && (
-            <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-5 sm:p-6">
+            <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
               <h2 className="text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
                 Opens and clicks per day
               </h2>
@@ -346,9 +346,9 @@ export default function AnalyticsPage() {
                 </p>
               </div>
               {query.data.engagement_since && (
-                <p className="mt-4 border-t border-border pt-3 text-[13px] text-muted-foreground">
+                <p className="mt-4 border-t border-border pt-3 text-[14px] text-muted-foreground">
                   Event tracking data available since{" "}
-                  <span className="font-mono text-[12px]">
+                  <span className="font-mono text-[13px]">
                     {query.data.engagement_since}
                   </span>
                   . Older messages are not included in these trends.
@@ -358,12 +358,12 @@ export default function AnalyticsPage() {
           )}
 
           {query.data.engagement_days.length === 0 && query.data.totals.sent > 0 && (
-            <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-5 sm:p-6">
+            <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
               <h2 className="text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
                 Opens and clicks per day
               </h2>
               <div className="mt-4 rounded-md border border-dashed border-border-strong px-6 py-10 text-center">
-                <p className="text-[14px] text-muted-foreground">
+                <p className="text-[15px] text-muted-foreground">
                   No delivery events recorded yet. Open and click trends appear
                   here once your transport provider reports engagement events
                   via webhooks.
@@ -373,20 +373,20 @@ export default function AnalyticsPage() {
           )}
 
           {/* Per flow */}
-          <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-5 sm:p-6">
+          <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-card p-5 sm:p-6">
             <h2 className="text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-foreground">
               Per flow
             </h2>
             <div className="mt-4 min-w-0 overflow-x-auto">
               {query.data.per_flow.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border-strong px-6 py-10 text-center">
-                  <p className="text-[14px] text-muted-foreground">
+                  <p className="text-[15px] text-muted-foreground">
                     No flow activity in this range. When flows send, their
                     performance breaks down here.
                   </p>
                 </div>
               ) : (
-                <Table>
+                <Table framed={false}>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Flow</TableHead>
@@ -409,10 +409,10 @@ export default function AnalyticsPage() {
                           {f.flow_name}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[13px] text-foreground">
+                      <TableCell className="text-right font-mono text-[14px] text-foreground">
                         {f.sent}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                      <TableCell className="text-right font-mono text-[14px] text-muted-foreground">
                         {f.opened}{" "}
                         {f.sent >= LOW_VOLUME_SENT && (
                           <span className="text-subtle-foreground">
@@ -420,7 +420,7 @@ export default function AnalyticsPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                      <TableCell className="text-right font-mono text-[14px] text-muted-foreground">
                         {f.clicked}{" "}
                         {f.sent >= LOW_VOLUME_SENT && (
                           <span className="text-subtle-foreground">
@@ -428,13 +428,13 @@ export default function AnalyticsPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                      <TableCell className="text-right font-mono text-[14px] text-muted-foreground">
                         {f.bounced}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                      <TableCell className="text-right font-mono text-[14px] text-muted-foreground">
                         {f.suppressed}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[13px] text-muted-foreground">
+                      <TableCell className="text-right font-mono text-[14px] text-muted-foreground">
                         {f.failed}
                       </TableCell>
                     </TableRow>

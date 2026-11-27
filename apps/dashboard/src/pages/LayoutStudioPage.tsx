@@ -85,13 +85,13 @@ const DECISION_BADGE: Partial<Record<StudioDecision, { tone: "success" | "warnin
 
 function FindingList({ findings }: { findings: LayoutFinding[] }) {
   if (findings.length === 0) {
-    return <p className="text-[13px] text-muted-foreground">No issues found for Outlook, Gmail, Apple Mail or Yahoo.</p>;
+    return <p className="text-[14px] text-muted-foreground">No issues found for Outlook, Gmail, Apple Mail or Yahoo.</p>;
   }
   const order = { error: 0, warning: 1, info: 2 } as const;
   return (
     <ul className="space-y-3">
       {[...findings].sort((a, b) => order[a.severity] - order[b.severity]).map((f, i) => (
-        <li key={`${f.rule}-${i}`} className="text-[13px] leading-[20px]">
+        <li key={`${f.rule}-${i}`} className="text-[14px] leading-[22px]">
           <div className="flex items-start gap-2">
             <Badge variant={f.severity === "error" ? "danger" : f.severity === "warning" ? "warning" : "neutral"}>
               {f.severity === "error" ? "Blocks saving" : f.severity === "warning" ? "Warning" : "Note"}
@@ -290,10 +290,10 @@ export function LayoutStudioPage() {
   if (q.isError || !saved || !session) {
     return (
       <div className="mx-auto max-w-6xl">
-        <Link to="/templates" className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground">
+        <Link to="/templates" className="inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground">
           <ArrowLeft size={16} strokeWidth={1.5} /> Templates
         </Link>
-        <div className="mt-6 rounded-md border border-danger bg-danger-soft px-4 py-3 text-[14px] text-foreground" role="alert">
+        <div className="mt-6 rounded-md border border-danger bg-danger-soft px-4 py-3 text-[15px] text-foreground" role="alert">
           {q.error?.message ?? "Template not found."}
         </div>
       </div>
@@ -306,7 +306,7 @@ export function LayoutStudioPage() {
     <div className="flex h-full min-h-[600px] flex-col">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 pb-4">
-        <button type="button" onClick={leave} className="inline-flex items-center gap-1.5 rounded-md text-[13px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <button type="button" onClick={leave} className="inline-flex items-center gap-1.5 rounded-md text-[14px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ArrowLeft size={16} strokeWidth={1.5} /> Templates
         </button>
         <Input
@@ -343,14 +343,14 @@ export function LayoutStudioPage() {
       {(saveError || savedNote || restored) && (
         <div className="pb-3">
           {saveError && (
-            <div className="rounded-md border border-danger bg-danger-soft px-4 py-3 text-[14px] text-foreground" role="alert">
+            <div className="rounded-md border border-danger bg-danger-soft px-4 py-3 text-[15px] text-foreground" role="alert">
               <p>{saveError.message}</p>
               {saveError.findings.length > 0 && <div className="mt-2"><FindingList findings={saveError.findings} /></div>}
             </div>
           )}
-          {savedNote && <p className="text-[13px] text-success" role="status">{savedNote}</p>}
+          {savedNote && <p className="text-[14px] text-success" role="status">{savedNote}</p>}
           {restored && !saveError && !savedNote && (
-            <p className="text-[13px] text-muted-foreground" role="status">Restored your unsaved changes from earlier in this tab.</p>
+            <p className="text-[14px] text-muted-foreground" role="status">Restored your unsaved changes from earlier in this tab.</p>
           )}
         </div>
       )}
@@ -367,7 +367,7 @@ export function LayoutStudioPage() {
                   role="tab"
                   aria-selected={view === v}
                   onClick={() => setView(v)}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === v ? "bg-sunken text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === v ? "bg-sunken text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {v === "preview" ? <Sparkles size={14} strokeWidth={1.5} /> : <Code2 size={14} strokeWidth={1.5} />}
                   {v === "preview" ? "Preview" : "HTML"}
@@ -390,13 +390,13 @@ export function LayoutStudioPage() {
                 ))}
               </div>
             )}
-            <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+            <label className="flex items-center gap-1.5 text-[14px] text-muted-foreground">
               Width
               <select
                 value={session.width}
                 onChange={(e) => void setWidth(e.target.value as LayoutWidth)}
                 disabled={pending}
-                className="h-7 rounded-sm border border-input bg-background px-1.5 text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-7 rounded-sm border border-input bg-card px-1.5 text-[14px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="narrow">Narrow</option>
                 <option value="wide">Wide</option>
@@ -437,7 +437,7 @@ export function LayoutStudioPage() {
                   value={htmlDraft ?? session.source}
                   onChange={(e) => setHtmlDraft(e.target.value)}
                   disabled={pending}
-                  className="min-h-0 flex-1 resize-none rounded-md border border-input bg-background p-3 font-mono text-[12px] leading-[18px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-h-0 flex-1 resize-none rounded-md border border-input bg-card p-3 font-mono text-[13px] leading-[20px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 {htmlDraft !== null && htmlDraft !== session.source && (
                   <div className="flex items-center gap-2">
@@ -453,7 +453,7 @@ export function LayoutStudioPage() {
               className={`absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-[6px] transition-opacity duration-(--dur-med) ${pending ? "opacity-100" : "pointer-events-none opacity-0"}`}
               aria-hidden={!pending}
             >
-              <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-[14px] text-foreground shadow-overlay" role="status">
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-card px-4 py-3 text-[15px] text-foreground shadow-overlay" role="status">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-accent" aria-hidden="true" />
                 Applying your change...
               </div>
@@ -462,13 +462,13 @@ export function LayoutStudioPage() {
         </section>
 
         {/* Chat */}
-        <section className="flex h-[46vh] min-h-[320px] flex-col rounded-lg border border-border bg-card lg:h-auto lg:w-[400px] lg:shrink-0" aria-label="Template studio chat">
+        <section className="flex h-[46vh] min-h-[320px] flex-col rounded-lg border border-border bg-card shadow-card lg:h-auto lg:w-[400px] lg:shrink-0" aria-label="Template studio chat">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">
             <Sparkles size={16} strokeWidth={1.5} className="text-accent-text" />
-            <p className="text-[14px] font-medium text-foreground">Template studio</p>
+            <p className="text-[15px] font-medium text-foreground">Template studio</p>
           </div>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
-            <div className="text-[14px] leading-[22px] text-muted-foreground">{INTRO}</div>
+            <div className="text-[15px] leading-[24px] text-muted-foreground">{INTRO}</div>
             {session.messages.length === 0 && (
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map((s) => (
@@ -477,7 +477,7 @@ export function LayoutStudioPage() {
                     type="button"
                     disabled={pending || noLlm}
                     onClick={() => void send(s)}
-                    className="rounded-md border border-border bg-background px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors duration-(--dur-fast) hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground"
+                    className="rounded-md border border-border bg-background px-2.5 py-1.5 text-left text-[14px] text-foreground transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground"
                   >
                     {s}
                   </button>
@@ -486,17 +486,17 @@ export function LayoutStudioPage() {
             )}
             {session.messages.map((m, i) =>
               m.role === "user" ? (
-                <div key={i} className="ml-8 rounded-lg bg-accent-soft px-3 py-2 text-[14px] leading-[22px] whitespace-pre-wrap text-foreground">
+                <div key={i} className="ml-8 rounded-lg bg-accent-soft px-3 py-2 text-[15px] leading-[24px] whitespace-pre-wrap text-foreground">
                   {m.content}
                 </div>
               ) : (
-                <div key={i} className="mr-4 text-[14px] leading-[22px] text-foreground">
+                <div key={i} className="mr-4 text-[15px] leading-[24px] text-foreground">
                   {m.decision && DECISION_BADGE[m.decision] && (
                     <Badge variant={DECISION_BADGE[m.decision]!.tone} className="mb-1.5">{DECISION_BADGE[m.decision]!.label}</Badge>
                   )}
                   <p className="whitespace-pre-wrap">{m.content}</p>
                   {m.introduced && m.introduced.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-[13px] text-muted-foreground">
+                    <ul className="mt-2 space-y-1 text-[14px] text-muted-foreground">
                       {m.introduced.map((f) => (
                         <li key={f.rule}>New: {f.message}{f.clients.length ? ` (${f.clients.join(", ")})` : ""}</li>
                       ))}
@@ -512,7 +512,7 @@ export function LayoutStudioPage() {
               ),
             )}
             {pending && (
-              <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground" role="status">
+              <div className="flex items-center gap-1.5 text-[14px] text-muted-foreground" role="status">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
                 Working on it
               </div>
@@ -520,7 +520,7 @@ export function LayoutStudioPage() {
             <div ref={chatEnd} />
           </div>
           {noLlm && (
-            <p className="mx-4 mb-2 rounded-md border border-border bg-sunken px-3 py-2 text-[13px] text-muted-foreground">
+            <p className="mx-4 mb-2 rounded-md border border-border bg-sunken px-3 py-2 text-[14px] text-muted-foreground">
               The studio uses this product's LLM provider. <Link to="/settings/llm" className="text-accent-text underline">Add one in Settings, AI providers</Link>.
             </p>
           )}
@@ -546,7 +546,7 @@ export function LayoutStudioPage() {
               placeholder="Describe a change, e.g. make the header band dark navy"
               disabled={pending}
               maxLength={4000}
-              className="max-h-40 min-h-[44px] flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-sunken"
+              className="max-h-40 min-h-[44px] flex-1 resize-none rounded-md border border-input bg-card px-3 py-2 text-[15px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-sunken"
             />
             <Button type="submit" size="icon" disabled={pending || input.trim() === ""} aria-label="Send">
               <ArrowUp strokeWidth={1.75} />
