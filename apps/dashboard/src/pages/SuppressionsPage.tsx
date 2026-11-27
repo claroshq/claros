@@ -126,7 +126,7 @@ export default function SuppressionsPage() {
     <div className="mx-auto max-w-[90rem]">
       <Link
         to="/sent"
-        className="mb-4 inline-flex items-center gap-1.5 text-[16px] text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex items-center gap-1.5 text-body text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft size={14} /> Back to Sent Mail
       </Link>
@@ -174,7 +174,7 @@ export default function SuppressionsPage() {
           className="mb-4 rounded-md border border-border bg-secondary px-4 py-3"
           role="status"
         >
-          <p className="text-[16px] text-foreground">{addNote}</p>
+          <p className="text-body text-foreground">{addNote}</p>
         </div>
       )}
       {addError && (
@@ -182,7 +182,7 @@ export default function SuppressionsPage() {
           className="mb-4 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">{addError}</p>
+          <p className="text-lead text-foreground">{addError}</p>
         </div>
       )}
 
@@ -200,14 +200,14 @@ export default function SuppressionsPage() {
         <div className="mb-4 flex items-start gap-3 rounded-md border border-success bg-success-soft px-4 py-3" role="status">
           <Check size={16} className="mt-0.5 shrink-0 text-success" />
           <div>
-            <p className="text-[16px] text-foreground">
+            <p className="text-body text-foreground">
               Import complete: {importResult.imported} added, {importResult.skipped} already
               suppressed, {importResult.invalid} invalid
               {importResult.total_rows > 0 && ` (${importResult.total_rows} total rows)`}.
             </p>
             <button
               onClick={() => setImportResult(null)}
-              className="mt-1 text-[15px] text-muted-foreground underline underline-offset-4"
+              className="mt-1 text-small text-muted-foreground underline underline-offset-4"
             >
               Dismiss
             </button>
@@ -221,7 +221,7 @@ export default function SuppressionsPage() {
           className="mb-4 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">
+          <p className="text-lead text-foreground">
             Import failed: {importMutation.error.message}
           </p>
         </div>
@@ -247,7 +247,7 @@ export default function SuppressionsPage() {
           className="flex items-center justify-between rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">
+          <p className="text-lead text-foreground">
             Failed to load suppressions:{" "}
             {list.error instanceof Error ? list.error.message : "Unknown error"}
           </p>
@@ -281,7 +281,7 @@ export default function SuppressionsPage() {
             <TableBody>
               {allSuppressions.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-mono text-[14px]">
+                  <TableCell className="font-mono text-small">
                     {s.email}
                   </TableCell>
                   <TableCell>
@@ -297,10 +297,10 @@ export default function SuppressionsPage() {
                       {reasonLabel(s.reason)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-[15px] text-muted-foreground">
+                  <TableCell className="text-small text-muted-foreground">
                     {s.source ?? "-"}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap font-mono text-[14px] text-muted-foreground">
+                  <TableCell className="whitespace-nowrap font-mono text-small text-muted-foreground">
                     {formatDate(s.created_at)}
                   </TableCell>
                 </TableRow>

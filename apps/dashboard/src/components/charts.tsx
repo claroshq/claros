@@ -66,7 +66,7 @@ function ChartTooltip({
   return (
     <div
       role="status"
-      className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-[15px] text-foreground"
+      className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-small text-foreground"
       style={{ left: `${x}px` }}
     >
       {children}
@@ -102,8 +102,8 @@ export function RangeSelect({
           onClick={() => onChange(d)}
           className={
             value === d
-              ? "h-6 rounded-sm bg-secondary px-2.5 text-[15px] font-medium text-foreground transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              : "h-6 rounded-sm px-2.5 text-[15px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              ? "h-6 rounded-sm bg-secondary px-2.5 text-small font-medium text-foreground transition-colors duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              : "h-6 rounded-sm px-2.5 text-small text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           }
         >
           {d}d
@@ -150,7 +150,7 @@ export function fillDays<T extends { day: string }>(
 
 function FrameLabels({ first, last }: { first: string; last: string }) {
   return (
-    <div className="mt-1 flex justify-between font-mono text-[14px] text-subtle-foreground">
+    <div className="mt-1 flex justify-between font-mono text-caption text-subtle-foreground">
       <span>{formatDay(first)}</span>
       <span>{formatDay(last)}</span>
     </div>
@@ -184,10 +184,10 @@ export function DailyBars({
   return (
     <figure className="m-0">
       <div className="flex items-baseline justify-between">
-        <span className="font-mono text-[14px] text-subtle-foreground">
+        <span className="font-mono text-caption text-subtle-foreground">
           max {max === 1 && total === 0 ? 0 : max}
         </span>
-        <span className="font-mono text-[14px] text-subtle-foreground">
+        <span className="font-mono text-caption text-subtle-foreground">
           {total} total
         </span>
       </div>
@@ -199,7 +199,7 @@ export function DailyBars({
       >
         {hover && (
           <ChartTooltip hover={hover} containerWidth={ref.current?.getBoundingClientRect().width ?? W}>
-            <span className="font-mono text-[14px] text-muted-foreground">
+            <span className="font-mono text-caption text-muted-foreground">
               {formatDay(data[hover.index]!.day)}
             </span>{" "}
             <span className="font-medium">{data[hover.index]!.count}</span>
@@ -243,7 +243,7 @@ export function DailyBars({
       </div>
       <FrameLabels first={data[0]!.day} last={data[data.length - 1]!.day} />
       {total === 0 && (
-        <p className="mt-2 text-center text-[16px] text-muted-foreground">
+        <p className="mt-2 text-center text-body text-muted-foreground">
           {emptyNote}
         </p>
       )}
@@ -305,7 +305,7 @@ export function DailySplitBars({
   return (
     <figure className="m-0">
       <div className="flex items-baseline justify-between">
-        <div className="flex gap-4 font-mono text-[14px] text-subtle-foreground">
+        <div className="flex gap-4 font-mono text-caption text-subtle-foreground">
           <span className="flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2 w-2 rounded-full bg-chart-positive" />
             {totalPos} into good states
@@ -315,7 +315,7 @@ export function DailySplitBars({
             {totalNeg} into bad states
           </span>
         </div>
-        <span className="font-mono text-[14px] text-subtle-foreground">
+        <span className="font-mono text-caption text-subtle-foreground">
           {totalPos + totalNeg} total
           {" · net "}
           <span
@@ -335,7 +335,7 @@ export function DailySplitBars({
       >
         {hover && (
           <ChartTooltip hover={hover} containerWidth={ref.current?.getBoundingClientRect().width ?? W}>
-            <span className="font-mono text-[14px] text-muted-foreground">
+            <span className="font-mono text-caption text-muted-foreground">
               {formatDay(data[hover.index]!.day)}
             </span>{" "}
             <span className="text-success">{data[hover.index]!.positive}</span>
@@ -400,7 +400,7 @@ export function DailySplitBars({
       </div>
       <FrameLabels first={data[0]!.day} last={data[data.length - 1]!.day} />
       {totalPos + totalNeg === 0 && (
-        <p className="mt-2 text-center text-[16px] text-muted-foreground">
+        <p className="mt-2 text-center text-body text-muted-foreground">
           {emptyNote}
         </p>
       )}
@@ -461,7 +461,7 @@ export function TrendLine({
   if (rows.length < TREND_MIN_POINTS) {
     return (
       <figure className="m-0">
-        <p className="text-[14px] text-subtle-foreground">{emptyNote}</p>
+        <p className="text-caption text-subtle-foreground">{emptyNote}</p>
         <div className="sr-only">
           <table>
             <caption>{ariaLabel}</caption>

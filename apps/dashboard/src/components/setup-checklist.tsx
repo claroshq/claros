@@ -57,7 +57,7 @@ function ChecklistItem({
       </span>
       <span
         className={cn(
-          "text-[16px]",
+          "text-body",
           done ? "text-muted-foreground" : "text-foreground",
         )}
       >
@@ -188,10 +188,10 @@ export function SetupChecklist({
     <div className="mb-8 rounded-lg border border-border bg-card shadow-card p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-[18px] font-medium text-foreground">
+          <h2 className="text-title font-medium text-foreground">
             Finish setting up
           </h2>
-          <p className="mt-1 text-[16px] text-muted-foreground">
+          <p className="mt-1 text-body text-muted-foreground">
             {doneCount === 0
               ? "This install cannot compile, send, or legally deliver email yet, and no events are arriving. Four things fix that."
               : doneCount < totalCount
@@ -219,7 +219,7 @@ export function SetupChecklist({
             action={
               <Link
                 to={c.to}
-                className="text-[16px] text-accent-text underline underline-offset-4"
+                className="text-body text-accent-text underline underline-offset-4"
               >
                 {c.linkLabel}
               </Link>
@@ -230,10 +230,10 @@ export function SetupChecklist({
 
       {showTemplates && (
         <div className="mt-5 border-t border-border pt-5">
-          <p className="text-[16px] font-medium text-foreground">
+          <p className="text-body font-medium text-foreground">
             Start from a template
           </p>
-          <p className="mt-1 text-[16px] text-muted-foreground">
+          <p className="mt-1 text-body text-muted-foreground">
             A business-model template installs a set of draft flows matched
             to how your SaaS charges. They are drafts: nothing sends until
             you compile and activate them.
@@ -266,13 +266,13 @@ export function SetupChecklist({
             </Button>
           </div>
           {templateId && (
-            <p className="mt-2 text-[15px] text-muted-foreground">
+            <p className="mt-2 text-small text-muted-foreground">
               {(templates.data?.templates ?? []).find((t) => t.id === templateId)?.description}
             </p>
           )}
           {templateNote && (
             <p
-              className="mt-3 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-[16px] text-foreground"
+              className="mt-3 rounded-md border border-border bg-secondary px-3.5 py-2.5 text-body text-foreground"
               role="status"
             >
               {templateNote}
@@ -283,7 +283,7 @@ export function SetupChecklist({
               className="mt-3 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5"
               role="alert"
             >
-              <p className="text-[16px] text-foreground">{templateError}</p>
+              <p className="text-body text-foreground">{templateError}</p>
             </div>
           )}
         </div>

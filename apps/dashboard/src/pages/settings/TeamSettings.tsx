@@ -60,9 +60,9 @@ export default function TeamSettings() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-left text-[16px]">
+            <table className="w-full text-left text-body">
               <thead>
-                <tr className="border-b border-border bg-sunken text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                <tr className="border-b border-border bg-sunken text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   <th className="px-4 py-2">Member</th>
                   <th className="px-4 py-2">Role</th>
                   <th className="px-4 py-2">Last login</th>
@@ -76,15 +76,15 @@ export default function TeamSettings() {
                       <p className="text-foreground">
                         {m.name || m.email}
                         {m.id === meData?.user.id && (
-                          <span className="ml-2 text-[14px] text-muted-foreground">(you)</span>
+                          <span className="ml-2 text-caption text-muted-foreground">(you)</span>
                         )}
                       </p>
-                      {m.name && <p className="text-[14px] text-muted-foreground">{m.email}</p>}
+                      {m.name && <p className="text-caption text-muted-foreground">{m.email}</p>}
                     </td>
                     <td className="px-4 py-2.5">
                       <Badge variant="neutral">{m.role}</Badge>
                     </td>
-                    <td className="px-4 py-2.5 text-[15px] text-muted-foreground">
+                    <td className="px-4 py-2.5 text-small text-muted-foreground">
                       {m.lastLoginAt ? formatDate(m.lastLoginAt) : "never"}
                     </td>
                     {isOwner && (
@@ -119,8 +119,8 @@ export default function TeamSettings() {
 
           {isOwner && (
             <div className="mt-6 border-t border-border pt-5">
-              <h3 className="text-[16px] font-medium text-foreground">Invite a team member</h3>
-              <p className="mt-1 text-[15px] text-muted-foreground">
+              <h3 className="text-body font-medium text-foreground">Invite a team member</h3>
+              <p className="mt-1 text-small text-muted-foreground">
                 An invite link is generated. It is emailed automatically when a transport is configured; otherwise share it directly.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -141,13 +141,13 @@ export default function TeamSettings() {
               </div>
               {inviteUrl && (
                 <div className="mt-3 rounded-md border border-border bg-sunken px-3.5 py-2.5">
-                  <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  <p className="mb-1 text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Invite link
                   </p>
-                  <p className="break-all font-mono text-[14px] text-foreground">{inviteUrl}</p>
+                  <p className="break-all font-mono text-caption text-foreground">{inviteUrl}</p>
                 </div>
               )}
-              {inviteError && <p className="mt-2 text-[15px] text-danger">{inviteError}</p>}
+              {inviteError && <p className="mt-2 text-small text-danger">{inviteError}</p>}
             </div>
           )}
         </>

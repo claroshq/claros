@@ -13,9 +13,9 @@ import { productMonogram } from "../product-entry.js";
 import { cn } from "@/lib/utils";
 
 const SIZES = {
-  xs: "h-6 w-6 text-[11px]",
-  sm: "h-7 w-7 text-[12px]",
-  md: "h-10 w-10 text-[15px]",
+  xs: "h-6 w-6 text-micro",
+  sm: "h-7 w-7 text-micro",
+  md: "h-10 w-10 text-small",
 } as const;
 
 const PADDING = { xs: "p-0.5", sm: "p-0.5", md: "p-1" } as const;

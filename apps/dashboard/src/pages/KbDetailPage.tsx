@@ -56,7 +56,7 @@ function EntryContent({ entry }: { entry: KbEntry }) {
     );
   }
   return (
-    <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-4 font-mono text-[14px] leading-relaxed text-foreground">
+    <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-4 font-mono text-small leading-relaxed text-foreground">
       {entry.content}
     </pre>
   );
@@ -115,7 +115,7 @@ export default function KbDetailPage() {
           className="rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">
+          <p className="text-lead text-foreground">
             Failed to load entry:{" "}
             {entryQuery.error instanceof Error
               ? entryQuery.error.message
@@ -169,13 +169,13 @@ export default function KbDetailPage() {
       <div className="mb-8">
         <Link
           to="/kb"
-          className="text-[16px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
+          className="text-body text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground"
         >
           &larr; Knowledge Base
         </Link>
         <div className="mt-2 flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <h1 className="truncate font-display text-[34px] font-bold leading-[40px] tracking-[-0.025em] text-foreground">
+            <h1 className="truncate font-display text-display font-bold tracking-[-0.02em] text-foreground">
               {entry.title}
             </h1>
             {!entry.is_active && <Badge variant="muted">inactive</Badge>}
@@ -191,7 +191,7 @@ export default function KbDetailPage() {
             <div className="flex shrink-0 items-center gap-2">
               {confirmingDelete ? (
                 <>
-                  <span className="text-[16px] text-muted-foreground">
+                  <span className="text-body text-muted-foreground">
                     Delete permanently? This is a hard delete.
                   </span>
                   <Button variant="destructive" size="sm" disabled={busy} onClick={handleDelete}>
@@ -221,7 +221,7 @@ export default function KbDetailPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3"
           role="alert"
         >
-          <p className="text-[17px] text-foreground">{error}</p>
+          <p className="text-lead text-foreground">{error}</p>
         </div>
       )}
 
@@ -230,7 +230,7 @@ export default function KbDetailPage() {
           className="mb-6 rounded-md border border-danger bg-danger-soft px-3.5 py-2.5"
           role="alert"
         >
-          <p className="whitespace-pre-wrap break-words font-mono text-[14px] text-foreground">
+          <p className="whitespace-pre-wrap break-words font-mono text-small text-foreground">
             {entry.embedding_error}
           </p>
         </div>
@@ -238,7 +238,7 @@ export default function KbDetailPage() {
 
       {savedNotice && !editing && (
         <p
-          className="mb-6 rounded-md border border-border bg-secondary px-4 py-3 text-[16px] text-foreground"
+          className="mb-6 rounded-md border border-border bg-secondary px-4 py-3 text-body text-foreground"
           role="status"
         >
           Saved. The entry will be re-embedded automatically.
@@ -248,7 +248,7 @@ export default function KbDetailPage() {
       {editing ? (
         <form onSubmit={handleSave} noValidate className="space-y-5">
           <div>
-            <label htmlFor="kb-title" className="mb-1.5 block text-[16px] font-medium text-foreground">
+            <label htmlFor="kb-title" className="mb-1.5 block text-body font-medium text-foreground">
               Title
             </label>
             <Input
@@ -261,7 +261,7 @@ export default function KbDetailPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="kb-type" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="kb-type" className="mb-1.5 block text-body font-medium text-foreground">
                 Content type
               </label>
               <Select
@@ -276,7 +276,7 @@ export default function KbDetailPage() {
               </Select>
             </div>
             <div>
-              <label htmlFor="kb-source-url" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="kb-source-url" className="mb-1.5 block text-body font-medium text-foreground">
                 Source URL
               </label>
               <Input
@@ -289,7 +289,7 @@ export default function KbDetailPage() {
             </div>
           </div>
           <div>
-            <label htmlFor="kb-tags" className="mb-1.5 block text-[16px] font-medium text-foreground">
+            <label htmlFor="kb-tags" className="mb-1.5 block text-body font-medium text-foreground">
               Tags <span className="font-normal text-muted-foreground">(comma separated)</span>
             </label>
             <Input
@@ -301,7 +301,7 @@ export default function KbDetailPage() {
             />
           </div>
           <div>
-            <label htmlFor="kb-category" className="mb-1.5 block text-[16px] font-medium text-foreground">
+            <label htmlFor="kb-category" className="mb-1.5 block text-body font-medium text-foreground">
               Category <span className="font-normal text-muted-foreground">(used by a step's kb_select)</span>
             </label>
             <Input
@@ -314,19 +314,19 @@ export default function KbDetailPage() {
             />
           </div>
           <div>
-            <label htmlFor="kb-content" className="mb-1.5 block text-[16px] font-medium text-foreground">
+            <label htmlFor="kb-content" className="mb-1.5 block text-body font-medium text-foreground">
               Content
             </label>
             <Textarea
               id="kb-content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="min-h-56 font-mono text-[14px]"
+              className="min-h-56 font-mono text-small"
               disabled={busy}
               required
             />
           </div>
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-[16px] text-foreground">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-body text-foreground">
             <input
               type="checkbox"
               checked={isActive}
@@ -336,7 +336,7 @@ export default function KbDetailPage() {
             />
             Active (inactive entries are not used by the AI)
           </label>
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-[16px] text-foreground">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-body text-foreground">
             <input
               type="checkbox"
               checked={pinned}
@@ -357,14 +357,14 @@ export default function KbDetailPage() {
         </form>
       ) : (
         <div>
-          <dl className="mb-6 flex flex-wrap gap-x-8 gap-y-2 text-[16px] text-muted-foreground">
+          <dl className="mb-6 flex flex-wrap gap-x-8 gap-y-2 text-body text-muted-foreground">
             <div>
               <dt className="inline">Type: </dt>
-              <dd className="inline font-mono text-[14px]">{entry.content_type}</dd>
+              <dd className="inline font-mono text-small">{entry.content_type}</dd>
             </div>
             <div>
               <dt className="inline">Source: </dt>
-              <dd className="inline font-mono text-[14px]">{entry.source}</dd>
+              <dd className="inline font-mono text-small">{entry.source}</dd>
             </div>
             {entry.source_url && (
               <div>
@@ -383,17 +383,17 @@ export default function KbDetailPage() {
             )}
             <div>
               <dt className="inline">Category: </dt>
-              <dd className="inline font-mono text-[14px]">{entry.category ?? "none"}</dd>
+              <dd className="inline font-mono text-small">{entry.category ?? "none"}</dd>
             </div>
             {entry.external_key && (
               <div>
                 <dt className="inline">External key: </dt>
-                <dd className="inline font-mono text-[14px]">{entry.external_key}</dd>
+                <dd className="inline font-mono text-small">{entry.external_key}</dd>
               </div>
             )}
             <div>
               <dt className="inline">Updated: </dt>
-              <dd className="inline font-mono text-[14px]">{formatDateTime(entry.updated_at)}</dd>
+              <dd className="inline font-mono text-small">{formatDateTime(entry.updated_at)}</dd>
             </div>
           </dl>
           {entry.tags.length > 0 && (
@@ -401,7 +401,7 @@ export default function KbDetailPage() {
               {entry.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full bg-sunken px-2 py-0.5 font-mono text-[14px] text-muted-foreground"
+                  className="rounded-full bg-sunken px-2 py-0.5 font-mono text-caption text-muted-foreground"
                 >
                   {tag}
                 </span>
@@ -411,10 +411,10 @@ export default function KbDetailPage() {
           <EntryContent entry={entry} />
           {entry.data !== undefined && entry.data !== null && (
             <div className="mt-8">
-              <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <p className="mb-2 text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Source data (read-only)
               </p>
-              <pre className="max-h-96 overflow-auto rounded-md border border-border bg-sunken p-4 font-mono text-[14px] leading-relaxed text-foreground">
+              <pre className="max-h-96 overflow-auto rounded-md border border-border bg-sunken p-4 font-mono text-caption leading-relaxed text-foreground">
                 {JSON.stringify(entry.data, null, 2)}
               </pre>
             </div>

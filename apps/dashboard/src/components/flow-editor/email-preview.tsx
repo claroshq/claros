@@ -59,15 +59,15 @@ p{margin:0 0 14px}a{color:#2f5fb3}img{max-width:100%}
 
   return (
     <div className="overflow-hidden rounded-lg border border-border">
-      <div className="border-b border-border bg-sunken px-3 py-2 text-[14px] text-muted-foreground">{sample.label}</div>
-      <div className="border-b border-border bg-white px-4 py-3 text-[15px] text-[#4b5160]">
-        <p className="truncate text-[17px] font-semibold text-[#1d2230]">
+      <div className="border-b border-border bg-sunken px-3 py-2 text-caption text-muted-foreground">{sample.label}</div>
+      <div className="border-b border-border bg-white px-4 py-3 text-small text-[#4b5160]">
+        <p className="truncate text-lead font-semibold text-[#1d2230]">
           {subject.trim() === "" ? <span className="font-normal text-[#6b7180]">No subject yet</span> : fillSample(subject, sample.values)}
         </p>
         {preheader && <p className="truncate">{fillSample(preheader, sample.values)}</p>}
       </div>
       <iframe title="Email preview" sandbox="" srcDoc={doc} style={{ height }} className="block w-full bg-white" />
-      <p className="border-t border-border bg-sunken px-3 py-2 text-[14px] text-muted-foreground">
+      <p className="border-t border-border bg-sunken px-3 py-2 text-caption text-muted-foreground">
         Body only. Your brand layout, footer and unsubscribe link are added when it sends.
       </p>
     </div>

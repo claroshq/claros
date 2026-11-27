@@ -30,7 +30,7 @@ export default function ProductsSettings() {
   if (products.data && !products.data.instance_admin) {
     return (
       <Section title="Products" configured={null}>
-        <p className="text-[16px] text-muted-foreground">Only instance admins manage products.</p>
+        <p className="text-body text-muted-foreground">Only instance admins manage products.</p>
       </Section>
     );
   }
@@ -49,9 +49,9 @@ export default function ProductsSettings() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-left text-[16px]">
+            <table className="w-full text-left text-body">
               <thead>
-                <tr className="bg-sunken text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                <tr className="bg-sunken text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   <th className="px-4 py-2">Product</th>
                   <th className="px-4 py-2">Status</th>
                   <th className="px-4 py-2 text-right">Actions</th>
@@ -64,10 +64,10 @@ export default function ProductsSettings() {
                       <p className="text-foreground">
                         {p.name}
                         {p.id === me?.user.tenantId && (
-                          <span className="ml-2 text-[14px] text-muted-foreground">(current)</span>
+                          <span className="ml-2 text-caption text-muted-foreground">(current)</span>
                         )}
                       </p>
-                      <p className="font-mono text-[14px] text-muted-foreground">{p.slug}</p>
+                      <p className="font-mono text-caption text-muted-foreground">{p.slug}</p>
                     </td>
                     <td className="px-4 py-2.5">
                       <Badge variant={p.archived ? "warning" : "neutral"}>{p.archived ? "archived" : "active"}</Badge>
@@ -100,8 +100,8 @@ export default function ProductsSettings() {
           </div>
 
           <div className="mt-6">
-            <h3 className="text-[16px] font-medium text-foreground">Create a product</h3>
-            <p className="mt-1 text-[15px] text-muted-foreground">
+            <h3 className="text-body font-medium text-foreground">Create a product</h3>
+            <p className="mt-1 text-small text-muted-foreground">
               You become its owner. Invite its team from Settings, Team after switching to it.
             </p>
             <div className="mt-3">

@@ -60,7 +60,7 @@ export default function PostalSettings() {
             {patch.isPending ? "Saving..." : "Save address"}
           </Button>
           {saved && (
-            <span className="text-[15px] text-success" role="status">Saved.</span>
+            <span className="text-small text-success" role="status">Saved.</span>
           )}
         </div>
       </form>

@@ -93,7 +93,7 @@ function triggerLabel(flow: Flow): string {
 /** Section heading between card groups ("Last 7 days"). */
 function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <h2 className={cn("text-[22px] font-semibold leading-7 tracking-[-0.015em] text-foreground", className)}>
+    <h2 className={cn("text-heading font-semibold leading-7 tracking-[-0.015em] text-foreground", className)}>
       {children}
     </h2>
   );
@@ -102,7 +102,7 @@ function SectionTitle({ children, className }: { children: React.ReactNode; clas
 /** Card heading: sentence case, the card's name, not a micro label. */
 function CardTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2 text-[18px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
+    <h2 className="flex items-center gap-2 text-title font-semibold leading-6 tracking-[-0.01em] text-foreground">
       {children}
     </h2>
   );
@@ -112,7 +112,7 @@ function CardLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <Link
       to={to}
-      className="group inline-flex shrink-0 items-center gap-1 text-[16px] font-medium text-accent-text"
+      className="group inline-flex shrink-0 items-center gap-1 text-body font-medium text-accent-text"
     >
       {children}
       <ArrowRight
@@ -156,7 +156,7 @@ function PanelSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 function PanelNote({ children }: { children: React.ReactNode }) {
-  return <p className="px-6 py-5 text-[16px] leading-6 text-muted-foreground">{children}</p>;
+  return <p className="px-6 py-5 text-body leading-6 text-muted-foreground">{children}</p>;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,8 +194,8 @@ function AttentionRow({ item }: { item: AttentionItem }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <p className="text-[18px] font-semibold leading-[26px] tracking-[-0.01em] text-foreground">{item.title}</p>
-            <p className="mt-1 text-[16px] leading-6 text-muted-foreground">{item.description}</p>
+            <p className="text-title font-semibold tracking-[-0.01em] text-foreground">{item.title}</p>
+            <p className="mt-1 text-body leading-6 text-muted-foreground">{item.description}</p>
           </div>
           <Link
             to={item.linkTo}
@@ -222,14 +222,14 @@ function PendingPreview({ messages }: { messages: Message[] }) {
             to="/approvals"
             className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-(--dur-fast) hover:bg-hover"
           >
-            <span className="min-w-0 flex-1 truncate text-[16px] text-foreground">
+            <span className="min-w-0 flex-1 truncate text-body text-foreground">
               {m.subject || <span className="text-subtle-foreground">Draft without a subject</span>}
             </span>
-            <span className="hidden max-w-[30%] truncate text-[14px] text-muted-foreground sm:inline">
+            <span className="hidden max-w-[30%] truncate text-caption text-muted-foreground sm:inline">
               {personLabel(m.contact)}
             </span>
             {m.flow?.name && (
-              <span className="hidden max-w-[25%] truncate font-mono text-[14px] text-subtle-foreground md:inline">
+              <span className="hidden max-w-[25%] truncate font-mono text-caption text-subtle-foreground md:inline">
                 {m.flow.name}
               </span>
             )}
@@ -357,8 +357,8 @@ function NeedsYou({ items, isLoading }: { items: AttentionItem[]; isLoading: boo
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
           <Check size={15} strokeWidth={2.5} />
         </span>
-        <p className="text-[17px] font-semibold text-foreground">Nothing needs you</p>
-        <span className="hidden text-[16px] text-muted-foreground sm:inline">
+        <p className="text-lead font-semibold text-foreground">Nothing needs you</p>
+        <span className="hidden text-body text-muted-foreground sm:inline">
           No drafts waiting, no failures, events arriving.
         </span>
       </div>
@@ -369,7 +369,7 @@ function NeedsYou({ items, isLoading }: { items: AttentionItem[]; isLoading: boo
       <div className="border-b border-border px-6 py-4">
         <CardTitle>
           Needs you
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-soft px-1.5 text-[12px] font-bold tabular-nums text-danger">
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-soft px-1.5 text-micro font-bold tabular-nums text-danger">
             {items.length}
           </span>
         </CardTitle>
@@ -415,7 +415,7 @@ function Metric({
       className="group flex flex-col rounded-lg border border-border bg-card shadow-card p-5 transition-colors duration-(--dur-fast) hover:border-border-strong sm:p-6"
     >
       <div className="flex items-center justify-between">
-        <p className="text-[16px] font-semibold text-muted-foreground">{label}</p>
+        <p className="text-body font-semibold text-muted-foreground">{label}</p>
         <ArrowRight
           size={16}
           className="text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) group-hover:opacity-100"
@@ -424,19 +424,19 @@ function Metric({
       {loading ? (
         <Skeleton className="mt-3 h-10 w-20" />
       ) : (
-        <p className="mt-2.5 text-[32px] font-semibold leading-[38px] tracking-[-0.03em] tabular-nums text-foreground sm:text-[40px] sm:leading-[46px]">
+        <p className="mt-2.5 text-page font-semibold tracking-[-0.03em] tabular-nums text-foreground">
           {value}
         </p>
       )}
       {sub && !loading && (
         <p
           className={cn(
-            "mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[16px] leading-[24px]",
+            "mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-body",
             subTone === "good" ? "text-success" : subTone === "bad" ? "text-danger" : "text-muted-foreground",
           )}
         >
           {chip && (
-            <span className="rounded-full bg-sunken px-2 py-px text-[15px] font-semibold tabular-nums text-foreground">
+            <span className="rounded-full bg-sunken px-2 py-px text-small font-semibold tabular-nums text-foreground">
               {chip}
             </span>
           )}
@@ -448,7 +448,7 @@ function Metric({
           {spark.some((d) => d.count > 0) ? (
             <TrendLine rows={spark} frameLabels={false} height={44} emptyNote="" ariaLabel={sparkLabel} />
           ) : (
-            <p className="flex h-11 items-center text-[15px] text-subtle-foreground">No data yet</p>
+            <p className="flex h-11 items-center text-small text-subtle-foreground">No data yet</p>
           )}
         </div>
       )}
@@ -706,9 +706,9 @@ function RecentActivity() {
                     <Icon size={17} strokeWidth={1.75} />
                   </span>
                   <span className={cn("min-w-0 flex-1", item.group && "pt-1.5")}>
-                    <span className="block truncate text-[16px] leading-6">{item.text}</span>
+                    <span className="block truncate text-body leading-6">{item.text}</span>
                     {item.group && (
-                      <span className="mt-2 block space-y-1 border-l-2 border-border pl-3.5 text-[15px] leading-[24px] text-muted-foreground">
+                      <span className="mt-2 block space-y-1 border-l-2 border-border pl-3.5 text-small text-muted-foreground">
                         {item.group.slice(0, GROUP_LIST_MAX).map((title, i) => (
                           <span key={i} className="block truncate">{title}</span>
                         ))}
@@ -720,7 +720,7 @@ function RecentActivity() {
                       </span>
                     )}
                   </span>
-                  <span className={cn("shrink-0 text-[15px] tabular-nums text-subtle-foreground", item.group && "pt-2")}>
+                  <span className={cn("shrink-0 text-small tabular-nums text-subtle-foreground", item.group && "pt-2")}>
                     {ago(item.at)}
                   </span>
                 </Link>
@@ -761,7 +761,7 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
     <Panel title={`Active flows${active.length ? ` (${active.length})` : ""}`} link={{ to: "/flows", label: "Flows" }}>
       {active.length === 0 ? (
         <div className="flex flex-col items-start gap-4 px-6 py-5">
-          <p className="text-[16px] leading-6 text-muted-foreground">
+          <p className="text-body leading-6 text-muted-foreground">
             No flow is active, so nobody is enrolled.{others ? ` You have ${others}.` : ""} Describe one in plain
             words and Claros compiles it into a plan.
           </p>
@@ -771,19 +771,19 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
         </div>
       ) : (
         <>
-          <table className="w-full table-fixed text-[16px]">
+          <table className="w-full table-fixed text-body">
             <thead>
               <tr className="border-b border-border text-left">
-                <th className="px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                <th className="px-6 py-3 text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   Flow
                 </th>
-                <th className="w-24 px-3 py-3 text-right text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                <th className="w-24 px-3 py-3 text-right text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   Sent 7d
                 </th>
-                <th className="hidden w-24 px-3 py-3 text-right text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground sm:table-cell">
+                <th className="hidden w-24 px-3 py-3 text-right text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground sm:table-cell">
                   Opened
                 </th>
-                <th className="w-24 px-6 py-3 text-right text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                <th className="w-24 px-6 py-3 text-right text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   Waiting
                 </th>
               </tr>
@@ -801,24 +801,24 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
                       >
                         {flow.name}
                       </Link>
-                      <p className="mt-0.5 truncate font-mono text-[14px] text-muted-foreground">
+                      <p className="mt-0.5 truncate font-mono text-caption text-muted-foreground">
                         {triggerLabel(flow)}
                         {flow.approval_mode === "auto" ? " · auto-approve" : ""}
                       </p>
                     </td>
-                    <td className="px-3 py-3.5 text-right text-[16px] font-semibold tabular-nums text-foreground">
+                    <td className="px-3 py-3.5 text-right text-body font-semibold tabular-nums text-foreground">
                       {stats?.sent ?? 0}
                     </td>
-                    <td className="hidden px-3 py-3.5 text-right text-[16px] tabular-nums text-muted-foreground sm:table-cell">
+                    <td className="hidden px-3 py-3.5 text-right text-body tabular-nums text-muted-foreground sm:table-cell">
                       {stats?.opened ?? 0}
                     </td>
                     <td className="px-6 py-3.5 text-right">
                       {waiting > 0 ? (
-                        <Link to="/approvals" className="text-[16px] font-semibold tabular-nums text-accent-text">
+                        <Link to="/approvals" className="text-body font-semibold tabular-nums text-accent-text">
                           {waiting}
                         </Link>
                       ) : (
-                        <span className="text-[16px] tabular-nums text-subtle-foreground">0</span>
+                        <span className="text-body tabular-nums text-subtle-foreground">0</span>
                       )}
                     </td>
                   </tr>
@@ -826,7 +826,7 @@ function ActiveFlows({ flows }: { flows: Flow[] }) {
               })}
             </tbody>
           </table>
-          {others && <p className="border-t border-border px-6 py-3.5 text-[15px] text-muted-foreground">Also {others}.</p>}
+          {others && <p className="border-t border-border px-6 py-3.5 text-small text-muted-foreground">Also {others}.</p>}
         </>
       )}
     </Panel>
@@ -869,7 +869,7 @@ function LifecycleCard() {
         <PanelNote>States appear once people arrive with identify calls and events.</PanelNote>
       ) : (
         <div className="px-6 pb-5 pt-4">
-          <div className="mb-1 flex items-baseline justify-between gap-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-subtle-foreground">
+          <div className="mb-1 flex items-baseline justify-between gap-3 text-micro font-semibold uppercase tracking-[0.06em] text-subtle-foreground">
             <span>{plural(data.contacts_total, "person", "people")}</span>
             <span className="flex gap-3">
               <span>Now</span>
@@ -891,10 +891,10 @@ function LifecycleCard() {
                 <li key={s}>
                   <Link to={`/people?state=${s}`} className="group block py-3">
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className="font-mono text-[14px] text-foreground group-hover:text-accent-text">{s}</span>
+                      <span className="font-mono text-small text-foreground group-hover:text-accent-text">{s}</span>
                       <span className="flex items-baseline gap-3">
-                        <span className="text-[16px] font-semibold tabular-nums text-foreground">{total.toLocaleString()}</span>
-                        <span className={cn("w-10 text-right text-[15px] font-semibold tabular-nums", tone)}>
+                        <span className="text-body font-semibold tabular-nums text-foreground">{total.toLocaleString()}</span>
+                        <span className={cn("w-10 text-right text-small font-semibold tabular-nums", tone)}>
                           {net > 0 ? `+${net}` : net === 0 ? "0" : net}
                         </span>
                       </span>
@@ -932,8 +932,8 @@ function ConnectAiCard({ keys, loading }: { keys: IngestKey[]; loading: boolean 
           <Bot size={19} strokeWidth={1.75} />
         </span>
         <div className="min-w-0">
-          <p className="text-[17px] font-semibold text-foreground">Review from your AI assistant</p>
-          <p className="mt-1.5 text-[16px] leading-6 text-muted-foreground">
+          <p className="text-lead font-semibold text-foreground">Review from your AI assistant</p>
+          <p className="mt-1.5 text-body leading-6 text-muted-foreground">
             Ask Claude Code or Claude Desktop "anything waiting in Claros?" and approve, edit or reject drafts in
             the chat. Same rules as this dashboard.
           </p>
@@ -984,7 +984,7 @@ function KnowledgeCard() {
         <PanelSkeleton rows={2} />
       ) : entries.length === 0 ? (
         <div className="flex flex-col items-start gap-4 px-6 py-5">
-          <p className="text-[16px] leading-6 text-muted-foreground">
+          <p className="text-body leading-6 text-muted-foreground">
             Empty. Drafts read the knowledge base at draft time: add pricing, plans and policies so they stop
             guessing.
           </p>
@@ -994,7 +994,7 @@ function KnowledgeCard() {
         </div>
       ) : (
         <div className="px-6 py-5">
-          <p className="text-[16px] text-foreground">
+          <p className="text-body text-foreground">
             <span className="font-semibold tabular-nums">{active.toLocaleString()}{more ? "+" : ""}</span> active{" "}
             {active === 1 && !more ? "entry" : "entries"}
             {entries.length > active && (
@@ -1002,7 +1002,7 @@ function KnowledgeCard() {
             )}
           </p>
           {latest && (
-            <p className="mt-1.5 truncate text-[16px] text-muted-foreground">
+            <p className="mt-1.5 truncate text-body text-muted-foreground">
               Last change {ago(latest.updated_at)}:{" "}
               <Link to={`/kb/${latest.id}`} className="text-foreground hover:text-accent-text">
                 {latest.title}
@@ -1010,7 +1010,7 @@ function KnowledgeCard() {
             </p>
           )}
           {failed > 0 && (
-            <p className="mt-2 text-[15px] text-danger">
+            <p className="mt-2 text-small text-danger">
               {plural(failed, "entry", "entries")} failed to embed and cannot be retrieved.
             </p>
           )}
@@ -1058,8 +1058,8 @@ export function Resources() {
           <Lightbulb size={19} strokeWidth={1.75} />
         </span>
         <div>
-          <p className="text-[17px] font-semibold text-foreground">Tip of the day</p>
-          <p className="mt-1.5 text-[16px] leading-6 text-muted-foreground">{tipOfTheDay()}</p>
+          <p className="text-lead font-semibold text-foreground">Tip of the day</p>
+          <p className="mt-1.5 text-body leading-6 text-muted-foreground">{tipOfTheDay()}</p>
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4">
@@ -1067,7 +1067,7 @@ export function Resources() {
           href="https://claros.org/docs"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-[16px] font-medium text-accent-text"
+          className="inline-flex items-center gap-1.5 text-body font-medium text-accent-text"
         >
           <BookOpen size={14} strokeWidth={1.5} />
           Documentation
@@ -1077,7 +1077,7 @@ export function Resources() {
           href="https://github.com/claroshq/claros/discussions"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-[16px] font-medium text-accent-text"
+          className="inline-flex items-center gap-1.5 text-body font-medium text-accent-text"
         >
           <MessagesSquare size={14} strokeWidth={1.5} />
           Discussions

@@ -33,7 +33,7 @@ const KIND_LABELS: Record<TransportKind, string> = {
   cloudflare: "Cloudflare Email Service",
 };
 
-const LABEL = "mb-1.5 block text-[16px] font-medium text-foreground";
+const LABEL = "mb-1.5 block text-body font-medium text-foreground";
 const OPTIONAL = <span className="font-normal text-muted-foreground">(optional)</span>;
 const REQUIRED = <span className="text-danger" aria-hidden="true">*</span>;
 
@@ -128,7 +128,7 @@ function TransportCard({ transport: t, effective }: { transport: TransportItem; 
   return (
     <li className="rounded-md border border-border p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-[17px] font-medium text-foreground">{t.name ?? KIND_LABELS[t.kind] ?? t.kind}</span>
+        <span className="text-lead font-medium text-foreground">{t.name ?? KIND_LABELS[t.kind] ?? t.kind}</span>
         <Badge variant="neutral">{KIND_LABELS[t.kind] ?? t.kind}</Badge>
         {effective.default === t.id && <Badge variant="accent">default</Badge>}
         {effective.transactional === t.id && <Badge variant="accent">transactional</Badge>}
@@ -167,7 +167,7 @@ function TransportCard({ transport: t, effective }: { transport: TransportItem; 
         )}
         <Button size="sm" variant="ghost" onClick={remove} disabled={del.isPending}>Remove</Button>
       </div>
-      {message && <p className="mt-3 text-[15px] text-success" role="status">{message}</p>}
+      {message && <p className="mt-3 text-small text-success" role="status">{message}</p>}
       <FormError message={err} />
     </li>
   );
@@ -232,7 +232,7 @@ function AddTransportForm({ canCancel, onDone }: { canCancel: boolean; onDone: (
 
   return (
     <form onSubmit={submit} noValidate className="mt-6 space-y-4 rounded-md border border-border p-4">
-      <h3 className="text-[18px] font-semibold text-foreground">Add transport</h3>
+      <h3 className="text-title font-semibold text-foreground">Add transport</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label htmlFor="tp-kind" className={LABEL}>Provider</label>
@@ -317,11 +317,11 @@ function AddTransportForm({ canCancel, onDone }: { canCancel: boolean; onDone: (
             </div>
           </div>
           <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 text-[16px] text-foreground">
+            <label className="flex items-center gap-2 text-body text-foreground">
               <input type="checkbox" checked={smtpSecure} onChange={(e) => setSmtpSecure(e.target.checked)} disabled={busy} className="rounded border-input" />
               Implicit TLS (port 465)
             </label>
-            <label className="flex items-center gap-2 text-[16px] text-foreground">
+            <label className="flex items-center gap-2 text-body text-foreground">
               <input type="checkbox" checked={!smtpRejectUnauthorized} onChange={(e) => setSmtpRejectUnauthorized(!e.target.checked)} disabled={busy} className="rounded border-input" />
               Accept self-signed certificates
             </label>
@@ -436,7 +436,7 @@ function RoutingSection({
         <FormError message={error} />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={put.isPending}>{put.isPending ? "Saving..." : "Save routing"}</Button>
-          {saved && <span className="text-[15px] text-success" role="status">Saved.</span>}
+          {saved && <span className="text-small text-success" role="status">Saved.</span>}
         </div>
       </form>
     </Section>

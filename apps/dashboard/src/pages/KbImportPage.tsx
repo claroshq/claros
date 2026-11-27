@@ -138,7 +138,7 @@ function Steps({ stage }: { stage: Stage }) {
   const steps: Array<[Stage, string]> = [["choose", "Choose files"], ["check", "Check"], ["done", "Import"]];
   const current = steps.findIndex(([s]) => s === stage);
   return (
-    <ol className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-[15px]" aria-label="Import steps">
+    <ol className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-small" aria-label="Import steps">
       {steps.map(([s, label], i) => (
         <li key={s} className="flex items-center gap-3">
           <span
@@ -150,7 +150,7 @@ function Steps({ stage }: { stage: Stage }) {
           >
             <span
               className={cn(
-                "flex h-5 w-5 items-center justify-center rounded-full font-mono text-[12px]",
+                "flex h-5 w-5 items-center justify-center rounded-full font-mono text-micro",
                 i === current ? "bg-accent-soft text-accent-text" : "bg-sunken",
               )}
             >
@@ -180,9 +180,9 @@ function FormatCard({
     <div className="flex flex-col rounded-lg border border-border p-4">
       <div className="flex items-center gap-2">
         <Icon size={16} strokeWidth={1.5} className="text-accent-text" />
-        <p className="text-[16px] font-medium text-foreground">{title}</p>
+        <p className="text-body font-medium text-foreground">{title}</p>
       </div>
-      <div className="mt-2 flex-1 space-y-2 text-[15px] leading-relaxed text-muted-foreground">{children}</div>
+      <div className="mt-2 flex-1 space-y-2 text-small leading-relaxed text-muted-foreground">{children}</div>
       {example && (
         <Button variant="ghost" size="sm" className="mt-3 w-fit px-2" onClick={() => download(example)}>
           <Download size={14} strokeWidth={1.5} />
@@ -196,11 +196,11 @@ function FormatCard({
 function Stat({ value, label, hint, tone }: { value: number; label: string; hint: string; tone?: "warning" }) {
   return (
     <div className="rounded-lg border border-border p-4">
-      <p className={cn("font-display text-[24px] font-bold leading-none tabular-nums", tone === "warning" && value > 0 ? "text-warning" : "text-foreground")}>
+      <p className={cn("font-display text-headline font-bold leading-none tabular-nums", tone === "warning" && value > 0 ? "text-warning" : "text-foreground")}>
         {value.toLocaleString("en-US")}
       </p>
-      <p className="mt-2 text-[16px] font-medium text-foreground">{label}</p>
-      <p className="mt-0.5 text-[15px] leading-snug text-muted-foreground">{hint}</p>
+      <p className="mt-2 text-body font-medium text-foreground">{label}</p>
+      <p className="mt-0.5 text-small leading-snug text-muted-foreground">{hint}</p>
     </div>
   );
 }
@@ -211,19 +211,19 @@ function ProblemList({ title, items }: { title: string; items: Array<{ source: s
   const shown = all ? items : items.slice(0, 8);
   return (
     <div className="mb-6 rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
-      <p className="flex items-center gap-2 text-[16px] font-medium text-foreground">
+      <p className="flex items-center gap-2 text-body font-medium text-foreground">
         <AlertTriangle size={16} strokeWidth={1.5} className="text-danger" />
         {title}
       </p>
-      <ul className="mt-2 space-y-1 text-[15px] text-foreground">
+      <ul className="mt-2 space-y-1 text-small text-foreground">
         {shown.map((p, i) => (
           <li key={i}>
-            <span className="font-mono text-[14px] text-muted-foreground">{p.source}</span>: {p.message}
+            <span className="font-mono text-caption text-muted-foreground">{p.source}</span>: {p.message}
           </li>
         ))}
       </ul>
       {items.length > shown.length && (
-        <button type="button" className="mt-2 text-[15px] font-medium text-foreground underline underline-offset-2" onClick={() => setAll(true)}>
+        <button type="button" className="mt-2 text-small font-medium text-foreground underline underline-offset-2" onClick={() => setAll(true)}>
           Show all {items.length}
         </button>
       )}
@@ -243,29 +243,29 @@ npx @claroshq/claros kb import kb.jsonl --dry-run
 npx @claroshq/claros kb import kb.jsonl`;
   return (
     <section className="mt-12 border-t border-border pt-8">
-      <h2 className="text-[18px] font-medium text-foreground">Keep it in sync from your own system</h2>
-      <p className="mt-2 max-w-2xl text-[16px] leading-relaxed text-muted-foreground">
+      <h2 className="text-title font-medium text-foreground">Keep it in sync from your own system</h2>
+      <p className="mt-2 max-w-2xl text-body leading-relaxed text-muted-foreground">
         If your help center, docs or product data live somewhere else, send them on a schedule instead of uploading by hand. The API takes the
         same entries as this page (JSONL or a JSON array, up to 1,000 per request) and follows the same rules: matched by{" "}
-        <code className="font-mono text-[14px]">external_key</code>, entries edited in Claros are protected, nothing is deleted. It needs an
-        admin key with the <code className="font-mono text-[14px]">kb</code> scope: a product owner creates one on{" "}
+        <code className="font-mono text-small">external_key</code>, entries edited in Claros are protected, nothing is deleted. It needs an
+        admin key with the <code className="font-mono text-small">kb</code> scope: a product owner creates one on{" "}
         <Link to="/integrate" className="font-medium text-foreground underline underline-offset-2">
           Integrate
         </Link>
-        . Remove <code className="font-mono text-[14px]">dry_run=1</code> to write.
+        . Remove <code className="font-mono text-small">dry_run=1</code> to write.
       </p>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div>
-          <p className="mb-2 text-[15px] font-medium text-muted-foreground">API</p>
+          <p className="mb-2 text-small font-medium text-muted-foreground">API</p>
           <CodeBlock id="kb-import-curl" code={curl} />
         </div>
         <div>
-          <p className="mb-2 text-[15px] font-medium text-muted-foreground">CLI (JSONL or JSON files)</p>
+          <p className="mb-2 text-small font-medium text-muted-foreground">CLI (JSONL or JSON files)</p>
           <CodeBlock id="kb-import-cli" code={cli} />
         </div>
       </div>
-      <p className="mt-3 text-[15px] text-muted-foreground">
-        One entry at a time: <code className="font-mono text-[14px]">POST /v1/kb</code> with the same key. Reference:{" "}
+      <p className="mt-3 text-small text-muted-foreground">
+        One entry at a time: <code className="font-mono text-caption">POST /v1/kb</code> with the same key. Reference:{" "}
         <a
           href="https://github.com/claroshq/claros/blob/main/docs/guide/KB.md#import"
           target="_blank"
@@ -410,11 +410,11 @@ export default function KbImportPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
-        <Link to="/kb" className="text-[16px] text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
+        <Link to="/kb" className="text-body text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground">
           &larr; Knowledge Base
         </Link>
-        <h1 className="mt-2 font-display text-[34px] font-bold leading-[40px] tracking-[-0.025em] text-foreground">Import entries</h1>
-        <p className="mt-2 max-w-2xl text-[16px] leading-relaxed text-muted-foreground">
+        <h1 className="mt-2 font-display text-display font-bold tracking-[-0.02em] text-foreground">Import entries</h1>
+        <p className="mt-2 max-w-2xl text-body leading-relaxed text-muted-foreground">
           Bring in what you already have written: help articles, FAQ rows, product facts. Each entry has a key, so importing the same files again
           updates what changed and never duplicates or deletes anything. Nothing is written until you confirm.
         </p>
@@ -444,8 +444,8 @@ export default function KbImportPage() {
             <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
               <Upload size={20} strokeWidth={1.5} />
             </span>
-            <p className="mt-4 text-[18px] font-medium text-foreground">Drop files here</p>
-            <p className="mt-1 text-[16px] text-muted-foreground">Markdown, text, CSV, JSONL or JSON. Several files at once are fine.</p>
+            <p className="mt-4 text-title font-medium text-foreground">Drop files here</p>
+            <p className="mt-1 text-body text-muted-foreground">Markdown, text, CSV, JSONL or JSON. Several files at once are fine.</p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
               <Button size="sm" disabled={reading} onClick={() => fileInput.current?.click()}>
                 <Upload size={16} strokeWidth={1.5} />
@@ -471,17 +471,17 @@ export default function KbImportPage() {
 
           {pasteOpen && (
             <div className="mt-4">
-              <label htmlFor="kb-paste" className="mb-1.5 block text-[16px] font-medium text-foreground">
+              <label htmlFor="kb-paste" className="mb-1.5 block text-body font-medium text-foreground">
                 Paste text
               </label>
               <Textarea
                 id="kb-paste"
                 value={pasted}
                 onChange={(e) => setPasted(e.target.value)}
-                className="min-h-56 font-mono text-[14px]"
+                className="min-h-56 font-mono text-small"
                 placeholder={"# Refund policy\n\nRefunds within 30 days of payment, no questions asked.\n\nOr paste CSV rows with a title,content header, or JSONL."}
               />
-              <p className="mt-1.5 text-[15px] text-muted-foreground">
+              <p className="mt-1.5 text-small text-muted-foreground">
                 Markdown becomes one entry (start with a <code className="font-mono">#</code> title line). CSV with a header row, JSONL and JSON
                 arrays are read like files.
               </p>
@@ -491,8 +491,8 @@ export default function KbImportPage() {
             </div>
           )}
 
-          <h2 className="mt-10 text-[18px] font-medium text-foreground">What to import</h2>
-          <p className="mt-1 text-[16px] text-muted-foreground">
+          <h2 className="mt-10 text-title font-medium text-foreground">What to import</h2>
+          <p className="mt-1 text-body text-muted-foreground">
             Pick the format closest to where your material lives now. Every entry needs a title and its content (up to{" "}
             {KB_IMPORT_LIMITS.content.toLocaleString("en-US")} characters).
           </p>
@@ -522,10 +522,10 @@ export default function KbImportPage() {
             </FormatCard>
           </div>
 
-          <h2 className="mt-10 text-[18px] font-medium text-foreground">How importing again works</h2>
-          <ul className="mt-2 max-w-3xl list-disc space-y-1.5 pl-5 text-[16px] leading-relaxed text-muted-foreground">
+          <h2 className="mt-10 text-title font-medium text-foreground">How importing again works</h2>
+          <ul className="mt-2 max-w-3xl list-disc space-y-1.5 pl-5 text-body leading-relaxed text-muted-foreground">
             <li>
-              Entries are matched by <code className="font-mono text-[14px]">external_key</code>. A Markdown file is keyed on its file name and a CSV
+              Entries are matched by <code className="font-mono text-small">external_key</code>. A Markdown file is keyed on its file name and a CSV
               row without that column on its title, so renaming the file or the title creates a new entry.
             </li>
             <li>An entry someone edited in Claros since its last import is left alone, unless you choose to overwrite it in the next step.</li>
@@ -541,7 +541,7 @@ export default function KbImportPage() {
       {stage === "check" && parsed && (
         <>
           <div className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
-            <p className="text-[17px] text-foreground">
+            <p className="text-lead text-foreground">
               Read {n(rows.length, "entry", "entries")} from <span className="font-medium">{sourceLabel}</span>
               {localProblems.length > 0 && (
                 <span className="text-muted-foreground">, {localProblems.length} with a problem</span>
@@ -568,7 +568,7 @@ export default function KbImportPage() {
           />
 
           {ready.length === 0 ? (
-            <p className="rounded-md border border-border bg-secondary px-4 py-3 text-[16px] text-foreground">
+            <p className="rounded-md border border-border bg-secondary px-4 py-3 text-body text-foreground">
               Nothing to import yet. Fix the problems above, or{" "}
               <button type="button" className="font-medium underline underline-offset-2" onClick={startOver}>
                 choose other files
@@ -577,17 +577,17 @@ export default function KbImportPage() {
             </p>
           ) : (
             <>
-              <h2 className="mb-3 text-[18px] font-medium text-foreground">What the import will do</h2>
+              <h2 className="mb-3 text-title font-medium text-foreground">What the import will do</h2>
               {previewError && (
                 <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
-                  <p className="text-[16px] text-foreground">Could not check against the knowledge base: {previewError}</p>
+                  <p className="text-body text-foreground">Could not check against the knowledge base: {previewError}</p>
                   <Button variant="outline" size="sm" onClick={() => void runPreview()}>
                     Try again
                   </Button>
                 </div>
               )}
               {!preview && !previewError && (
-                <p className="mb-4 text-[16px] text-muted-foreground" role="status">
+                <p className="mb-4 text-body text-muted-foreground" role="status">
                   Checking {n(ready.length, "entry", "entries")} against the knowledge base
                   {progress ? ` (batch ${progress.done + 1} of ${progress.total})` : ""}... Nothing is written yet.
                 </p>
@@ -606,7 +606,7 @@ export default function KbImportPage() {
                     />
                   </div>
                   {(preview.skipped_edited > 0 || force) && (
-                    <label className="mt-4 flex w-fit cursor-pointer items-start gap-2 text-[16px] text-foreground">
+                    <label className="mt-4 flex w-fit cursor-pointer items-start gap-2 text-body text-foreground">
                       <input
                         type="checkbox"
                         checked={force}
@@ -616,7 +616,7 @@ export default function KbImportPage() {
                       />
                       <span>
                         Overwrite entries edited in Claros with the file's version
-                        <span className="block text-[15px] text-muted-foreground">
+                        <span className="block text-small text-muted-foreground">
                           Changes made in the dashboard since the last import of these entries are lost.
                         </span>
                       </span>
@@ -635,7 +635,7 @@ export default function KbImportPage() {
 
               {importError && (
                 <div className="mt-6 rounded-md border border-danger bg-danger-soft px-4 py-3" role="alert">
-                  <p className="text-[16px] text-foreground">{importError}</p>
+                  <p className="text-body text-foreground">{importError}</p>
                 </div>
               )}
 
@@ -653,13 +653,13 @@ export default function KbImportPage() {
                   Cancel
                 </Button>
                 {preview && willWrite === 0 && (
-                  <p className="text-[16px] text-muted-foreground">Everything that can be imported is already in the knowledge base.</p>
+                  <p className="text-body text-muted-foreground">Everything that can be imported is already in the knowledge base.</p>
                 )}
               </div>
 
-              <h2 className="mb-2 mt-10 text-[18px] font-medium text-foreground">Entries in the files</h2>
+              <h2 className="mb-2 mt-10 text-title font-medium text-foreground">Entries in the files</h2>
               <div className="overflow-x-auto border-t border-b border-border">
-                <table className="w-full text-left text-[15px]">
+                <table className="w-full text-left text-small">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground">
                       <th className="px-2 py-2 font-medium">Status</th>
@@ -689,9 +689,9 @@ export default function KbImportPage() {
                               </span>
                             )}
                           </td>
-                          <td className="max-w-64 truncate px-2 py-2 font-mono text-[14px] text-muted-foreground">{r.external_key}</td>
-                          <td className="px-2 py-2 font-mono text-[14px] text-muted-foreground">{r.entry?.category ?? ""}</td>
-                          <td className="px-2 py-2 text-right font-mono text-[14px] tabular-nums text-muted-foreground">
+                          <td className="max-w-64 truncate px-2 py-2 font-mono text-caption text-muted-foreground">{r.external_key}</td>
+                          <td className="px-2 py-2 font-mono text-caption text-muted-foreground">{r.entry?.category ?? ""}</td>
+                          <td className="px-2 py-2 text-right font-mono text-caption tabular-nums text-muted-foreground">
                             {r.entry ? r.entry.content.length.toLocaleString("en-US") : ""}
                           </td>
                         </tr>
@@ -701,7 +701,7 @@ export default function KbImportPage() {
                 </table>
               </div>
               {rows.length > TABLE_ROWS && (
-                <p className="mt-2 text-[15px] text-muted-foreground">and {n(rows.length - TABLE_ROWS, "more entry", "more entries")}</p>
+                <p className="mt-2 text-small text-muted-foreground">and {n(rows.length - TABLE_ROWS, "more entry", "more entries")}</p>
               )}
             </>
           )}
@@ -712,11 +712,11 @@ export default function KbImportPage() {
       {stage === "done" && result && (
         <>
           <div className="rounded-lg border border-border p-6">
-            <p className="flex items-center gap-2 text-[18px] font-medium text-foreground">
+            <p className="flex items-center gap-2 text-title font-medium text-foreground">
               <CheckCircle2 size={20} strokeWidth={1.5} className="text-success" />
               Import finished
             </p>
-            <p className="mt-2 text-[16px] text-foreground">
+            <p className="mt-2 text-body text-foreground">
               {n(result.created, "entry", "entries")} created, {result.updated.toLocaleString("en-US")} updated,{" "}
               {result.unchanged.toLocaleString("en-US")} unchanged
               {result.skipped_edited > 0 && <>, {result.skipped_edited.toLocaleString("en-US")} kept as edited in Claros</>}
@@ -725,7 +725,7 @@ export default function KbImportPage() {
               )}
               .
             </p>
-            <p className="mt-3 max-w-2xl text-[16px] leading-relaxed text-muted-foreground">
+            <p className="mt-3 max-w-2xl text-body leading-relaxed text-muted-foreground">
               {noEmbeddingProvider ? (
                 <>
                   Drafts can use the new entries right away. Without an embedding provider they are found by shared words; pinned entries and
