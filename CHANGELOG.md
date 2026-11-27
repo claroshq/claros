@@ -12,7 +12,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Deprecated
 
-- The lifecycle state name `churned` and the setting `churned_days`. The next minor release migrates stored data to `gone_quiet` and the API returns `gone_quiet` in `lifecycle_state`, transitions, analytics and imports; check integrations that compare `lifecycle_state` with `"churned"`. `churned` and `churned_days` stay accepted as input.
+- The lifecycle state name `churned` and the setting `churned_days`. From the next minor release the API returns `gone_quiet` in `lifecycle_state`, transitions, analytics and imports; check integrations that compare `lifecycle_state` with `"churned"`. `churned` and `churned_days` stay accepted as input.
 
 ### Fixed
 

@@ -3,8 +3,8 @@
  *
  * `churned` was renamed `gone_quiet`: no product activity for
  * gone_quiet_days, which says nothing about billing (a paying customer can
- * be gone quiet). Until the next minor release the API still stores and
- * returns `churned`, so the dashboard keeps `churned` as the value it sends
+ * be gone quiet). Until the next minor release the API still returns
+ * `churned`, so the dashboard keeps `churned` as the value it sends
  * and shows `gone_quiet` wherever a state name is displayed. Config written
  * by hand may already say `gone_quiet`; storedState maps it back so selects
  * show it.

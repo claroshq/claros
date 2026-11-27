@@ -77,7 +77,7 @@ For every contact the recompute replays its events in time order through the sam
 
 - the first event sets `first_seen_at`; events in `engagement_events` (every event when the list is empty) move `last_seen_at` and count toward the engagement counters;
 - `signed_up -> activated` when all `activation_events` have occurred, `activated_at` at that moment; activity after activation, at risk or dormant leads to `engaged`, activity after churn to `resurrected` and then `engaged`;
-- `engaged -> at_risk -> dormant -> gone_quiet` (stored as `churned` until the next minor release) at the moment each inactivity threshold of `settings.lifecycle` is crossed.
+- `engaged -> at_risk -> dormant -> gone_quiet` (returned as `churned` until the next minor release) at the moment each inactivity threshold of `settings.lifecycle` is crossed.
 
 The result replaces the contact's `lifecycle_state`, `first_seen_at`, `last_seen_at`, `activated_at` and engagement counters. The transitions of the replay are stored with their original times and `metadata` `{"source": "import"}`, so the contact timeline and lifecycle analytics show them; they enroll no one. Running the recompute again replaces those import transitions and changes nothing when the history is the same.
 
