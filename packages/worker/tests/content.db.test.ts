@@ -311,6 +311,7 @@ async function getMessage(id: string) {
       subject: lifecycleMessages.subject,
       bodyHtml: lifecycleMessages.bodyHtml,
       bodyText: lifecycleMessages.bodyText,
+      revisionRequest: lifecycleMessages.revisionRequest,
     })
     .from(lifecycleMessages)
     .where(eq(lifecycleMessages.id, id));
