@@ -9,6 +9,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Changed
 
 - Dashboard: the type scale steps down one notch (body and table cells 14px on a 20px line, page titles 28px) and the vertical rhythm tightens (36px controls, ~44px table rows, 36px nav items, less space between sections). Flow names in the list are medium weight. No API change, no migration.
+- Dashboard: the People table fits its width and never scrolls sideways. Name and email truncate instead of stretching the table; the Email column shows from 1536px and below that the email sits under the name; Depth and Payment show from 1280px, Last seen from 640px. No API change, no migration.
 
 ## [0.13.1] - 2026-11-27
 

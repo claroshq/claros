@@ -110,6 +110,17 @@ function paymentVariant(status: string): BadgeVariant {
 }
 
 /** Same rule as the server's name sort and letter filter. */
+/*
+ * Column fit. The table never scrolls sideways: Name (and Email, when
+ * shown) take the leftover width and truncate (max-w-0 lets truncate work
+ * in an auto-layout table), every other column is as wide as its content.
+ * Lower-value columns drop out as the content area narrows; the filters
+ * still cover them.
+ */
+const COL_FIT = "w-px whitespace-nowrap";
+const COL_WIDE = "hidden xl:table-cell";
+const COL_EMAIL = "hidden 2xl:table-cell";
+
 function displayName(c: Contact): string {
   const name = c.name?.trim();
   return name ? name : (c.email ?? c.external_id);
@@ -267,6 +278,7 @@ function SortableHead({
   order,
   onSort,
   align = "left",
+  className,
 }: {
   label: string;
   sortKey: ContactSortKey;
@@ -274,12 +286,13 @@ function SortableHead({
   order: "asc" | "desc";
   onSort: (key: ContactSortKey) => void;
   align?: "left" | "right";
+  className?: string;
 }) {
   const Icon = !active ? ChevronsUpDown : order === "asc" ? ArrowUp : ArrowDown;
   return (
     <TableHead
       aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
-      className={align === "right" ? "text-right" : undefined}
+      className={cn(align === "right" && "text-right", className)}
     >
       <button
         type="button"
@@ -566,10 +579,10 @@ export default function PeoplePage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <SortableHead label="Name" sortKey="name" active={sort.key === "name"} order={sort.order} onSort={onSort} />
-                <TableHead>Email</TableHead>
-                <TableHead>Lifecycle</TableHead>
-                <TableHead>Depth</TableHead>
-                <TableHead>Payment</TableHead>
+                <TableHead className={COL_EMAIL}>Email</TableHead>
+                <TableHead className={COL_FIT}>Lifecycle</TableHead>
+                <TableHead className={cn(COL_FIT, COL_WIDE)}>Depth</TableHead>
+                <TableHead className={cn(COL_FIT, COL_WIDE)}>Payment</TableHead>
                 <SortableHead
                   label="Joined"
                   sortKey="joined"
@@ -577,6 +590,7 @@ export default function PeoplePage() {
                   order={sort.order}
                   onSort={onSort}
                   align="right"
+                  className={COL_FIT}
                 />
                 <SortableHead
                   label="Last seen"
@@ -585,6 +599,7 @@ export default function PeoplePage() {
                   order={sort.order}
                   onSort={onSort}
                   align="right"
+                  className={cn(COL_FIT, "hidden sm:table-cell")}
                 />
               </TableRow>
             </TableHeader>
@@ -595,11 +610,11 @@ export default function PeoplePage() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/people/${c.id}`)}
                 >
-                  <TableCell>
+                  <TableCell className="w-3/5 max-w-0">
                     <div className="flex items-center gap-3">
                       <span
                         aria-hidden="true"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-caption font-semibold text-accent-text"
+                        className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-caption font-semibold text-accent-text sm:flex"
                       >
                         {initial(c)}
                       </span>
@@ -608,18 +623,27 @@ export default function PeoplePage() {
                         {c.company && (
                           <span className="block truncate text-small text-muted-foreground">{c.company}</span>
                         )}
+                        {/* Below 2xl the Email column is hidden: the email
+                            moves under the name, unless it already is the name. */}
+                        {c.email && c.email !== displayName(c) && (
+                          <span className="block truncate font-mono text-caption text-muted-foreground 2xl:hidden">
+                            {c.email}
+                          </span>
+                        )}
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-caption text-muted-foreground">
-                    {c.email ?? "-"}
+                  <TableCell className={cn(COL_EMAIL, "w-2/5 max-w-0")}>
+                    <span className="block truncate font-mono text-caption text-muted-foreground">
+                      {c.email ?? "-"}
+                    </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className={COL_FIT}>
                     <Badge variant={stateVariant(c.lifecycle_state)} title={stateHint(c.lifecycle_state)}>
                       {stateName(c.lifecycle_state)}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className={cn(COL_FIT, COL_WIDE)}>
                     {c.engagement_depth ? (
                       <Badge variant={depthVariant(c.engagement_depth)}>
                         {c.engagement_depth}
@@ -628,7 +652,7 @@ export default function PeoplePage() {
                       <span className="text-subtle-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className={cn(COL_FIT, COL_WIDE)}>
                     {c.payment_status ? (
                       <Badge variant={paymentVariant(c.payment_status)}>
                         {c.payment_status}
@@ -637,10 +661,10 @@ export default function PeoplePage() {
                       <span className="text-subtle-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-small text-muted-foreground">
+                  <TableCell className={cn(COL_FIT, "text-right font-mono text-small text-muted-foreground")}>
                     {formatDate(c.first_seen_at ?? c.created_at)}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono text-small text-muted-foreground">
+                  <TableCell className={cn(COL_FIT, "hidden text-right font-mono text-small text-muted-foreground sm:table-cell")}>
                     {formatLastSeen(c.last_seen_at)}
                   </TableCell>
                 </TableRow>
