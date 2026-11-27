@@ -30,6 +30,7 @@ import {
   BarChart3,
   Settings,
   Plug,
+  Bot,
   LogOut,
   Send,
   Menu,
@@ -84,6 +85,7 @@ const NAV_GROUPS: NavItem[][] = [
   ],
   [
     { label: "Integrate", path: "/integrate", icon: Plug, enabled: true },
+    { label: "Connect your AI", path: "/connect-ai", icon: Bot, enabled: true },
     { label: "Settings", path: "/settings", icon: Settings, enabled: true },
   ],
 ];

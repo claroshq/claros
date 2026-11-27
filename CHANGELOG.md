@@ -6,6 +6,18 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard: **Connect your AI** (`/connect-ai`, in the sidebar under Integrate) sets up the [MCP server](docs/guide/MCP.md) without leaving the dashboard: create an admin key with the `messages` and `contacts:read` scopes (optionally `config`), then copy a ready snippet for Claude Code, Claude Desktop, Cursor, VS Code or any Streamable HTTP client with this instance's `/v1/mcp` address and the new key filled in. It lists prompts with the tools they call and the admin keys that can review, with when each was last used. No API change.
+
+### Changed
+
+- Dashboard, Home: the overview keeps the same layout whatever needs attention (before, any attention item hid the numbers and the active flows). **Needs you** lists approvals with the first three drafts inline, failures, compile errors, ingestion gaps and deliverability and at_risk signals, or one line when nothing does. Below it: the last 7 days (sent with the change from the week before, opens, people who joined, events in 24 hours, with 14-day trend lines), recent activity (sent mail, people who joined and knowledge base edits by time), active flows with their sent, opened and waiting counts, lifecycle states with the week's net movement, the knowledge base, an MCP setup card, and the tip of the day. Every number comes from existing endpoints; no API change, no migration.
+
+### Fixed
+
+- Dashboard, Home: the community link pointed to `claros.org/community`, which does not exist; it now opens GitHub Discussions.
+
 ## [0.11.0] - 2026-11-27
 
 ### Upgrade

@@ -32,7 +32,7 @@ MCP uses a product [admin key](API_KEYS.md#admin-keys) (`clr_ak_...`). The key d
 
 For daily review, `messages` and `contacts:read` are enough. Add `config` only if the person may also pause and resume flows (the `config` scope also allows `PUT /v1/config` over the HTTP API, so give it deliberately).
 
-A product owner creates the key in the dashboard (**Integrate**, **Admin key**, pick the scopes) or with the API:
+A product owner creates the key in the dashboard, either on **Connect your AI** (scopes preselected, and the snippets in step 2 below come filled in with the key) or on **Integrate**, **Admin key**, or with the API:
 
 ```bash
 curl -X POST https://claros.example.com/v1/ingestion/keys \

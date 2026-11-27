@@ -51,6 +51,7 @@ import WebhooksSettings from "./pages/settings/WebhooksSettings.js";
 import ConfigSettings from "./pages/settings/ConfigSettings.js";
 import NotFoundPage from "./pages/NotFoundPage.js";
 import IntegratePage from "./pages/IntegratePage.js";
+import ConnectAiPage from "./pages/connect-ai/ConnectAiPage.js";
 import SentLogPage from "./pages/SentLogPage.js";
 import SentLogDetailPage from "./pages/SentLogDetailPage.js";
 import SuppressionsPage from "./pages/SuppressionsPage.js";
@@ -105,6 +106,7 @@ export default function App() {
         <Route index element={<DefaultRoute />} />
         <Route path="home" element={<HomePage />} />
         <Route path="integrate" element={<IntegratePage />} />
+        <Route path="connect-ai" element={<ConnectAiPage />} />
         <Route path="flows" element={<FlowsPage />} />
         <Route path="flows/new" element={<FlowEditorPage />} />
         <Route path="flows/:id/edit" element={<FlowEditorPage />} />
