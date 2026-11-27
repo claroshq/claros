@@ -349,6 +349,17 @@ export function d1ApiContacts(db: D1Db): ApiContactsQueries {
       return row ? { id: row.id, externalId: row.external_id, email: row.email } : null;
     },
 
+    async findContactByEmail({ tenantId, email }) {
+      const rows = await db.all<{ id: string; external_id: string; email: string | null }>(sql`
+        SELECT id, external_id, email FROM contacts
+        WHERE tenant_id = ${tenantId} AND lower(email) = lower(${email})
+        ORDER BY created_at, id
+        LIMIT 1
+      `);
+      const row = rows[0];
+      return row ? { id: row.id, externalId: row.external_id, email: row.email } : null;
+    },
+
     async eraseContact({ tenantId, contactId }) {
       // One batch: all deletes commit together (D1 batch is one transaction).
       const results = await rawBatch(db, [

@@ -143,6 +143,8 @@ export interface ApiContactsQueries {
   listContactTopics(input: { tenantId: string; contactId: string }): Promise<ContactTopicStatusRow[]>;
   /** A contact of the tenant by external_id, else by id (uuid), or null. */
   findContactByRef(input: { tenantId: string; ref: string }): Promise<{ id: string; externalId: string; email: string | null } | null>;
+  /** A contact of the tenant by exact email (case ignored), or null. */
+  findContactByEmail(input: { tenantId: string; email: string }): Promise<{ id: string; externalId: string; email: string | null } | null>;
   /**
    * Erase a contact of the tenant (G12): its events, transitions, conflicts,
    * topic statuses, notes, memberships, messages and their message events, pending

@@ -7,7 +7,7 @@
  */
 import { sql, type SQL } from "drizzle-orm";
 import type { PgDb } from "./db.js";
-import type { ApiMessagesQueries, MessageListRow } from "../areas/api-messages.js";
+import type { ApiMessagesQueries, MessageListRow, OpenMessageCount } from "../areas/api-messages.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
 import { pgWriteOutbox } from "./outbox.js";
 
@@ -163,6 +163,47 @@ export function pgApiMessages(db: PgDb): ApiMessagesQueries {
       `);
       const r = res.rows[0];
       return r ? { status: r.status, subject: r.subject, bodyHtml: r.body_html, bodyText: r.body_text } : null;
+    },
+
+    async getMessage({ tenantId, messageId }) {
+      const result = await db.execute<MessageListRow>(sql`
+        SELECT ${LIST_COLUMNS}, m.approved_at
+        FROM lifecycle_messages m
+        LEFT JOIN contacts c
+          ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
+        LEFT JOIN flows f
+          ON f.id = m.flow_id AND f.tenant_id = m.tenant_id
+        WHERE m.tenant_id = ${tenantId}
+          AND m.id = ${messageId}::uuid
+      `);
+      return result.rows[0] ?? null;
+    },
+
+    async countOpenMessages({ tenantId, since }) {
+      const result = await db.execute<OpenMessageCount>(sql`
+        SELECT m.flow_id, f.flow_class, m.status,
+               CASE
+                 WHEN m.status = 'pending_generation' AND m.status_reason = 'llm_budget' THEN 'llm_budget'
+                 WHEN m.status = 'failed' THEN 'generation_failed'
+               END AS reason,
+               count(*)::int AS n,
+               min(m.created_at) AS oldest_created_at
+        FROM lifecycle_messages m
+        LEFT JOIN flows f
+          ON f.id = m.flow_id AND f.tenant_id = m.tenant_id
+        WHERE m.tenant_id = ${tenantId}
+          AND (
+            m.status IN ('pending_approval', 'approved', 'pending_generation')
+            OR (m.status = 'value_gated' AND m.created_at >= ${since})
+            OR (m.status = 'failed' AND m.brain_reasoning LIKE 'generation_failed:%' AND m.created_at >= ${since})
+          )
+        GROUP BY 1, 2, 3, 4
+      `);
+      return result.rows.map((r) => ({
+        ...r,
+        n: Number(r.n),
+        oldest_created_at: r.oldest_created_at == null ? null : new Date(r.oldest_created_at as unknown as string),
+      }));
     },
 
     async getMessageStatus({ tenantId, messageId }) {

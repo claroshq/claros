@@ -13,11 +13,24 @@
 import { sql, and, eq, inArray } from "drizzle-orm";
 import { lifecycleMessages } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
-import type { ApiMessagesQueries, MessageListRow } from "../areas/api-messages.js";
+import type { ApiMessagesQueries, MessageListRow, OpenMessageCount } from "../areas/api-messages.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
 import { d1OutboxEndpoints, d1OutboxInserts } from "./outbox.js";
 
 const ID_CHUNK = 90;
+
+const LIST_COLUMNS = sql.raw(`
+  m.id, m.tenant_id, m.contact_id, m.flow_id, m.flow_step_order,
+  m.status, m.subject, m.body_html, m.body_text,
+  m.brain_reasoning, m.brain_action_type, m.created_at, m.updated_at,
+  m.scheduled_send_at, m.status_reason,
+  m.approved_by, m.rejected_by, m.edited_by, m.edited_at,
+  m.original_subject, m.original_body_html, m.original_body_text, m.forced_action_type,
+  m.context_snapshot, m.choose_decision, m.opening_line, m.kb_entry_id, m.imported,
+  f.name AS flow_name, f.flow_class,
+  c.email AS contact_email, c.name AS contact_name,
+  c.external_id AS contact_external_id
+`);
 
 const toDate = (v: unknown): Date | null => (v == null ? null : new Date(Number(v)));
 
@@ -30,6 +43,20 @@ function parseJson(v: unknown): unknown {
   } catch {
     return null;
   }
+}
+
+/** A list query row with D1 values converted (ms timestamps to Date, JSON text parsed). */
+function listRow(r: Record<string, unknown>): MessageListRow {
+  return {
+    ...r,
+    created_at: toDate(r.created_at),
+    updated_at: toDate(r.updated_at),
+    scheduled_send_at: toDate(r.scheduled_send_at),
+    edited_at: toDate(r.edited_at),
+    context_snapshot: parseJson(r.context_snapshot),
+    choose_decision: parseJson(r.choose_decision),
+    imported: r.imported === 1 || r.imported === true,
+  } as MessageListRow;
 }
 
 export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
@@ -88,16 +115,7 @@ export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
         ? sql`AND (${rank}, m.created_at, m.id) > (${after.rank ?? 1}, ${new Date(after.createdAt).getTime()}, ${after.id})`
         : sql``;
       const rows = await db.all<Record<string, unknown>>(sql`
-        SELECT m.id, m.tenant_id, m.contact_id, m.flow_id, m.flow_step_order,
-               m.status, m.subject, m.body_html, m.body_text,
-               m.brain_reasoning, m.brain_action_type, m.created_at, m.updated_at,
-               m.scheduled_send_at, m.status_reason,
-               m.approved_by, m.rejected_by, m.edited_by, m.edited_at,
-               m.original_subject, m.original_body_html, m.original_body_text, m.forced_action_type,
-               m.context_snapshot, m.choose_decision, m.opening_line, m.kb_entry_id, m.imported,
-               f.name AS flow_name, f.flow_class,
-               c.email AS contact_email, c.name AS contact_name,
-               c.external_id AS contact_external_id
+        SELECT ${LIST_COLUMNS}
         FROM lifecycle_messages m
         LEFT JOIN contacts c
           ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
@@ -109,16 +127,52 @@ export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
         ORDER BY ${rank} ASC, m.created_at IS NULL, m.created_at ASC, m.id ASC
         LIMIT ${limit}
       `);
-      return rows.map((r) => ({
-        ...r,
-        created_at: toDate(r.created_at),
-        updated_at: toDate(r.updated_at),
-        scheduled_send_at: toDate(r.scheduled_send_at),
-        edited_at: toDate(r.edited_at),
-        context_snapshot: parseJson(r.context_snapshot),
-        choose_decision: parseJson(r.choose_decision),
-        imported: r.imported === 1 || r.imported === true,
-      })) as MessageListRow[];
+      return rows.map(listRow);
+    },
+
+    async getMessage({ tenantId, messageId }) {
+      const rows = await db.all<Record<string, unknown>>(sql`
+        SELECT ${LIST_COLUMNS}, m.approved_at
+        FROM lifecycle_messages m
+        LEFT JOIN contacts c
+          ON c.id = m.contact_id AND c.tenant_id = m.tenant_id
+        LEFT JOIN flows f
+          ON f.id = m.flow_id AND f.tenant_id = m.tenant_id
+        WHERE m.tenant_id = ${tenantId}
+          AND m.id = ${messageId.toLowerCase()}
+      `);
+      const r = rows[0];
+      return r ? { ...listRow(r), approved_at: toDate(r.approved_at) } : null;
+    },
+
+    async countOpenMessages({ tenantId, since }) {
+      const rows = await db.all<Record<string, unknown>>(sql`
+        SELECT m.flow_id, f.flow_class, m.status,
+               CASE
+                 WHEN m.status = 'pending_generation' AND m.status_reason = 'llm_budget' THEN 'llm_budget'
+                 WHEN m.status = 'failed' THEN 'generation_failed'
+               END AS reason,
+               count(*) AS n,
+               min(m.created_at) AS oldest_created_at
+        FROM lifecycle_messages m
+        LEFT JOIN flows f
+          ON f.id = m.flow_id AND f.tenant_id = m.tenant_id
+        WHERE m.tenant_id = ${tenantId}
+          AND (
+            m.status IN ('pending_approval', 'approved', 'pending_generation')
+            OR (m.status = 'value_gated' AND m.created_at >= ${since.getTime()})
+            OR (m.status = 'failed' AND m.brain_reasoning LIKE 'generation_failed:%' AND m.created_at >= ${since.getTime()})
+          )
+        GROUP BY 1, 2, 3, 4
+      `);
+      return rows.map((r): OpenMessageCount => ({
+        flow_id: String(r.flow_id),
+        flow_class: (r.flow_class as string | null) ?? null,
+        status: String(r.status),
+        reason: (r.reason as string | null) ?? null,
+        n: Number(r.n),
+        oldest_created_at: toDate(r.oldest_created_at),
+      }));
     },
 
     async approveMessages({ tenantId, ids, now, actor }) {

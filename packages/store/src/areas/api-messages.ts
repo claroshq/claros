@@ -49,6 +49,24 @@ export type MessageListRow = Record<string, unknown> & {
   opening_line?: string | null;
   kb_entry_id?: string | null;
   imported?: boolean | null;
+  /** Set by getMessage only. */
+  approved_at?: string | Date | null;
+};
+
+/**
+ * One group of open (not yet final) messages, for queue counts (MCP
+ * queue_summary and list_flows): per flow and status. `reason` is
+ * 'llm_budget' for pending_generation rows waiting for the daily LLM
+ * budget, 'generation_failed' for failed rows whose generation failed,
+ * else null.
+ */
+export type OpenMessageCount = {
+  flow_id: string;
+  flow_class: string | null;
+  status: string;
+  reason: string | null;
+  n: number;
+  oldest_created_at: Date | null;
 };
 
 /** Actor of an approval action: "user:<id>" or "api_key:<id>" (G20). */
@@ -115,6 +133,15 @@ export interface ApiMessagesQueries {
     bodyHtml: string | null;
     bodyText: string | null;
   } | null>;
+  /** One message of the tenant in the list row shape (plus approved_at), or null. */
+  getMessage(input: { tenantId: string; messageId: string }): Promise<MessageListRow | null>;
+  /**
+   * Counts of the tenant's open messages grouped by flow, status and reason:
+   * pending_approval, approved (not sent yet) and pending_generation at any
+   * age; value_gated and generation-failed messages created at or after
+   * `since`.
+   */
+  countOpenMessages(input: { tenantId: string; since: Date }): Promise<OpenMessageCount[]>;
   /** Current status of a tenant's message, or null when it does not exist. */
   getMessageStatus(input: { tenantId: string; messageId: string }): Promise<string | null>;
 }
