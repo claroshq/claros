@@ -80,6 +80,10 @@ export const lifecycleMessages = sqliteTable(
     chooseDecision: text("choose_decision", { mode: "json" }),
     /** G29: the AI-drafted opening line of a fixed template. */
     openingLine: text("opening_line"),
+    /** Reviewer feedback the next draft must apply (revise); cleared once the revised draft is written. */
+    revisionRequest: text("revision_request"),
+    /** Revise thread: [{ instruction, by, at }], oldest first. */
+    revisions: text("revisions", { mode: "json" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).$defaultFn(() => new Date()),
   },

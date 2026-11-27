@@ -64,6 +64,9 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         flow_step_order: number | null;
         brain_action_type: string | null;
         forced_action_type: string | null;
+        revision_request: string | null;
+        subject: string | null;
+        body_text: string | null;
         created_at: number | null;
       }>(sql`
         UPDATE lifecycle_messages
@@ -77,7 +80,8 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
             LIMIT ${limit}
           )
           AND status = 'pending_generation'
-        RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type, created_at
+        RETURNING id, tenant_id, contact_id, flow_id, membership_id, flow_step_order, brain_action_type, forced_action_type,
+          revision_request, subject, body_text, created_at
       `);
       // RETURNING order is unspecified in SQLite: restore oldest first.
       const ts = (v: number | null) => (v === null ? Number.POSITIVE_INFINITY : v);
@@ -91,6 +95,9 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         flowStepOrder: row.flow_step_order,
         brainActionType: row.brain_action_type,
         forcedActionType: row.forced_action_type,
+        revisionRequest: row.revision_request,
+        previousSubject: row.subject,
+        previousBodyText: row.body_text,
       }));
     },
 
@@ -132,6 +139,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         bodyHtml,
         bodyText,
         approvedAt,
+        revisionRequest: null,
         updatedAt: now,
       }, events, now);
     },
@@ -144,6 +152,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         bodyText,
         approvedAt,
         brainReasoning: reasoning,
+        revisionRequest: null,
         statusReason: sql`NULLIF(status_reason, 'llm_budget')` as unknown as string,
         updatedAt: now,
       }, events, now);

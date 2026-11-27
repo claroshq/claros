@@ -49,9 +49,21 @@ export type MessageListRow = Record<string, unknown> & {
   opening_line?: string | null;
   kb_entry_id?: string | null;
   imported?: boolean | null;
+  /** Revise: the pending instruction and the thread (null on rows without one). */
+  revision_request?: string | null;
+  revisions?: unknown;
   /** Set by getMessage only. */
   approved_at?: string | Date | null;
 };
+
+/** One reviewer instruction of a revise thread (lifecycle_messages.revisions). */
+export interface MessageRevision {
+  instruction: string;
+  /** "user:<id>" or "api_key:<id>". */
+  by: string;
+  /** ISO 8601. */
+  at: string;
+}
 
 /**
  * One group of open (not yet final) messages, for queue counts (MCP
@@ -115,8 +127,18 @@ export interface ApiMessagesQueries {
    * CAS pending_approval -> pending_generation for a new draft (G20). With
    * actionType, brain_action_type and forced_action_type are set and the
    * content worker skips decide. Edit markers are cleared; retry_count 0.
+   * With revision (revise), revision_request is set to the reviewer's
+   * instruction and the entry is appended to revisions; the current draft
+   * stays on the row for the worker to revise. Without it, revision_request
+   * is cleared.
    */
-  regenerateMessage(input: { tenantId: string; messageId: string; actionType: string | null; now: Date }): Promise<boolean>;
+  regenerateMessage(input: {
+    tenantId: string;
+    messageId: string;
+    actionType: string | null;
+    revision?: MessageRevision;
+    now: Date;
+  }): Promise<boolean>;
   /** CAS approved -> cancelled (G20); status_reason 'cancelled', rejected_by = actor. */
   cancelMessage(input: { tenantId: string; messageId: string; actor: string; now: Date }): Promise<boolean>;
   /**

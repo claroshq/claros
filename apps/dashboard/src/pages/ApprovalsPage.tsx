@@ -20,13 +20,15 @@
  * Critical-class flows (dunning, trial ending) come first.
  *
  * Reviewer actions (G20): edit subject and body (Markdown; the drafted
- * version is kept), regenerate (optionally forcing an action type), exclude
- * the person (suppression plus every unsent message cancelled), and for
- * approved messages not sent yet, cancel or pull back to review.
- * Keyboard: j/k move, a approve, r reject, e edit (not while typing).
+ * version is kept), revise with AI (an instruction; the worker rewrites the
+ * draft and it comes back to the same place, see RevisePanel), and under
+ * More: redraft from scratch (optionally forcing an action type) and
+ * exclude the person (suppression plus every unsent message cancelled).
+ * For approved messages not sent yet: cancel or pull back to review.
+ * Keyboard: j/k move, a approve, r reject, e edit, / revise (not while typing).
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Inbox } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Inbox, MoreHorizontal } from "lucide-react";
 import {
   useMessageQueue,
   useApproveMessage,
@@ -37,6 +39,9 @@ import {
   useRetryMessage,
   useEditMessage,
   useRegenerateMessage,
+  useReviseMessage,
+  useRevisionWatch,
+  DRAFTING_STATUSES,
   useExcludeContact,
   useApprovedMessages,
   useCancelMessage,
@@ -52,6 +57,7 @@ import { Skeleton } from "../components/ui/skeleton.js";
 import { PageHeader } from "../components/page-header.js";
 import { EmptyState } from "../components/empty-state.js";
 import { cn } from "../lib/utils.js";
+import { RevisePanel } from "../components/revise-panel.js";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -117,6 +123,9 @@ function QueueItem({ message, flowName, active, checked, onPreview, onToggleChec
         <span className="mt-0.5 block truncate text-[13px] text-foreground">
           {message.flow?.class === "critical" && (
             <span className="mr-1.5 rounded-sm bg-danger-soft px-1 text-[11px] font-medium text-danger">critical</span>
+          )}
+          {DRAFTING_STATUSES.has(message.status) && (
+            <span className="mr-1.5 rounded-sm bg-accent-soft px-1 text-[11px] font-medium text-accent-text">revising</span>
           )}
           {message.subject ?? "(no subject)"}
         </span>
@@ -369,6 +378,113 @@ function DraftEditor({ message, onDone }: { message: Message; onDone: (notice: s
   );
 }
 
+/**
+ * The less frequent actions on a draft, out of the main bar: redraft from
+ * scratch (optionally as another action type, the brain then skips its own
+ * choice) and exclude the person.
+ */
+function MoreActions({
+  disabled,
+  regenerating,
+  onRedraft,
+  onExclude,
+}: {
+  disabled: boolean;
+  regenerating: boolean;
+  onRedraft: (actionType?: string) => void;
+  onExclude: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [actionType, setActionType] = useState("");
+  const root = useRef<HTMLDivElement | null>(null);
+  const validAction = /^[a-z0-9_]{1,64}$/.test(actionType.trim());
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function run(fn: () => void) {
+    setOpen(false);
+    setActionType("");
+    fn();
+  }
+
+  const item =
+    "flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-[14px] text-foreground transition-colors duration-(--dur-fast) hover:bg-secondary disabled:pointer-events-none disabled:text-muted-foreground";
+
+  return (
+    <div ref={root} className="relative">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <MoreHorizontal aria-hidden />
+        {regenerating ? "Sending back..." : "More"}
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-lg border border-border bg-card p-1.5 shadow-lg"
+        >
+          <button type="button" role="menuitem" className={item} onClick={() => run(() => onRedraft())}>
+            <span>
+              <span className="block font-medium">Redraft from scratch</span>
+              <span className="block text-[13px] text-muted-foreground">Discard this draft and let the AI write a new one.</span>
+            </span>
+          </button>
+          <form
+            className="px-3 py-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (validAction) run(() => onRedraft(actionType.trim()));
+            }}
+          >
+            <label htmlFor="redraft-action" className="block text-[14px] font-medium text-foreground">
+              Redraft as another action
+            </label>
+            <div className="mt-1.5 flex gap-2">
+              <input
+                id="redraft-action"
+                value={actionType}
+                onChange={(e) => setActionType(e.target.value)}
+                placeholder="tip_trick"
+                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-[13px] text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <Button type="submit" size="sm" variant="secondary" disabled={!validAction}>
+                Redraft
+              </Button>
+            </div>
+            <p className="mt-1 text-[12px] text-subtle-foreground">An action type of the flow, lowercase with underscores.</p>
+          </form>
+          <div className="my-1 border-t border-border" />
+          <button type="button" role="menuitem" className={cn(item, "text-danger")} onClick={() => run(onExclude)}>
+            <span>
+              <span className="block font-medium">Exclude person</span>
+              <span className="block text-[13px] text-muted-foreground">Suppress the address and cancel every unsent message to them.</span>
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -381,10 +497,11 @@ export default function ApprovalsPage() {
   const bulkApprove = useBulkApproveMessages();
   const bulkReject = useBulkRejectMessages();
   const regenerate = useRegenerateMessage();
+  const revise = useReviseMessage();
   const exclude = useExcludeContact();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [forcedAction, setForcedAction] = useState("");
+  const reviseInput = useRef<HTMLTextAreaElement | null>(null);
 
   const messages = useMemo(
     () => queue.data?.pages.flatMap((p) => p.messages) ?? [],
@@ -421,12 +538,23 @@ export default function ApprovalsPage() {
   }, [messages, selectedId, checkedIds.size]);
 
   const selected = messages.find((m) => m.id === selectedId) ?? null;
-  const actionPending = approve.isPending || reject.isPending || regenerate.isPending || exclude.isPending;
+  /** The worker is rewriting the selected draft (revise): no decision until it is back. */
+  const drafting = selected !== null && DRAFTING_STATUSES.has(selected.status);
+  const actionPending = approve.isPending || reject.isPending || regenerate.isPending || revise.isPending || exclude.isPending || drafting;
+
+  // Follow a revision of the selected draft until the worker is done with it.
+  useRevisionWatch(selected, (m) => {
+    if (m.status === "pending_approval") {
+      setNotice(null);
+      return;
+    }
+    const why = m.status_reason ?? m.brain_reasoning ?? m.status;
+    setNotice(`The revision did not come back for review (${m.status}: ${why}).${m.status === "failed" ? " It is listed under failed messages." : ""}`);
+  });
 
   // Leave edit mode when the selection changes.
   useEffect(() => {
     setEditing(false);
-    setForcedAction("");
   }, [selectedId]);
   const bulkPending = bulkApprove.isPending || bulkReject.isPending;
 
@@ -462,10 +590,20 @@ export default function ApprovalsPage() {
     });
   }
 
-  function handleRegenerate() {
+  function handleRevise(instruction: string) {
     if (!selected) return;
     setNotice(null);
-    const actionType = forcedAction.trim() || undefined;
+    setEditing(false);
+    revise.mutate(
+      { id: selected.id, instruction },
+      { onError: (err) => handleActionError(err, "revise") },
+    );
+  }
+
+  function handleRegenerate(forcedAction?: string) {
+    if (!selected) return;
+    setNotice(null);
+    const actionType = forcedAction?.trim() || undefined;
     regenerate.mutate(
       { id: selected.id, actionType },
       {
@@ -504,8 +642,11 @@ export default function ApprovalsPage() {
       } else if (e.key === "r" && !editing && !actionPending) {
         handleReject();
         e.preventDefault();
-      } else if (e.key === "e" && !editing) {
+      } else if (e.key === "e" && !editing && !actionPending) {
         setEditing(true);
+        e.preventDefault();
+      } else if (e.key === "/" && !editing) {
+        reviseInput.current?.focus();
         e.preventDefault();
       }
     },
@@ -716,6 +857,13 @@ export default function ApprovalsPage() {
                   {selected.edited_at && (
                     <span className="text-[12px] text-muted-foreground">edited</span>
                   )}
+                  {drafting ? (
+                    <Badge variant="accent" pulse>revising</Badge>
+                  ) : (selected.revisions?.length ?? 0) > 0 ? (
+                    <span className="text-[12px] text-muted-foreground">
+                      revised {selected.revisions!.length}x
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -728,7 +876,7 @@ export default function ApprovalsPage() {
                   }}
                 />
               ) : (
-                <div className="mt-5">
+                <div className={cn("mt-5 transition-opacity duration-(--dur-fast)", drafting && "opacity-50")} aria-busy={drafting}>
                   <DraftBody message={selected} />
                 </div>
               )}
@@ -810,7 +958,18 @@ export default function ApprovalsPage() {
                 </p>
               )}
 
-              <div className="mt-6 flex items-center gap-3 border-t border-border pt-5">
+              {!editing && (
+                <RevisePanel
+                  message={selected}
+                  drafting={drafting}
+                  disabled={approve.isPending || reject.isPending || regenerate.isPending || exclude.isPending}
+                  submitting={revise.isPending}
+                  onSubmit={handleRevise}
+                  inputRef={reviseInput}
+                />
+              )}
+
+              <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5">
                 <Button onClick={handleApprove} disabled={actionPending}>
                   {approve.isPending ? "Approving..." : "Approve"}
                 </Button>
@@ -822,26 +981,18 @@ export default function ApprovalsPage() {
                   {reject.isPending ? "Rejecting..." : "Reject"}
                 </Button>
                 <Button variant="ghost" onClick={() => setEditing((v) => !v)} disabled={actionPending}>
-                  Edit
+                  {editing ? "Close editor" : "Edit"}
                 </Button>
-                <span className="text-[13px] text-muted-foreground">
-                  Approval queues it to send. Rejection is final. Keys: j/k, a, r, e.
+                <span className="min-w-0 flex-1 text-[13px] text-muted-foreground">
+                  Approval queues it to send. Rejection is final.{" "}
+                  <span className="whitespace-nowrap font-mono text-[12px] text-subtle-foreground">j/k a r e /</span>
                 </span>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <input
-                  value={forcedAction}
-                  onChange={(e) => setForcedAction(e.target.value)}
-                  placeholder="Force action type (optional)"
-                  className="h-8 w-56 rounded-md border border-border bg-card px-2.5 font-mono text-[13px] text-foreground"
+                <MoreActions
+                  disabled={actionPending}
+                  regenerating={regenerate.isPending}
+                  onRedraft={handleRegenerate}
+                  onExclude={handleExclude}
                 />
-                <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={actionPending}>
-                  {regenerate.isPending ? "Sending back..." : "Regenerate"}
-                </Button>
-                <span className="flex-1" />
-                <Button variant="outline" size="sm" onClick={handleExclude} disabled={actionPending}>
-                  Exclude person
-                </Button>
               </div>
             </div>
           )}

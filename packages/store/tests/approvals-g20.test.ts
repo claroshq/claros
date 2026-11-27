@@ -101,6 +101,28 @@ for (const factory of testBackends()) {
       expect(await row(plain)).toMatchObject({ status: "pending_generation", brainActionType: "welcome", forcedActionType: null });
     });
 
+    it("regenerateMessage with a revision keeps the draft and the action, appends the thread; the worker sees it and completeDraft clears it", async () => {
+      const t = await b.newTenant();
+      const id = await seed(t);
+      const first = { instruction: "There is no /mcp page.", by: "user:r", at: NOW.toISOString() };
+      expect(await b.store.apiMessages.regenerateMessage({ tenantId: t, messageId: id, actionType: null, revision: first, now: NOW })).toBe(true);
+      expect(await row(id)).toMatchObject({
+        status: "pending_generation", subject: "Drafted", bodyText: "Drafted", brainActionType: "welcome",
+        revisionRequest: "There is no /mcp page.",
+      });
+      const [claimed] = await b.store.workerContent.claimContentBatch({ now: NOW, limit: 10, tenantIds: [t] });
+      expect(claimed).toMatchObject({ id, revisionRequest: "There is no /mcp page.", previousSubject: "Drafted", previousBodyText: "Drafted" });
+      expect(await b.store.workerContent.markAwaitingContent(id, "revised", NOW)).toBe(true);
+      expect(await b.store.workerContent.completeDraft(id, "pending_approval", { subject: "Revised", bodyHtml: "<p>Revised</p>", bodyText: "Revised" }, null, NOW)).toBe(true);
+      expect(await row(id)).toMatchObject({ status: "pending_approval", subject: "Revised", revisionRequest: null });
+
+      const second = { instruction: "Shorter.", by: "api_key:k", at: NOW.toISOString() };
+      expect(await b.store.apiMessages.regenerateMessage({ tenantId: t, messageId: id, actionType: null, revision: second, now: NOW })).toBe(true);
+      const listed = await b.store.apiMessages.getMessage({ tenantId: t, messageId: id });
+      expect(listed?.revisions).toEqual([first, second]);
+      expect(listed?.revision_request).toBe("Shorter.");
+    });
+
     it("cancel moves approved to cancelled; unapprove moves approved back with a batched pending_approval event", async () => {
       const t = await b.newTenant();
       const ep = await insertEndpoint(b, t, ["message.pending_approval"]);

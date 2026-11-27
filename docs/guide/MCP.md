@@ -110,7 +110,7 @@ Read tools have `readOnlyHint: true`. Lists default to 20 items and take `limit`
 | `approve_messages` | messages | `ids` (1 to 100) | Each id's outcome. Approved messages are sent by the normal drain |
 | `reject_messages` | messages | `ids` (1 to 100) | Each id's outcome. Final: a rejected message is never sent |
 | `edit_message` | messages | `id`, `subject?` (up to 300 characters), `body_markdown?` (up to 50,000), at least one | The message stays `pending_approval`; the drafted subject and body are kept |
-| `regenerate_message` | messages | `id`, `action_type?` | Back to `pending_generation` for a new draft; with `action_type` the brain drafts that action |
+| `regenerate_message` | messages | `id`, `action_type?`, `instruction?` | Back to `pending_generation` for a new draft; with `action_type` the brain drafts that action; with `instruction` (unreleased) it revises the current draft to apply that feedback |
 | `cancel_message` | messages | `id` | An approved, unsent message becomes `cancelled` (final) |
 | `unapprove_message` | messages | `id` | An approved, unsent message goes back to the queue |
 | `exclude_contact` | messages | `contact` (id or external id) | A manual suppression of the address and every unsent message of the person cancelled, in one step |

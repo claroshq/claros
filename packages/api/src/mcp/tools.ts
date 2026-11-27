@@ -26,6 +26,7 @@ import {
   isUuid,
   listMessagesPage,
   regenerateMessage,
+  REVISION_MAX_CHARS,
   unapproveMessage,
   type MessageActionResult,
   type ServiceContext,
@@ -193,6 +194,7 @@ export const TOOLS: ToolDef[] = [
           opening_line: r.opening_line ?? null,
           reasoning: r.brain_reasoning,
           choose: r.choose_decision ?? null,
+          revisions: Array.isArray(r.revisions) ? r.revisions : [],
           original: r.edited_at ? { subject: r.original_subject ?? null, body_text: r.original_body_text ?? null } : null,
           approved_by: r.approved_by ?? null,
           approved_at: iso(r.approved_at),
@@ -347,17 +349,19 @@ export const TOOLS: ToolDef[] = [
     name: "regenerate_message",
     title: "Ask for a new draft",
     description:
-      "Send a draft waiting for approval back for a new draft. With action_type, the new draft is for that action (the brain skips its own choice). The new draft is written later by the content worker and comes back to the queue; this call does not wait for it.",
+      "Send a draft waiting for approval back for a new draft. With instruction, the brain revises the current draft to apply that feedback (for example: remove the /mcp link, it does not exist) instead of starting over. With action_type, the new draft is for that action (the brain skips its own choice). The new draft is written later by the content worker and comes back to the queue; this call does not wait for it.",
     scope: "messages",
     write: true,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     input: z.object({
       id: UUID,
       action_type: z.string().regex(ACTION_TYPE_RE, "must match [a-z0-9_]{1,64}").optional().describe("Action to draft instead, for example tip_trick"),
+      instruction: z.string().trim().min(1).max(REVISION_MAX_CHARS).optional().describe("Reviewer feedback the revised draft must apply"),
     }),
     async run(ctx, a) {
       const actionType = (a.action_type as string | undefined) ?? null;
-      return single(await regenerateMessage(ctx, a.id as string, actionType), { forced_action_type: actionType });
+      const instruction = (a.instruction as string | undefined) ?? null;
+      return single(await regenerateMessage(ctx, a.id as string, actionType, instruction), { forced_action_type: actionType, instruction });
     },
   },
   {
