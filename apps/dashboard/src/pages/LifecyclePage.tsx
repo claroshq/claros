@@ -73,7 +73,7 @@ const RECENCY_ACTION: Record<Recency, string> = {
 const RECENCY_TRANSITION: Partial<Record<Recency, { from: string; to: string }>> = {
   cooling: { from: "engaged", to: "at_risk" },
   idle: { from: "at_risk", to: "dormant" },
-  dormant: { from: "dormant", to: "churned" },
+  dormant: { from: "dormant", to: "gone_quiet" },
 };
 
 /** Cell surface by recency severity. Neutral text on top, always. */
@@ -526,7 +526,7 @@ function PageSkeleton() {
   );
 }
 
-const BAD_STATES = new Set(["at_risk", "dormant", "churned"]);
+const BAD_STATES = new Set(["at_risk", "dormant", "gone_quiet", "churned"]);
 
 // ---------------------------------------------------------------------------
 // Tabs

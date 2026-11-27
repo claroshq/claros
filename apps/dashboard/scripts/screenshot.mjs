@@ -200,7 +200,7 @@ for (const scheme of ["light", "dark"]) {
       ],
       exit_conditions: [
         { event: "plan_upgraded" },
-        { lifecycle_state_change: { to: "churned" } },
+        { lifecycle_state_change: { to: "gone_quiet" } },
       ],
     };
 

@@ -43,6 +43,8 @@ function stateVariant(state: ContactDetail["lifecycle_state"]): BadgeVariant {
     case "engaged": return "success";
     case "at_risk": return "warning";
     case "dormant": return "muted";
+    case "gone_quiet": return "danger";
+    // Older servers (before the gone_quiet rename) return churned.
     case "churned": return "danger";
     case "resurrected": return "success";
   }

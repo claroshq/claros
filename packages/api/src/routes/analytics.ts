@@ -62,6 +62,7 @@ import {
   RETENTION_TENURE_THRESHOLDS_DAYS,
   CONTACT_AUDIENCES,
   type LifecycleConfig,
+  withPublicStates,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import type { AppContext } from "../http/env.js";
@@ -158,10 +159,10 @@ export default function analyticsRoutes() {
       range_days: days,
       audience,
       contacts_total: contactsTotal,
-      distribution,
+      distribution: distribution.map((r) => withPublicStates(r, ["state"])),
       movement: {
-        per_state: perState,
-        edges,
+        per_state: perState.map((r) => withPublicStates(r, ["state"])),
+        edges: edges.map((r) => withPublicStates(r, ["from_state", "to_state"])),
         days: movementDays,
       },
     });
@@ -318,7 +319,7 @@ export default function analyticsRoutes() {
     const page = hasMore ? rows.slice(0, limit) : rows;
 
     return c.json({
-      contacts: page,
+      contacts: page.map((r) => withPublicStates(r, ["lifecycle_state"])),
       next_cursor: hasMore ? page[page.length - 1]!.id : null,
     });
   });

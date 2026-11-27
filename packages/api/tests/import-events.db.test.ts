@@ -87,7 +87,7 @@ describe("POST /v1/import/lifecycle", () => {
     const dry = await recompute("?dry_run=1");
     expect(dry.statusCode).toBe(200);
     const d = dry.json();
-    expect(d).toMatchObject({ dry_run: true, contacts: 2, changed: 2, applied: 0, skipped: 0, states_before: { signed_up: 2 }, states: { churned: 1, at_risk: 1 }, next_cursor: null });
+    expect(d).toMatchObject({ dry_run: true, contacts: 2, changed: 2, applied: 0, skipped: 0, states_before: { signed_up: 2 }, states: { gone_quiet: 1, at_risk: 1 }, next_cursor: null });
     expect(d.upcoming).toEqual({ days: 14, to: { dormant: 1 } });
     expect(d.segment_flows).toEqual([{ slug: "nurture", name: "Nurture", status: "paused", matching: 1 }]);
     const unchanged = (await db.select().from(contacts).where(eq(contacts.tenantId, p.tenantId))).map((c) => c.lifecycleState);

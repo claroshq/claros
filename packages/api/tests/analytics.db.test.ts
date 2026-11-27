@@ -306,8 +306,8 @@ describe("GET /v1/analytics/lifecycle", () => {
     expect(byState.get("engaged").regular).toBe(1);
     expect(byState.get("at_risk").total).toBe(1);
     expect(byState.get("at_risk").casual).toBe(1);
-    expect(byState.get("churned").total).toBe(1);
-    expect(byState.get("churned").unset).toBe(1);
+    expect(byState.get("gone_quiet").total).toBe(1);
+    expect(byState.get("gone_quiet").unset).toBe(1);
     expect(byState.get("signed_up").minimal).toBe(1);
     expect(body.contacts_total).toBe(5);
   });
@@ -327,7 +327,7 @@ describe("GET /v1/analytics/lifecycle", () => {
     expect(perState.get("at_risk").entered).toBe(2);
     expect(perState.get("at_risk").exited).toBe(1);
     expect(perState.get("engaged").exited).toBe(2);
-    expect(perState.get("churned").entered).toBe(1);
+    expect(perState.get("gone_quiet").entered).toBe(1);
     expect(perState.get("activated").entered).toBe(1);
   });
 

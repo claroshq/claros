@@ -18,7 +18,7 @@ import {
 import { ConditionListEditor } from "./condition-builder.js";
 import { Input } from "./ui/input.js";
 import { Select } from "./ui/select.js";
-import { stateName, storedState } from "../lib/lifecycle-names.js";
+import { stateName, canonicalState } from "../lib/lifecycle-names.js";
 
 export const TRIGGER_TYPE_OPTIONS: ReadonlyArray<{ value: TriggerType; label: string; description: string }> = [
   { value: "lifecycle_transition", label: "Lifecycle transition", description: "Starts when a contact moves between lifecycle states, e.g. engaged to at_risk." },
@@ -126,14 +126,14 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="tc-from" className={LABEL}>From state (optional)</label>
-              <Select id="tc-from" value={storedState(str("from"))} disabled={disabled} onChange={(e) => set({ from: e.target.value || undefined })}>
+              <Select id="tc-from" value={canonicalState(str("from"))} disabled={disabled} onChange={(e) => set({ from: e.target.value || undefined })}>
                 <option value="">Any state</option>
                 {LIFECYCLE_STATES.map((s) => <option key={s} value={s}>{stateName(s)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor="tc-to" className={LABEL}>To state</label>
-              <Select id="tc-to" value={storedState(str("to"))} disabled={disabled} onChange={(e) => set({ to: e.target.value })}>
+              <Select id="tc-to" value={canonicalState(str("to"))} disabled={disabled} onChange={(e) => set({ to: e.target.value })}>
                 <option value="">Select state</option>
                 {LIFECYCLE_STATES.map((s) => <option key={s} value={s}>{stateName(s)}</option>)}
               </Select>
@@ -168,7 +168,7 @@ export function TriggerEditor({ draft, onChange, disabled, eventSuggestions = []
               <>
                 <div>
                   <p className={LABEL}>Lifecycle states</p>
-                  <CheckList options={LIFECYCLE_STATES} selected={((c.lifecycle_states as string[]) ?? []).map(storedState)} onChange={(v) => set({ lifecycle_states: v })} disabled={disabled} idPrefix="seg-state" label={stateName} />
+                  <CheckList options={LIFECYCLE_STATES} selected={((c.lifecycle_states as string[]) ?? []).map(canonicalState)} onChange={(v) => set({ lifecycle_states: v })} disabled={disabled} idPrefix="seg-state" label={stateName} />
                 </div>
                 <div>
                   <p className={LABEL}>Engagement depth (optional)</p>

@@ -7,6 +7,9 @@ import { describe, it, expect } from "vitest";
 import {
   LIFECYCLE_STATE_NAMES,
   storedLifecycleState,
+  publicLifecycleState,
+  publicStateCounts,
+  withPublicStates,
   resolveLifecycleConfig,
 } from "../src/lifecycle/index.js";
 import { evaluateAudienceCondition, type ContactConditionContext } from "../src/conditions.js";
@@ -41,6 +44,15 @@ describe("gone_quiet alias", () => {
     expect(storedLifecycleState("churned")).toBe("churned");
     expect(storedLifecycleState("dormant")).toBe("dormant");
     expect(LIFECYCLE_STATE_NAMES).toContain("gone_quiet");
+  });
+
+  it("returns gone_quiet for the stored churned state in responses", () => {
+    expect(publicLifecycleState("churned")).toBe("gone_quiet");
+    expect(publicLifecycleState("gone_quiet")).toBe("gone_quiet");
+    expect(publicLifecycleState("dormant")).toBe("dormant");
+    expect(publicStateCounts({ churned: 2, gone_quiet: 1, engaged: 3 })).toEqual({ gone_quiet: 3, engaged: 3 });
+    const row = { lifecycle_state: "churned", plan: "churned", from_state: null };
+    expect(withPublicStates(row, ["lifecycle_state", "from_state"])).toEqual({ lifecycle_state: "gone_quiet", plan: "churned", from_state: null });
   });
 
   it("lifecycle_state conditions match a churned contact by either name", async () => {

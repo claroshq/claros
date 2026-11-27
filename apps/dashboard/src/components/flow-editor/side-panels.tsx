@@ -79,7 +79,7 @@ export function ExitsPanel({
 }) {
   const suggestions: Array<{ label: string; cond: Condition }> = [
     ...eventNames.slice(0, 4).map((e) => ({ label: `event ${e} arrives`, cond: { event: e } as Condition })),
-    { label: "they go quiet", cond: { lifecycle_state_change: { to: "churned" } } },
+    { label: "they go quiet", cond: { lifecycle_state_change: { to: "gone_quiet" } } },
     { label: "they become engaged", cond: { lifecycle_state_change: { to: "engaged" } } },
   ].filter((s) => !exits.some((x) => JSON.stringify(x) === JSON.stringify(s.cond)));
   return (
