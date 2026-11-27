@@ -47,6 +47,7 @@ import {
   upcomingTimeTransitions,
   type LifecycleConfig,
   storedLifecycleState,
+  publicStateCounts,
 } from "@claros/core";
 import { storeFor, type EventImportItem, type HistoryImportItem, type LifecycleReplayUpdate } from "@claros/store";
 import type { Db } from "../plugins/db.js";
@@ -281,9 +282,9 @@ export default function importRoutes() {
       applied: written.applied,
       skipped: written.skipped,
       transitions,
-      states_before: statesBefore,
-      states,
-      upcoming: { days: forecastDays, to: upcoming },
+      states_before: publicStateCounts(statesBefore),
+      states: publicStateCounts(states),
+      upcoming: { days: forecastDays, to: publicStateCounts(upcoming) },
       grid,
       segment_flows: segmentFlows.map((f, k) => ({ slug: f.slug, name: f.name, status: f.status, matching: segmentMatches[k] })),
       next_cursor: page.length === limit ? page[page.length - 1]!.id : null,

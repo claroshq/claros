@@ -110,7 +110,7 @@ export const RECIPES: Recipe[] = [
     description: "When someone goes quiet, one personal note written by the AI for them.",
     needsLlm: true,
     build: () => ({
-      ...emptyDraft({ type: "lifecycle_transition", config: { to: "churned" } }),
+      ...emptyDraft({ type: "lifecycle_transition", config: { to: "gone_quiet" } }),
       name: "Win back",
       reentry_policy: "cooldown",
       reentry_cooldown_days: 90,

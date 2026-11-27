@@ -15,7 +15,7 @@ export const LIFECYCLE_STATES = [
   "engaged",
   "at_risk",
   "dormant",
-  "churned",
+  "gone_quiet",
   "resurrected",
 ] as const;
 
@@ -113,7 +113,7 @@ export function emptyCondition(kind: ConditionKind): Condition {
     case "date_unchanged":
       return { date_unchanged: true };
     case "lifecycle_state_change":
-      return { lifecycle_state_change: { to: "churned" } };
+      return { lifecycle_state_change: { to: "gone_quiet" } };
   }
 }
 

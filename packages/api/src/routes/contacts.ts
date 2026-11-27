@@ -51,6 +51,8 @@ import {
   RETENTION_RECENCY_BUCKETS,
   CONTACT_AUDIENCES,
   type LifecycleConfig,
+  storedLifecycleState,
+  withPublicStates,
 } from "@claros/core";
 import type { Db } from "../plugins/db.js";
 import type { AppContext } from "../http/env.js";
@@ -82,7 +84,7 @@ const LIFECYCLE_STATES = [
   "dormant",
   "churned",
   "resurrected",
-  // New name of churned (deprecation window: the filter maps it to churned).
+  // gone_quiet is the name the API returns; churned (its old name) is still accepted.
   "gone_quiet",
 ] as const;
 
@@ -336,7 +338,7 @@ export default function contactsRoutes() {
     }
 
     const filter = {
-      lifecycleState: q.lifecycle_state === "gone_quiet" ? "churned" : (q.lifecycle_state ?? null),
+      lifecycleState: q.lifecycle_state ? storedLifecycleState(q.lifecycle_state) : null,
       engagementDepth: q.engagement_depth ?? null,
       paymentStatus: q.payment_status ?? null,
       searchPattern: search,
@@ -365,7 +367,7 @@ export default function contactsRoutes() {
     const nextCursor = hasNextPage && lastRow
       ? encodeListCursor(sortKey, order, lastRow.sort_key, lastRow.id)
       : null;
-    const contacts = pageRows.map(({ sort_key: _key, ...row }) => row);
+    const contacts = pageRows.map(({ sort_key: _key, ...row }) => withPublicStates(row, ["lifecycle_state"]));
 
     if (initials === null) {
       return c.json({ contacts, next_cursor: nextCursor });
@@ -416,7 +418,7 @@ export default function contactsRoutes() {
     // explicit status, or the topic default ("default": true) when none is set.
     const topics = (await storeFor(db).apiContacts.listContactTopics({ tenantId, contactId: id })).map(topicJson);
 
-    return c.json({ contact, memberships, suppression, topics });
+    return c.json({ contact: withPublicStates(contact, ["lifecycle_state"]), memberships, suppression, topics });
   });
 
   /**
@@ -474,7 +476,7 @@ export default function contactsRoutes() {
       ? encodeCursor(lastRow.occurred_at, lastRow.id)
       : null;
 
-    return c.json({ items: pageRows, next_cursor: nextCursor });
+    return c.json({ items: pageRows.map((r) => withPublicStates(r, ["from_state", "to_state"])), next_cursor: nextCursor });
   });
   /**
    * DELETE /v1/contacts/:ref (G12)

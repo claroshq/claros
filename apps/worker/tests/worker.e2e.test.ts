@@ -711,7 +711,7 @@ describe("Workers runtime: history import sends nothing", () => {
     expect(dry.status).toBe(200);
     const dryBody = (await dry.json()) as { applied: number; states: Record<string, number>; segment_flows: Array<{ slug: string; matching: number }> };
     expect(dryBody.applied).toBe(0);
-    expect(dryBody.states.churned).toBeGreaterThanOrEqual(1);
+    expect(dryBody.states.gone_quiet).toBeGreaterThanOrEqual(1);
     expect(dryBody.segment_flows.find((f) => f.slug === "nurture")!.matching).toBeGreaterThanOrEqual(1);
     expect((await db.select().from(schema.contacts).where(eq(schema.contacts.id, grace)))[0].lifecycleState).toBe("signed_up");
 

@@ -1386,6 +1386,8 @@ export interface Contact {
     | "engaged"
     | "at_risk"
     | "dormant"
+    | "gone_quiet"
+    // Servers before the gone_quiet rename return churned.
     | "churned"
     | "resurrected";
   engagement_depth: "power" | "regular" | "casual" | "minimal" | null;

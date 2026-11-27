@@ -14,7 +14,7 @@ export const LIFECYCLE_STATES: ReadonlyArray<Contact["lifecycle_state"]> = [
   "engaged",
   "at_risk",
   "dormant",
-  "churned",
+  "gone_quiet",
   "resurrected",
 ];
 

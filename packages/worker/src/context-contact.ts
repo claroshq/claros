@@ -25,6 +25,7 @@
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor } from "@claros/store";
+import { publicLifecycleState } from "@claros/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,7 +48,7 @@ export interface ContactSection {
 
 /** Lifecycle state section of the context packet. */
 export interface LifecycleSection {
-  /** The contact's current lifecycle_state value (e.g. "engaged", "at_risk"). */
+  /** The contact's lifecycle state by its public name (e.g. "engaged", "gone_quiet"). */
   state: string;
   /** Tenure in days, computed from first_seen_at to now. Absent if first_seen_at is null. */
   tenureDays?: number;
@@ -269,7 +270,7 @@ export async function buildContactSections(
   // ---------------------------------------------------------------------------
   // Lifecycle section
   // ---------------------------------------------------------------------------
-  const lifecycle: LifecycleSection = { state: row.lifecycle_state };
+  const lifecycle: LifecycleSection = { state: publicLifecycleState(row.lifecycle_state) };
   if (tenureDays !== undefined) lifecycle.tenureDays = tenureDays;
   if (row.engagement_depth != null) lifecycle.engagementDepth = row.engagement_depth;
   if (row.payment_status != null) lifecycle.paymentStatus = row.payment_status;

@@ -27,8 +27,7 @@ export type LifecycleState = (typeof LIFECYCLE_STATES)[number];
  * it). The database stores `churned` (no data migration, DECISIONS.md
  * 2026-11-27); `gone_quiet` is accepted wherever a state is given as input
  * (flow triggers, conditions, exits, filters) and means the same state.
- * During the deprecation window the API still returns `churned`; the next
- * minor release returns `gone_quiet`.
+ * The API returns `gone_quiet` (publicLifecycleState at its boundary).
  */
 export const GONE_QUIET = "gone_quiet" as const;
 
@@ -41,6 +40,38 @@ export const LIFECYCLE_STATE_NAMES = [...LIFECYCLE_STATES, GONE_QUIET] as const;
  */
 export function storedLifecycleState(name: string): string {
   return name === GONE_QUIET ? "churned" : name;
+}
+
+/**
+ * The name the API returns for a stored lifecycle state
+ * (`churned` -> `gone_quiet`); any other string is returned unchanged.
+ */
+export function publicLifecycleState(stored: string): string {
+  return stored === "churned" ? GONE_QUIET : stored;
+}
+
+/**
+ * A copy of a response row with the stored state at each named field
+ * replaced by its public name (fields that are absent or not strings are
+ * left as they are).
+ */
+export function withPublicStates<T extends object>(row: T, fields: readonly string[]): T {
+  const out = { ...row } as Record<string, unknown>;
+  for (const f of fields) {
+    const v = out[f];
+    if (typeof v === "string") out[f] = publicLifecycleState(v);
+  }
+  return out as T;
+}
+
+/** A count map keyed by stored state names, keyed by public names. */
+export function publicStateCounts(counts: Readonly<Record<string, number>>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [state, n] of Object.entries(counts)) {
+    const name = publicLifecycleState(state);
+    out[name] = (out[name] ?? 0) + n;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
