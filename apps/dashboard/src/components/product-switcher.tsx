@@ -201,9 +201,11 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
         }}
         title={current ? (current.public_host ?? current.slug) : undefined}
         className={cn(
-          "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors duration-(--dur-fast)",
+          // Outer edge on the nav items' edge (wrapper px-3); 1px border + 11px
+          // padding puts the dot on the 24px axis of the mark and nav icons.
+          "flex h-9 w-full items-center gap-2 rounded-md border px-[11px] text-left transition-colors duration-(--dur-fast)",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          open ? "bg-secondary" : "hover:bg-secondary",
+          open ? "border-border-strong bg-card" : "border-border hover:border-border-strong hover:bg-card",
         )}
       >
         <ProductDot product={current} />
@@ -274,7 +276,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                       onPointerMove={() => setActiveIndex(i)}
                       onClick={() => activate(item)}
                       className={cn(
-                        "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium text-muted-foreground",
+                        "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-[7px] py-1.5 text-[13px] font-medium text-muted-foreground",
                         highlighted && "bg-selected text-foreground",
                       )}
                     >
@@ -295,7 +297,7 @@ export function ProductSwitcher({ currentProductId }: { currentProductId: string
                   onPointerMove={() => setActiveIndex(i)}
                   onClick={() => activate(item)}
                   className={cn(
-                    "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5",
+                    "mx-1 flex cursor-pointer items-center gap-2 rounded-md px-[7px] py-1.5",
                     highlighted && "bg-selected",
                   )}
                   title={p.public_host ?? p.slug}
