@@ -61,6 +61,7 @@ export function Pagination({
           <Button
             variant="ghost"
             size="sm"
+            data-repeatable
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
             aria-label="Previous page"
@@ -94,6 +95,7 @@ export function Pagination({
           <Button
             variant="ghost"
             size="sm"
+            data-repeatable
             onClick={() => onPageChange(page + 1)}
             disabled={page >= pageCount}
             aria-label="Next page"

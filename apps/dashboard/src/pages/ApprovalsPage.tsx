@@ -890,6 +890,9 @@ function ReviewView({ approvedCount, attentionCount }: { approvedCount: number; 
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // A held key repeats: j/k may scroll the queue, but a held a, r or z
+      // must not decide (or undo) one draft after another.
+      if (e.repeat && e.key !== "j" && e.key !== "k") return;
       if (e.key === "z" && lastDecided.current) {
         undo(lastDecided.current);
         e.preventDefault();
@@ -1048,13 +1051,14 @@ function ReviewView({ approvedCount, attentionCount }: { approvedCount: number; 
               {/* Toolbar: position, then every action with its key. */}
               <div className="flex flex-wrap items-center gap-2">
                 <div className="mr-auto flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="size-8" onClick={() => move(-1)} disabled={selectedIndex <= 0} aria-label="Previous draft (K)">
+                  <Button variant="ghost" size="icon" className="size-8" data-repeatable onClick={() => move(-1)} disabled={selectedIndex <= 0} aria-label="Previous draft (K)">
                     <ChevronUp aria-hidden />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="size-8"
+                    data-repeatable
                     onClick={() => move(1)}
                     disabled={selectedIndex >= messages.length - 1}
                     aria-label="Next draft (J)"
