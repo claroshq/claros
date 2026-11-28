@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-28
+
 ### Added
 
 - Analytics sink in the dashboard: Settings, Webhooks has an Analytics sink section to connect, edit and remove the product's sink (StatsRaven or Webhook) and read its deliveries, without a config document. The form explains each sink in a sentence, names the secret after the sink (StatsRaven: ingest token; Webhook: optional signing secret) and never shows it back: an empty field keeps the stored one. Members see the sink and that it is set in Config as code. New API for owners and admin keys with the `config` scope: `GET`, `PUT` and `DELETE /v1/analytics-sink` (`GET` also for members). A write is a config apply of `settings.analytics` with the same validation, encryption (`503` without `ENCRYPTION_KEY`) and `config_version` bump, so a config document that sets `settings.analytics` still replaces it on its next apply. `GET /v1/webhooks` now also gives the analytics sink's `sink` (`null` for webhooks), and `GET /v1/capabilities` lists `analytics_sink_api`. Same on Postgres and D1; no migration. See [Webhooks](docs/guide/WEBHOOKS.md#setting-the-sink-in-the-dashboard-or-the-api).
@@ -13,6 +15,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 ### Changed
 
 - Dashboard Approvals screen redesigned as one workspace sized to the window: the queue and the draft scroll on their own, and the toolbar with Approve, Reject, Edit, Revise and More (each with its key) sits above the draft instead of below the preview and every disclosure. Why the AI wrote the draft, the choose step, details, the drafted version and context data sit beside the preview (below it in a narrow window). After approve or reject the next draft opens instead of the first, and the decision can be undone for five seconds (Undo or `z`). Approved and Needs attention are tabs with counts instead of collapsed sections under the queue. The empty queue lists the flows that require approval and links to approved and failed messages. Bulk reject asks for confirmation. Dashboard only; no API change.
+
+### Upgrade
+
+No migrations. New API only (`/v1/analytics-sink`); nothing existing changes. Upgrade as usual; a rollback to 0.15.0 is safe.
 
 ## [0.15.0] - 2026-11-28
 
@@ -486,7 +492,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/claroshq/claros/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/claroshq/claros/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/claroshq/claros/compare/v0.13.3...v0.14.0
 [0.13.3]: https://github.com/claroshq/claros/compare/v0.13.2...v0.13.3
