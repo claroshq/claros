@@ -2,7 +2,7 @@
  * SQLite / Cloudflare D1 implementation of the queries used by packages/worker/src/advance-membership.ts
  * (a direct port of ../pg/worker-advance-membership.ts: plain selects and CAS updates).
  */
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, sql, lte, desc } from "drizzle-orm";
 import {
   contacts,
   events,
@@ -172,9 +172,10 @@ export function d1WorkerAdvanceMembership(db: D1Db): WorkerAdvanceMembershipQuer
         .where(
           and(
             eq(lifecycleMessages.membershipId, membershipId),
-            eq(lifecycleMessages.flowStepOrder, stepOrder),
+            lte(lifecycleMessages.flowStepOrder, stepOrder),
           ),
         )
+        .orderBy(desc(lifecycleMessages.createdAt))
         .limit(1);
       return prevMessage[0]?.createdAt ?? null;
     },

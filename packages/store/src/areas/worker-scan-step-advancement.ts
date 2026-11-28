@@ -93,7 +93,15 @@ export interface WorkerScanStepAdvancementQueries extends ContactConditionQuerie
     fromStep: number;
     clearConditionError: boolean;
   }): Promise<boolean>;
-  /** created_at of the membership's message for a step, or null when there is none. */
+  /**
+   * created_at of the membership's latest message at or before this step,
+   * or null when there is none: the reference for the next step's delay.
+   * A step skipped by its condition has no message, so the delay counts from
+   * the last message actually created (steps run in order, so the skipped
+   * step's own wait has passed). Before, a skipped step sent the reference
+   * back to entered_at, and a founding-price dunning sent its second and
+   * third mail on the same day.
+   */
   getStepMessageCreatedAt(input: { membershipId: string; stepOrder: number }): Promise<Date | null>;
   /**
    * Create the pending_generation message for a membership step (ON CONFLICT

@@ -51,7 +51,7 @@ Declare the identify traits that hold dates in `settings.date_traits` (ISO-8601 
 
 | Field | Meaning |
 |---|---|
-| `order`, `action_type`, `delay` | Required. `delay` (`0m`, `2h`, `3d`) counts from the previous step; date schedules use their slots instead |
+| `order`, `action_type`, `delay` | Required. `delay` (`0m`, `2h`, `3d`) counts from the last message this run of the flow created (or from when the contact entered it); a step skipped by its condition creates none, so two alternative steps with conditions on the same trait (one for each audience) share a moment. Date schedules use their slots instead |
 | `window_policy` | `immediate` or `respect_window` |
 | `template_ref` | A template slug: fixed content (no LLM call) |
 | `brain_instruction` | Instruction for AI-drafted content. Template variables work here too (`{{links.icp_url}}`, `{{contact.properties.plan_tier}}`, `{{context.leads...}}`) |

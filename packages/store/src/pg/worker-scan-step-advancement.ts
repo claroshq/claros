@@ -1,7 +1,7 @@
 /**
  * Postgres implementation of the queries used by packages/worker/src/scan-step-advancement.ts.
  */
-import { eq, and, gt, gte, sql } from "drizzle-orm";
+import { eq, and, gt, gte, sql, lte, desc } from "drizzle-orm";
 import {
   tenants,
   contacts,
@@ -254,9 +254,10 @@ export function pgWorkerScanStepAdvancement(db: PgDb): WorkerScanStepAdvancement
         .where(
           and(
             eq(lifecycleMessages.membershipId, membershipId),
-            eq(lifecycleMessages.flowStepOrder, stepOrder),
+            lte(lifecycleMessages.flowStepOrder, stepOrder),
           ),
         )
+        .orderBy(desc(lifecycleMessages.createdAt))
         .limit(1);
       return prevMessage[0]?.createdAt ?? null;
     },

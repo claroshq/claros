@@ -2,7 +2,7 @@
  * SQLite / Cloudflare D1 implementation of the queries used by packages/worker/src/scan-step-advancement.ts
  * (a direct port of ../pg/worker-scan-step-advancement.ts: plain selects and CAS updates).
  */
-import { eq, and, gt, gte, sql } from "drizzle-orm";
+import { eq, and, gt, gte, sql, lte, desc } from "drizzle-orm";
 import {
   tenants,
   contacts,
@@ -250,9 +250,10 @@ export function d1WorkerScanStepAdvancement(db: D1Db): WorkerScanStepAdvancement
         .where(
           and(
             eq(lifecycleMessages.membershipId, membershipId),
-            eq(lifecycleMessages.flowStepOrder, stepOrder),
+            lte(lifecycleMessages.flowStepOrder, stepOrder),
           ),
         )
+        .orderBy(desc(lifecycleMessages.createdAt))
         .limit(1);
       return prevMessage[0]?.createdAt ?? null;
     },

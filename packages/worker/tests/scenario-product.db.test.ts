@@ -152,11 +152,13 @@ for (const factory of engineBackends()) {
       }
       const contact = async (externalId: string, state: string, props: Record<string, unknown>) => {
         const id = randomUUID();
+        // payment_status is a reserved trait: ingest stores it in its column, never in properties.
+        const { payment_status: paymentStatus, ...rest } = props as { payment_status?: string };
         await b.db.insert(b.schema.contacts).values({
-          id, tenantId: t, externalId, email: `${externalId}@example.com`, lifecycleState: state, properties: { timezone: "UTC", first_name: externalId, ...props },
+          id, tenantId: t, externalId, email: `${externalId}@example.com`, lifecycleState: state, paymentStatus: paymentStatus ?? "free", properties: { timezone: "UTC", first_name: externalId, ...rest },
           firstSeenAt: new Date(NOW.getTime() - 40 * 24 * HOUR), lastSeenAt: new Date(NOW.getTime() - 2 * HOUR),
         });
-        await storeFor(b.db).apiIngest.syncContactDates({ tenantId: t, externalId, changedKeys: Object.keys(props), now: NOW });
+        await storeFor(b.db).apiIngest.syncContactDates({ tenantId: t, externalId, changedKeys: Object.keys(rest), now: NOW });
         return id;
       };
       // Paid, no ICP yet: the scheduled ICP nudge (slot 1d at 09:30) and the nurture segment.

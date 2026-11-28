@@ -1233,6 +1233,68 @@ describe("phaseStepAdvancement - step-level condition (proceed-if gate)", () => 
 // Step-level exit_condition tests
 // ---------------------------------------------------------------------------
 
+describe("phaseStepAdvancement - paired alternative steps (dunning)", () => {
+  // Steps 1/3/5 are for one audience, 2/4/6 for the other; each pair is the
+  // same moment. A skipped step leaves no message, so the next delay must
+  // count from the last message actually created, not from entered_at:
+  // otherwise the second and third mail of the first audience fall on the
+  // same day.
+  const steps = [
+    { order: 1, action_type: "dunning", delay: "0m", condition: { lifecycle_state: "engaged" } },
+    { order: 2, action_type: "dunning", delay: "0m", condition: { lifecycle_state_not: "engaged" } },
+    { order: 3, action_type: "dunning", delay: "3d", condition: { lifecycle_state: "engaged" } },
+    { order: 4, action_type: "dunning", delay: "0m", condition: { lifecycle_state_not: "engaged" } },
+    { order: 5, action_type: "dunning", delay: "3d", condition: { lifecycle_state: "engaged" } },
+    { order: 6, action_type: "dunning", delay: "0m", condition: { lifecycle_state_not: "engaged" } },
+  ];
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function runDays(membershipId: string, entered: Date, days: number[]) {
+    const created: Array<{ step: number; day: number }> = [];
+    for (const d of days) {
+      const now = new Date(entered.getTime() + d * DAY + 60_000);
+      // Several passes per moment so zero-delay and skipped steps settle.
+      for (let i = 0; i < 4; i++) {
+        await db.update(lifecycleMessages).set({ createdAt: now }).where(and(eq(lifecycleMessages.membershipId, membershipId), sql`created_at > ${now}`));
+        await phaseStepAdvancement(db, now, [testTenantId]);
+      }
+      for (const m of await getMessages(membershipId)) {
+        if (!created.some((c) => c.step === m.flowStepOrder)) {
+          created.push({ step: m.flowStepOrder!, day: d });
+          await db.update(lifecycleMessages).set({ createdAt: now }).where(eq(lifecycleMessages.id, m.id));
+        }
+      }
+    }
+    return created.sort((a, b) => a.step - b.step);
+  }
+
+  it("first audience: mails on day 0, 3 and 6", async () => {
+    if (!dbAvailable) return;
+    const contactId = await insertContact("dunning_pair_a", "engaged");
+    const flowId = await insertFlow({ name: "Dunning pairs A", steps });
+    const entered = new Date("2026-07-20T00:00:00Z");
+    const membershipId = await insertMembership({ contactId, flowId, enteredAt: entered });
+    expect(await runDays(membershipId, entered, [0, 1, 2, 3, 4, 5, 6, 7])).toEqual([
+      { step: 1, day: 0 },
+      { step: 3, day: 3 },
+      { step: 5, day: 6 },
+    ]);
+  });
+
+  it("second audience: mails on day 0, 3 and 6", async () => {
+    if (!dbAvailable) return;
+    const contactId = await insertContact("dunning_pair_b", "at_risk");
+    const flowId = await insertFlow({ name: "Dunning pairs B", steps });
+    const entered = new Date("2026-07-20T00:00:00Z");
+    const membershipId = await insertMembership({ contactId, flowId, enteredAt: entered });
+    expect(await runDays(membershipId, entered, [0, 1, 2, 3, 4, 5, 6, 7])).toEqual([
+      { step: 2, day: 0 },
+      { step: 4, day: 3 },
+      { step: 6, day: 6 },
+    ]);
+  });
+});
+
 describe("phaseStepAdvancement - step-level exit_condition", () => {
   it("exits membership when step exit_condition is true", async () => {
     if (!dbAvailable) return;
