@@ -632,17 +632,24 @@ describe("concurrency: CAS idempotency on lifecycle transitions", () => {
     expect(results[0]!.result).toBe(200);
     expect(results[1]!.result).toBe(200);
 
-    // Final state should be activated (one of them won the CAS)
+    // One of them won the CAS. The other either read signed_up too and lost
+    // (final state activated), or read the state after the winner committed
+    // and, as any activity after activation does, moved it on to engaged.
+    // Which one happens depends on timing; both are correct.
     const finalContact = await getContact("user_cas_activate");
-    expect(finalContact!.lifecycleState).toBe("activated");
+    expect(["activated", "engaged"]).toContain(finalContact!.lifecycleState);
     expect(finalContact!.activatedAt).not.toBeNull();
 
-    // Exactly one signed_up -> activated transition
+    // Exactly one signed_up -> activated transition, never two.
     const transitions = await getTransitions(contactId);
     const activationTransitions = transitions.filter(
       (t) => t.fromState === "signed_up" && t.toState === "activated",
     );
     expect(activationTransitions).toHaveLength(1);
+    const engagedTransitions = transitions.filter(
+      (t) => t.fromState === "activated" && t.toState === "engaged",
+    );
+    expect(engagedTransitions).toHaveLength(finalContact!.lifecycleState === "engaged" ? 1 : 0);
 
     await gate.close();
     await app.close();

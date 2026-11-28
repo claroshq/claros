@@ -49,7 +49,14 @@ jobs:
           npm run db:migrate -- --yes
           DATABASE_URL="$SEED_TEST_DATABASE_URL" npm run db:migrate -- --yes
       - run: npm run typecheck
+      # Node 22 can abort (V8 assertion in require(esm), exit 134) while a
+      # vitest worker shuts down, after every test passed: debug's optional
+      # require('supports-color') loads an ES module through the CJS loader.
+      # Without require(esm) that require throws and debug's try/catch falls
+      # back, so the crash cannot happen.
       - run: npm test
+        env:
+          NODE_OPTIONS: --no-experimental-require-module
 
   workers:
     name: Cloudflare Workers runtime (D1)
