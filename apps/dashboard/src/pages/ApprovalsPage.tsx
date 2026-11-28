@@ -44,6 +44,7 @@ import {
   ChevronUp,
   MoreHorizontal,
   PenLine,
+  RefreshCw,
   Sparkles,
   X,
 } from "lucide-react";
@@ -1426,6 +1427,19 @@ export default function ApprovalsPage() {
     setParams(next === "review" ? {} : { view: next }, { replace: true });
   }
 
+  // Refetches every message list on the page (queue, approved, attention,
+  // budget notice). The icon makes at least one full turn (animate-spin is 1s) so a fast response still
+  // reads as a refresh. Decisions still in their undo window stay hidden.
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  async function refresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    const minTurn = new Promise((r) => window.setTimeout(r, 1000));
+    await Promise.allSettled([qc.refetchQueries({ queryKey: MESSAGES_QUERY_KEY, type: "active" }), minTurn]);
+    setRefreshing(false);
+  }
+
   return (
     <div className="mx-auto flex max-w-[96rem] flex-col lg:h-full">
       <div className="mb-5 flex shrink-0 flex-wrap items-end gap-x-10 gap-y-2 border-b border-border">
@@ -1462,6 +1476,18 @@ export default function ApprovalsPage() {
             );
           })}
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-2 ml-auto"
+          onClick={() => void refresh()}
+          disabled={refreshing}
+          aria-label="Refresh"
+          title="Refresh"
+        >
+          <RefreshCw className={cn(refreshing && "animate-spin")} aria-hidden />
+          Refresh
+        </Button>
       </div>
 
       {(waitingForBudget.data ?? 0) > 0 && (

@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Added
+
+- Approvals has a Refresh button in its header. It refetches the review queue, Approved and Needs attention lists and the LLM budget notice in one go, and its icon turns while it runs. Drafts you just approved or rejected stay hidden during their undo window.
+
 ## [0.16.0] - 2026-11-28
 
 ### Added
