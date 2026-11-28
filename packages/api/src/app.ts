@@ -62,6 +62,7 @@ import topicsRoutes from "./routes/topics.js";
 import configRoutes from "./routes/config.js";
 import capabilitiesRoutes from "./routes/capabilities.js";
 import webhookEndpointRoutes from "./routes/webhook-endpoints.js";
+import analyticsSinkRoutes from "./routes/analytics-sink.js";
 import flowStepsRoutes from "./routes/flow-steps.js";
 import { brandSettingsRoutes, publicBrandRoutes } from "./routes/brand.js";
 
@@ -217,6 +218,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ClarosApp> {
     app.route("/v1/config", configRoutes());
     app.route("/v1/capabilities", capabilitiesRoutes({ runtime: opts.runtime }));
     app.route("/v1/webhooks", webhookEndpointRoutes());
+    app.route("/v1/analytics-sink", analyticsSinkRoutes());
   }
   app.route("/v1/diagnostics", diagnosticsRoutes());
 

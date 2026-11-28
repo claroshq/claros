@@ -12,9 +12,10 @@
  *
  * Owner session or an admin key with the `config` scope. Secrets are stored
  * encrypted (ENCRYPTION_KEY) and never returned after creation or rotation.
- * The analytics sink (kind 'analytics', slug 'analytics') is configured in
- * settings.analytics of the config document: it is listed, and its
- * deliveries can be read, but these routes do not change it.
+ * The analytics sink (kind 'analytics', slug 'analytics') is settings.analytics
+ * of the config document, changed with /v1/analytics-sink (analytics-sink.ts)
+ * or a config apply: it is listed with its `sink`, and its deliveries can be
+ * read, but these routes do not change it.
  */
 import { z } from "zod";
 import { storeFor } from "@claros/store";
@@ -89,6 +90,8 @@ function serialize(e: WebhookEndpointRow) {
     batch_interval_minutes: batchMinutes(e.config),
     has_secret: e.hasSecret,
     read_only: e.kind !== "webhook",
+    /** statsraven | webhook for the analytics sink; null for a webhook. */
+    sink: e.kind === "analytics" ? (e.config?.sink === "webhook" ? "webhook" : "statsraven") : null,
     created_at: e.createdAt?.toISOString() ?? null,
     updated_at: e.updatedAt?.toISOString() ?? null,
   };
@@ -138,7 +141,7 @@ export default function webhookEndpointRoutes() {
     const slug = c.req.param("slug")!;
     const existing = await storeFor(db).apiWebhooks.findEndpoint({ tenantId, slug });
     if (!existing) return c.json({ error: "Webhook not found." }, 404);
-    if (existing.kind !== "webhook") return c.json({ error: "The analytics sink is configured in settings.analytics." }, 409);
+    if (existing.kind !== "webhook") return c.json({ error: "The analytics sink is changed with /v1/analytics-sink or settings.analytics." }, 409);
     let config: Record<string, unknown> | null | undefined;
     if (body.batch_interval_minutes !== undefined) {
       const { batch_interval_minutes: _old, ...rest } = existing.config ?? {};
@@ -165,7 +168,7 @@ export default function webhookEndpointRoutes() {
     const slug = c.req.param("slug")!;
     const existing = await storeFor(db).apiWebhooks.findEndpoint({ tenantId, slug });
     if (!existing) return c.json({ error: "Webhook not found." }, 404);
-    if (existing.kind !== "webhook") return c.json({ error: "The analytics sink is configured in settings.analytics." }, 409);
+    if (existing.kind !== "webhook") return c.json({ error: "The analytics sink is changed with /v1/analytics-sink or settings.analytics." }, 409);
     await storeFor(db).apiWebhooks.deleteEndpoint({ tenantId, slug, now: new Date() });
     return c.json({ success: true });
   });
@@ -178,7 +181,7 @@ export default function webhookEndpointRoutes() {
     const slug = c.req.param("slug")!;
     const existing = await storeFor(db).apiWebhooks.findEndpoint({ tenantId, slug });
     if (!existing) return c.json({ error: "Webhook not found." }, 404);
-    if (existing.kind !== "webhook") return c.json({ error: "The analytics sink is configured in settings.analytics." }, 409);
+    if (existing.kind !== "webhook") return c.json({ error: "The analytics sink is changed with /v1/analytics-sink or settings.analytics." }, 409);
     const secret = generateWebhookSecret();
     const row = await storeFor(db).apiWebhooks.updateEndpoint({ tenantId, slug, patch: { secret: encrypt(secret, key) }, now: new Date() });
     if (!row) return c.json({ error: "Webhook not found." }, 404);

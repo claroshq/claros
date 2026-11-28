@@ -4,14 +4,23 @@
  * Signed (Standard Webhooks) endpoints of the product: list, create (the
  * signing secret is shown once), rotate the secret (shown once), enable or
  * disable, edit url / events / the pending-approval batch window, delete,
- * and the latest deliveries per endpoint. The analytics sink (configured
- * in settings.analytics of a config document) is listed read-only.
+ * and the latest deliveries per endpoint. Below them, the analytics sink
+ * (settings.analytics of the config document): connect, edit, remove and
+ * its deliveries, through /v1/analytics-sink.
  *
- * The same endpoints a config document's `webhooks` list writes; a config
- * apply that lists webhooks overwrites changes made here.
+ * The same endpoints a config document's `webhooks` list and
+ * settings.analytics write; a config apply that sets them overwrites
+ * changes made here.
  */
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  useAnalyticsSink,
+  usePutAnalyticsSink,
+  useDeleteAnalyticsSink,
+  WebhookApiError,
+  type AnalyticsSink,
+  type AnalyticsSinkKind,
   useWebhooks,
   useWebhookDeliveries,
   useCreateWebhook,
@@ -22,12 +31,16 @@ import {
 } from "../../webhooks.js";
 import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
+import { Select } from "../../components/ui/select.js";
 import { Skeleton } from "../../components/ui/skeleton.js";
 import { Badge, type BadgeVariant } from "../../components/ui/badge.js";
 import { Section, FormError, Notice, errorMessage } from "./shared.js";
+import { SINK_LABELS, secretLabel, secretState, sinkBody, sinkFormError } from "./analytics-sink-form.js";
 
 const LABEL = "mb-1.5 block text-body font-medium text-foreground";
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+const OPTIONAL = <span className="font-normal text-muted-foreground">(optional)</span>;
+const HINT = "mt-1.5 max-w-prose text-small leading-relaxed text-muted-foreground";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "";
@@ -337,11 +350,28 @@ function NewWebhookForm({ allEvents, onDone }: { allEvents: string[]; onDone: ()
 }
 
 export default function WebhooksSettings() {
+  return (
+    <div className="space-y-6">
+      <WebhooksSection />
+      <AnalyticsSinkSection />
+    </div>
+  );
+}
+
+function WebhooksSection() {
   const { data, isLoading, error } = useWebhooks();
   const [adding, setAdding] = useState(false);
 
   if (isLoading) return <Skeleton className="h-40 w-full" />;
+  if (error instanceof WebhookApiError && error.status === 403) {
+    return (
+      <Section title="Webhooks" configured={null}>
+        <Notice variant="info">Only owners can see and change webhooks.</Notice>
+      </Section>
+    );
+  }
   if (error || !data) return <FormError message={error ? errorMessage(error) : "Webhooks could not be loaded."} />;
+  const webhooks = data.webhooks.filter((w) => w.kind !== "analytics");
 
   return (
     <Section
@@ -359,17 +389,245 @@ export default function WebhooksSettings() {
       <Notice variant="info">
         A config document that lists webhooks replaces what you change here on its next apply.
       </Notice>
-      {data.webhooks.length > 0 && (
+      {webhooks.length > 0 && (
         <ul className="mt-4 divide-y divide-border rounded-md border border-border">
-          {data.webhooks.map((w) => (
+          {webhooks.map((w) => (
             <EndpointRow key={w.id} endpoint={w} allEvents={data.events} />
           ))}
         </ul>
       )}
-      {data.webhooks.length === 0 && !adding && (
+      {webhooks.length === 0 && !adding && (
         <p className="mt-4 text-body text-muted-foreground">No webhooks yet.</p>
       )}
       {adding && <NewWebhookForm allEvents={data.events} onDone={() => setAdding(false)} />}
+    </Section>
+  );
+}
+
+const SINK_DESCRIPTION = "One flat event per email and flow step, keyed by your user id, sent to your analytics tool.";
+
+/** Where the sink is set, for people who cannot change it here. */
+function SetInConfig() {
+  return (
+    <p className="mt-1 text-small text-muted-foreground">
+      Set in{" "}
+      <Link to="/settings/config" className="text-accent-text underline">
+        Config as code
+      </Link>{" "}
+      (<span className="font-mono">settings.analytics</span>)
+    </p>
+  );
+}
+
+/** What each sink does, under the choice. */
+function SinkExplainer({ sink }: { sink: AnalyticsSinkKind }) {
+  if (sink === "statsraven") {
+    return (
+      <p className={HINT}>
+        StatsRaven is self-hosted analytics you can ask in plain language. Claros sends each email and flow event to it
+        with your user id, so people&apos;s cards show what you sent them.{" "}
+        <a href="https://statsraven.com" target="_blank" rel="noreferrer" className="text-accent-text underline">
+          statsraven.com
+        </a>
+      </p>
+    );
+  }
+  return (
+    <p className={HINT}>
+      Claros POSTs the same flat event as JSON to this address, signed like a webhook when a secret is set, so it works
+      with any analytics tool or your own endpoint.
+    </p>
+  );
+}
+
+function AnalyticsSinkForm({ current, onDone }: { current: AnalyticsSink | null; onDone: () => void }) {
+  const put = usePutAnalyticsSink();
+  const [sink, setSink] = useState<AnalyticsSinkKind>(current?.sink ?? "statsraven");
+  const [endpoint, setEndpoint] = useState(current?.endpoint ?? "");
+  const [secret, setSecret] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const busy = put.isPending;
+  const keeps = current?.has_secret === true;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const form = { sink, endpoint, secret };
+    const invalid = sinkFormError(form);
+    if (invalid) {
+      setErr(invalid);
+      return;
+    }
+    try {
+      await put.mutateAsync(sinkBody(form, current));
+      onDone();
+    } catch (e2) {
+      setErr(errorMessage(e2));
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} noValidate className="mt-4 space-y-4 rounded-md border border-border bg-sunken p-4">
+      <div>
+        <label htmlFor="as-sink" className={LABEL}>Sink</label>
+        <Select id="as-sink" className="max-w-xs" value={sink} onChange={(e) => setSink(e.target.value as AnalyticsSinkKind)} disabled={busy}>
+          {(Object.keys(SINK_LABELS) as AnalyticsSinkKind[]).map((k) => (
+            <option key={k} value={k}>{SINK_LABELS[k]}</option>
+          ))}
+        </Select>
+        <SinkExplainer sink={sink} />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="as-endpoint" className={LABEL}>Address</label>
+          <Input
+            id="as-endpoint"
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            placeholder={sink === "statsraven" ? "https://stats.example.com" : "https://example.com/claros/events"}
+            disabled={busy}
+          />
+          {sink === "statsraven" && <p className={HINT}>Your StatsRaven address. Events go to its /ingest.</p>}
+        </div>
+        <div>
+          <label htmlFor="as-secret" className={LABEL}>
+            {secretLabel(sink)} {sink === "webhook" && OPTIONAL}
+          </label>
+          <Input
+            id="as-secret"
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder={keeps ? "Set. Leave empty to keep it." : undefined}
+            autoComplete="off"
+            disabled={busy}
+          />
+          {sink === "statsraven" && <p className={HINT}>The ingest token is in StatsRaven under Settings, Projects.</p>}
+        </div>
+      </div>
+      <FormError message={err} />
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" disabled={busy || endpoint.trim() === ""}>
+          {busy ? "Saving..." : current ? "Save" : "Connect"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function AnalyticsSinkRow({ sink, editable }: { sink: AnalyticsSink; editable: boolean }) {
+  const del = useDeleteAnalyticsSink();
+  const [editing, setEditing] = useState(false);
+  const [showDeliveries, setShowDeliveries] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function remove() {
+    setErr(null);
+    try {
+      await del.mutateAsync();
+    } catch (e) {
+      setErr(errorMessage(e));
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-border px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-body font-medium text-foreground">{SINK_LABELS[sink.sink]}</span>
+            <Badge variant={sink.enabled ? "success" : "muted"}>{sink.enabled ? "enabled" : "disabled"}</Badge>
+          </div>
+          <p className="mt-0.5 break-all text-small text-muted-foreground">{sink.endpoint}</p>
+          {editable ? <p className="mt-1 text-small text-muted-foreground">{secretState(sink)}</p> : <SetInConfig />}
+        </div>
+        {editable && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="ghost" onClick={() => setShowDeliveries((v) => !v)}>
+              {showDeliveries ? "Hide deliveries" : "Deliveries"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={del.isPending} onClick={() => setEditing((v) => !v)}>
+              Edit
+            </Button>
+            {confirmRemove ? (
+              <>
+                <Button type="button" size="sm" variant="destructive" disabled={del.isPending} onClick={() => void remove()}>
+                  {del.isPending ? "Removing..." : "Remove"}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmRemove(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button type="button" size="sm" variant="ghost" disabled={del.isPending} onClick={() => setConfirmRemove(true)}>
+                Remove
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+      {confirmRemove && (
+        <p className="mt-3 text-small text-muted-foreground">
+          Removing stops sending events to {SINK_LABELS[sink.sink]} and drops the ones not delivered yet.
+        </p>
+      )}
+      <FormError message={err} />
+      {editing && <AnalyticsSinkForm current={sink} onDone={() => setEditing(false)} />}
+      {showDeliveries && <Deliveries slug="analytics" />}
+    </div>
+  );
+}
+
+function AnalyticsSinkSkeleton() {
+  return (
+    <section className="rounded-lg border border-border bg-card p-6 shadow-card" aria-busy="true">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="mt-2 h-4 w-2/3" />
+      <Skeleton className="mt-6 h-12 w-full" />
+      <Skeleton className="mt-4 h-20 w-full" />
+    </section>
+  );
+}
+
+function AnalyticsSinkSection() {
+  const { data, isLoading, error } = useAnalyticsSink();
+  const [connecting, setConnecting] = useState(false);
+
+  if (isLoading) return <AnalyticsSinkSkeleton />;
+  if (error || !data) return <FormError message={error ? errorMessage(error) : "The analytics sink could not be loaded."} />;
+  const sink = data.analytics_sink;
+
+  return (
+    <Section
+      title="Analytics sink"
+      description={SINK_DESCRIPTION}
+      configured={null}
+      actions={
+        data.editable && !sink && !connecting ? (
+          <Button variant="outline" size="sm" onClick={() => setConnecting(true)}>
+            Connect analytics
+          </Button>
+        ) : undefined
+      }
+    >
+      {data.editable && (
+        <Notice variant="info">
+          A config document that sets <span className="font-mono">settings.analytics</span> replaces this on its next
+          apply.
+        </Notice>
+      )}
+      {sink && <AnalyticsSinkRow key={sink.updated_at ?? "sink"} sink={sink} editable={data.editable} />}
+      {!sink && !connecting && (
+        <div className="mt-4">
+          <p className="text-body text-muted-foreground">No analytics sink yet.</p>
+          {!data.editable && <SetInConfig />}
+        </div>
+      )}
+      {!sink && connecting && <AnalyticsSinkForm current={null} onDone={() => setConnecting(false)} />}
     </Section>
   );
 }

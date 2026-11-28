@@ -77,6 +77,7 @@ export const FEATURES = [
   "email_templates",
   "event_history_import",
   "mcp",
+  "analytics_sink_api",
 ] as const;
 
 export type Runtime = "node" | "workers";

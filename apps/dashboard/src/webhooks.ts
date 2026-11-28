@@ -4,7 +4,7 @@
  *
  *   GET/POST /v1/webhooks, PATCH/DELETE /v1/webhooks/:slug,
  *   POST /v1/webhooks/:slug/rotate, GET /v1/webhooks/:slug/deliveries,
- *   GET /v1/config
+ *   GET/PUT/DELETE /v1/analytics-sink, GET /v1/config
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api.js";
@@ -20,6 +20,8 @@ export interface WebhookEndpoint {
   batch_interval_minutes: number;
   has_secret: boolean;
   read_only: boolean;
+  /** statsraven | webhook for the analytics sink; null (or absent on older servers) for a webhook. */
+  sink?: AnalyticsSinkKind | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -55,6 +57,33 @@ export interface WebhookPatch {
   events?: string[];
   enabled?: boolean;
   batch_interval_minutes?: number | null;
+}
+
+export type AnalyticsSinkKind = "statsraven" | "webhook";
+
+/** The product's analytics sink (settings.analytics); the secret is never returned. */
+export interface AnalyticsSink {
+  sink: AnalyticsSinkKind;
+  endpoint: string;
+  site_key?: string;
+  has_secret: boolean;
+  enabled: boolean;
+  updated_at: string | null;
+}
+
+export interface AnalyticsSinkResponse {
+  analytics_sink: AnalyticsSink | null;
+  sinks: AnalyticsSinkKind[];
+  /** False when the caller may read but not change it (members). */
+  editable: boolean;
+}
+
+/** PUT /v1/analytics-sink: settings.analytics; secret left out keeps the stored one. */
+export interface AnalyticsSinkInput {
+  sink: AnalyticsSinkKind;
+  endpoint: string;
+  site_key?: string;
+  secret?: string;
 }
 
 /** An error from the webhooks API, with the server's message. */
@@ -97,6 +126,13 @@ export const rotateWebhook = async (slug: string): Promise<WebhookEndpoint & { s
 export const fetchDeliveries = async (slug: string): Promise<{ deliveries: WebhookDelivery[] }> =>
   json(await apiFetch(`/v1/webhooks/${encodeURIComponent(slug)}/deliveries`));
 
+export const fetchAnalyticsSink = async (): Promise<AnalyticsSinkResponse> => json(await apiFetch("/v1/analytics-sink"));
+export const putAnalyticsSink = async (input: AnalyticsSinkInput): Promise<AnalyticsSinkResponse> =>
+  json(await apiFetch("/v1/analytics-sink", jsonInit("PUT", input)));
+export const deleteAnalyticsSink = async (): Promise<void> => {
+  await json(await apiFetch("/v1/analytics-sink", jsonInit("DELETE")));
+};
+
 /** GET /v1/config: the product's configuration as a config document (no secrets). */
 export const fetchConfigDocument = async (): Promise<Record<string, unknown>> => json(await apiFetch("/v1/config"));
 
@@ -133,6 +169,22 @@ export function usePatchWebhook() {
 export function useDeleteWebhook() {
   const invalidate = useInvalidate();
   return useMutation({ mutationFn: deleteWebhook, onSuccess: invalidate });
+}
+
+export const ANALYTICS_SINK_QUERY_KEY = [...WEBHOOKS_QUERY_KEY, "analytics-sink"] as const;
+
+export function useAnalyticsSink() {
+  return useQuery({ queryKey: ANALYTICS_SINK_QUERY_KEY, queryFn: fetchAnalyticsSink });
+}
+
+export function usePutAnalyticsSink() {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: putAnalyticsSink, onSuccess: invalidate });
+}
+
+export function useDeleteAnalyticsSink() {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: deleteAnalyticsSink, onSuccess: invalidate });
 }
 
 export function useRotateWebhook() {

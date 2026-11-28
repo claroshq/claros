@@ -2,7 +2,7 @@
 
 > Since v0.8.
 
-Claros tells your product what happened to its contacts and messages with signed HTTP webhooks, and can send lifecycle events to an analytics tool. Both are configured per product with [config as code](CONFIG.md) (`webhooks` and `settings.analytics`); webhooks can also be managed one by one in the dashboard (Settings, Webhooks) or with the [webhooks API](#managing-webhooks).
+Claros tells your product what happened to its contacts and messages with signed HTTP webhooks, and can send lifecycle events to an analytics tool. Both are configured per product with [config as code](CONFIG.md) (`webhooks` and `settings.analytics`). Both can also be managed in the dashboard (Settings, Webhooks), webhooks with the [webhooks API](#managing-webhooks) and the analytics sink with the [analytics sink API](#setting-the-sink-in-the-dashboard-or-the-api).
 
 ## How delivery works
 
@@ -95,7 +95,7 @@ Settings, Webhooks in the dashboard lists the product's endpoints and their late
 
 - Secrets are stored encrypted (`ENCRYPTION_KEY` must be set; without it creating or rotating answers `503`) and are never returned after creation or rotation.
 - `batch_interval_minutes` (1 to 1440, default 15) is the window of the batched `message.pending_approval` event for that endpoint.
-- The analytics sink (slug `analytics`) is listed with `read_only: true` and its deliveries can be read; it is changed through `settings.analytics` in a config document. The slug `analytics` cannot be used for a webhook.
+- The analytics sink (slug `analytics`) is listed with `read_only: true` and its `sink` (`statsraven` or `webhook`; `null` for webhooks), and its deliveries can be read; these routes do not change it. Change it with [`/v1/analytics-sink`](#setting-the-sink-in-the-dashboard-or-the-api) or `settings.analytics` in a config document. The slug `analytics` cannot be used for a webhook.
 - Webhooks are part of the [config document](CONFIG.md): every change here bumps the product's `config_version`, and a document that lists `webhooks` replaces these changes on its next apply.
 
 ## Analytics sink
@@ -126,5 +126,20 @@ Opens are not sent: they are unreliable (mail privacy proxies open everything).
 
 - `sink: "statsraven"`: `POST {endpoint}/ingest?source=claros` with `Authorization: Bearer {secret}` (a StatsRaven ingest token). `endpoint` is the StatsRaven address, for example `https://stats.example.com`.
 - `sink: "webhook"`: `POST {endpoint}` with the flat event as the body, signed like a webhook when `secret` is set.
+
+### Setting the sink in the dashboard or the API
+
+Settings, Webhooks in the dashboard has an Analytics sink section: Connect analytics, Edit, Remove and the sink's deliveries. The form takes the sink (StatsRaven or Webhook), the address and the secret (for StatsRaven the ingest token, found in StatsRaven under Settings, Projects; for a webhook an optional signing secret). The secret is write-only: it shows as set, is never returned, and an empty field on edit keeps the stored one. Members see the sink and where it is set, but cannot change it.
+
+The same operations are an API:
+
+| Request | Who | Does |
+|---|---|---|
+| `GET /v1/analytics-sink` | any member, or an admin key with the `config` scope | `{"analytics_sink": {"sink", "endpoint", "site_key"?, "has_secret", "enabled", "updated_at"} or null, "sinks": ["statsraven", "webhook"], "editable"}` |
+| `PUT /v1/analytics-sink` | owner, or an admin key with the `config` scope | Set the sink: the body is a `settings.analytics` value, `{"sink": "statsraven", "endpoint": "https://stats.example.com", "secret"?: "..."}`. Without `secret` the stored one is kept. Answers like `GET`, plus `changes` and `config_version` |
+| `DELETE /v1/analytics-sink` | owner, or an admin key with the `config` scope | Remove the sink; its undelivered events are dropped. `404` when none is set |
+
+- `PUT` and `DELETE` are a config apply of a document that holds only `settings.analytics` (or `null` for `DELETE`): the body is validated by the same schema, the same rows are written, the secret is stored encrypted (`ENCRYPTION_KEY` must be set; without it a `PUT` with a secret answers `503`), and the product's `config_version` goes up when something changed.
+- A config document that sets `settings.analytics` replaces these changes on its next apply.
 
 Links in mail can carry UTM parameters and `clr_cid=<message id>` so the analytics tool can join a visit to the email: see `settings.link_tracking` in [config as code](CONFIG.md#link-tracking).

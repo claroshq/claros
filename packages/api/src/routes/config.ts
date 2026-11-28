@@ -26,17 +26,19 @@ import {
   generateWebhookSecret,
   planConfig,
   SETTINGS_KEYS,
+  type ClarosConfig,
+  type ConfigChange,
   type ConfigOp,
   type ConfigState,
 } from "@claros/core";
 import { decrypt, encrypt, parseEncryptionKey } from "@claros/adapters";
-import type { Db } from "../plugins/db.js";
+import type { Db, EnqueueFn } from "../plugins/db.js";
 import { RoleRouter, allowAdminKey } from "../http/router.js";
 
 /** Config documents can carry many templates. */
 const CONFIG_BODY_LIMIT = 4 * 1024 * 1024;
 
-function encryptionKey(): Buffer | null {
+export function encryptionKey(): Buffer | null {
   const raw = process.env.ENCRYPTION_KEY;
   if (!raw) return null;
   try {
@@ -71,85 +73,115 @@ export default function configRoutes() {
         400,
       );
     }
-    const state = await storeFor(db).apiConfig.loadConfigState(tenantId);
-    if (!state) return c.json({ error: "Product not found." }, 404);
-
-    const key = encryptionKey();
-    const plan = planConfig(parsed.data, state, {
-      newId: () => randomUUID(),
-      newSecret: () => generateWebhookSecret(),
-      readSecret: (enc) => {
-        if (!key) return null;
-        try {
-          return decrypt(enc, key);
-        } catch {
-          return null;
-        }
-      },
-    });
-    if (plan.errors.length > 0) {
-      return c.json({ error: "The configuration cannot be applied.", errors: plan.errors, warnings: plan.warnings, changes: plan.changes }, 400);
-    }
-    if (dryRun || plan.ops.length === 0) {
-      return c.json({ dry_run: dryRun, changes: plan.changes, warnings: plan.warnings, config_version: state.configVersion });
-    }
-
-    const needsKey =
-      plan.ops.some((op) => op.op === "upsertEndpoint" && op.secret !== undefined) ||
-      plan.ops.some((op) => op.op === "setSettings" && hasPlainSourceSecret(op.patch.data_sources));
-    if (needsKey && !key) {
-      return c.json({ error: "ENCRYPTION_KEY is not configured. Set it before storing webhook, analytics or data source secrets." }, 503);
-    }
-    const ops: ConfigOp[] = plan.ops.map((op) => {
-      if (op.op === "upsertEndpoint" && op.secret !== undefined) return { ...op, secret: encrypt(op.secret, key!) };
-      if (op.op === "setSettings" && hasPlainSourceSecret(op.patch.data_sources)) {
-        // G11: data source secrets are stored encrypted (secret_enc), never in plain text.
-        const sources: Record<string, Record<string, unknown>> = {};
-        for (const [name, src] of Object.entries(op.patch.data_sources as Record<string, Record<string, unknown>>)) {
-          const { secret, ...rest } = src;
-          sources[name] = typeof secret === "string" ? { ...rest, secret_enc: encrypt(secret, key!) } : rest;
-        }
-        return { ...op, patch: { ...op.patch, data_sources: sources } };
-      }
-      return op;
-    });
-    const applied = await storeFor(db).apiConfig.applyConfigOps({
-      tenantId,
-      ops,
-      expectedVersion: state.configVersion,
-      now: new Date(),
-    });
-    if (!applied.ok) {
-      return c.json({ error: "The configuration changed while this apply ran. Run it again." }, 409);
-    }
-
-    // G3: a changed list of date traits re-indexes the product's contact dates.
-    const datePatch = ops.find((op): op is Extract<ConfigOp, { op: "setSettings" }> => op.op === "setSettings" && "date_traits" in op.patch);
-    if (datePatch) {
-      const traits = Array.isArray(datePatch.patch.date_traits) ? (datePatch.patch.date_traits as string[]) : [];
-      await storeFor(db).apiConfig.reindexContactDates({ tenantId, properties: traits, now: new Date() });
-    }
-
-    // Prompt-defined flows that are new or changed get compiled.
-    const enqueue = c.var.enqueue;
-    if (enqueue) {
-      for (const op of ops) {
-        if (op.op === "upsertFlow" && op.compile) {
-          await enqueue(QUEUE.COMPILE, { flow_id: op.id, tenant_id: tenantId }, { singletonKey: op.id }).catch(() => {});
-        }
-      }
-    }
-
+    const result = await applyConfigDocument({ db, tenantId, config: parsed.data, dryRun, enqueue: c.var.enqueue });
+    if (!result.ok) return c.json(result.body, result.status);
     return c.json({
-      dry_run: false,
-      changes: plan.changes,
-      warnings: plan.warnings,
-      config_version: applied.configVersion,
-      ...(Object.keys(plan.generatedSecrets).length > 0 ? { webhook_secrets: plan.generatedSecrets } : {}),
+      dry_run: result.dryRun,
+      changes: result.changes,
+      warnings: result.warnings,
+      config_version: result.configVersion,
+      ...(Object.keys(result.generatedSecrets).length > 0 ? { webhook_secrets: result.generatedSecrets } : {}),
     });
   });
 
   return r.app;
+}
+
+export type ConfigApplyResult =
+  | {
+      ok: true;
+      dryRun: boolean;
+      changes: ConfigChange[];
+      warnings: string[];
+      configVersion: number;
+      /** Signing secrets generated for new webhooks without one (shown once). */
+      generatedSecrets: Record<string, string>;
+    }
+  | { ok: false; status: 400 | 404 | 409 | 503; body: Record<string, unknown> };
+
+/**
+ * Plan and apply a validated config document for one product: the one write
+ * path of PUT /v1/config, also used by the routes that change a part of the
+ * document (PUT/DELETE /v1/analytics-sink), so both write the same rows.
+ * Secrets are encrypted with ENCRYPTION_KEY (503 without it).
+ */
+export async function applyConfigDocument(opts: {
+  db: Db;
+  tenantId: string;
+  config: ClarosConfig;
+  dryRun: boolean;
+  enqueue: EnqueueFn | undefined;
+}): Promise<ConfigApplyResult> {
+  const { db, tenantId, config, dryRun, enqueue } = opts;
+  const state = await storeFor(db).apiConfig.loadConfigState(tenantId);
+  if (!state) return { ok: false, status: 404, body: { error: "Product not found." } };
+
+  const key = encryptionKey();
+  const plan = planConfig(config, state, {
+    newId: () => randomUUID(),
+    newSecret: () => generateWebhookSecret(),
+    readSecret: (enc) => {
+      if (!key) return null;
+      try {
+        return decrypt(enc, key);
+      } catch {
+        return null;
+      }
+    },
+  });
+  if (plan.errors.length > 0) {
+    return { ok: false, status: 400, body: { error: "The configuration cannot be applied.", errors: plan.errors, warnings: plan.warnings, changes: plan.changes } };
+  }
+  if (dryRun || plan.ops.length === 0) {
+    return { ok: true, dryRun, changes: plan.changes, warnings: plan.warnings, configVersion: state.configVersion, generatedSecrets: {} };
+  }
+
+  const needsKey =
+    plan.ops.some((op) => op.op === "upsertEndpoint" && op.secret !== undefined) ||
+    plan.ops.some((op) => op.op === "setSettings" && hasPlainSourceSecret(op.patch.data_sources));
+  if (needsKey && !key) {
+    return { ok: false, status: 503, body: { error: "ENCRYPTION_KEY is not configured. Set it before storing webhook, analytics or data source secrets." } };
+  }
+  const ops: ConfigOp[] = plan.ops.map((op) => {
+    if (op.op === "upsertEndpoint" && op.secret !== undefined) return { ...op, secret: encrypt(op.secret, key!) };
+    if (op.op === "setSettings" && hasPlainSourceSecret(op.patch.data_sources)) {
+      // G11: data source secrets are stored encrypted (secret_enc), never in plain text.
+      const sources: Record<string, Record<string, unknown>> = {};
+      for (const [name, src] of Object.entries(op.patch.data_sources as Record<string, Record<string, unknown>>)) {
+        const { secret, ...rest } = src;
+        sources[name] = typeof secret === "string" ? { ...rest, secret_enc: encrypt(secret, key!) } : rest;
+      }
+      return { ...op, patch: { ...op.patch, data_sources: sources } };
+    }
+    return op;
+  });
+  const applied = await storeFor(db).apiConfig.applyConfigOps({
+    tenantId,
+    ops,
+    expectedVersion: state.configVersion,
+    now: new Date(),
+  });
+  if (!applied.ok) {
+    return { ok: false, status: 409, body: { error: "The configuration changed while this apply ran. Run it again." } };
+  }
+
+  // G3: a changed list of date traits re-indexes the product's contact dates.
+  const datePatch = ops.find((op): op is Extract<ConfigOp, { op: "setSettings" }> => op.op === "setSettings" && "date_traits" in op.patch);
+  if (datePatch) {
+    const traits = Array.isArray(datePatch.patch.date_traits) ? (datePatch.patch.date_traits as string[]) : [];
+    await storeFor(db).apiConfig.reindexContactDates({ tenantId, properties: traits, now: new Date() });
+  }
+
+  // Prompt-defined flows that are new or changed get compiled.
+  if (enqueue) {
+    for (const op of ops) {
+      if (op.op === "upsertFlow" && op.compile) {
+        await enqueue(QUEUE.COMPILE, { flow_id: op.id, tenant_id: tenantId }, { singletonKey: op.id }).catch(() => {});
+      }
+    }
+  }
+
+  return { ok: true, dryRun: false, changes: plan.changes, warnings: plan.warnings, configVersion: applied.configVersion, generatedSecrets: plan.generatedSecrets };
 }
 
 function hasPlainSourceSecret(v: unknown): boolean {
