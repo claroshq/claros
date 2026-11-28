@@ -8,11 +8,13 @@
  * JSON mode compatibility:
  *   The compile flow requests response_format: { type: "json_object" }.
  *   - OpenAI, Groq, Gemini (OpenAI-compat): honour this natively.
- *   - Claude (Anthropic): response_format is IGNORED by their compatibility
- *     layer (documented at docs.anthropic.com). JSON output relies solely on
- *     the system prompt instruction. The Zod schema validation in compile()
- *     catches any non-conforming response, failing the compile cleanly rather
- *     than allowing silent corruption.
+ *   - Claude (Anthropic): the compatibility layer rejects { type: "json_object" }
+ *     with a 400 ("response_format.type: Input should be 'json_schema'"), so
+ *     response_format is never sent to an anthropic.com base URL. JSON output
+ *     relies on the system prompt instruction; Zod validation catches any
+ *     non-conforming response, failing cleanly rather than corrupting anything.
+ *   - Any other endpoint that answers 400 about response_format gets the same
+ *     request once more without it.
  *   - Ollama: model-dependent. Larger models typically comply; smaller ones
  *     may not. Same Zod safety net applies.
  *
@@ -76,13 +78,14 @@ export class OpenAICompatibleProvider implements LlmProvider {
   async complete(opts: CompletionOptions): Promise<CompletionResult> {
     const url = `${this.baseUrl}/chat/completions`;
 
-    const body = {
+    let sendResponseFormat = opts.response_format !== undefined && !rejectsJsonObject(this.baseUrl);
+    const bodyFor = (withFormat: boolean) => ({
       model: this.model,
       messages: opts.messages,
       temperature: opts.temperature ?? 0,
       ...(opts.max_tokens !== undefined && { max_tokens: opts.max_tokens }),
-      ...(opts.response_format !== undefined && { response_format: opts.response_format }),
-    };
+      ...(withFormat && { response_format: opts.response_format }),
+    });
 
     let lastError: LlmProviderError | null = null;
 
@@ -100,13 +103,20 @@ export class OpenAICompatibleProvider implements LlmProvider {
             "Content-Type": "application/json",
             ...(this.apiKey && { Authorization: `Bearer ${this.apiKey}` }),
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(bodyFor(sendResponseFormat)),
         });
 
         if (!response.ok) {
           const statusCode = response.status;
           const responseBody = await response.text().catch(() => "");
           const retryable = statusCode === 429 || statusCode >= 500;
+
+          // An endpoint that refuses JSON mode: ask again without it, once.
+          if (statusCode === 400 && sendResponseFormat && /response_format/.test(responseBody)) {
+            sendResponseFormat = false;
+            attempt--;
+            continue;
+          }
 
           lastError = new LlmProviderError(
             `LLM provider returned ${statusCode}: ${responseBody.slice(0, 500)}`,
@@ -161,6 +171,16 @@ export class OpenAICompatibleProvider implements LlmProvider {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Anthropic's OpenAI-compatible layer accepts only json_schema, not json_object. */
+function rejectsJsonObject(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname;
+    return host === "anthropic.com" || host.endsWith(".anthropic.com");
+  } catch {
+    return false;
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
