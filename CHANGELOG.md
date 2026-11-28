@@ -6,6 +6,18 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Fixed
+
+- Ingestion: a `/v1/batch` item that cannot be stored (a database error) now answers `503` with `success: false`, so the sender retries the batch; with `messageId` set nothing is stored twice. Before, the batch answered `200` with the failure only in `errors[]`, and a sender that checks the status alone treated the event as delivered: a `signed_up` was lost and its Welcome flow never started. Invalid items still answer `200` with `errors[]`. Every item that was not stored is recorded on the Health page (`ingest_failed`). See [Ingestion](docs/guide/INGESTION.md).
+- Conditions see the reserved traits `payment_status`, `email`, `name` and `company`. Ingest stores these in their own columns and conditions read only the other traits, so every condition on `payment_status` saw it as absent: an exit such as `payment_status neq past_due` was true for every contact and ended the flow before its first step.
+- A drafted message whose flow exit has been met is cancelled instead of sent (`cancelled`, reason `exit_met`). Exits were checked between steps only, so a message waiting for approval or the send window still went out after, for example, the user reactivated their subscription.
+- A step skipped by its condition no longer resets the next step's delay to the time the contact entered the flow. The delay now counts from the last message the run created. With one step per audience (for example a founding-price and a regular dunning mail at each point), the second and third mail of one audience went out on the same day.
+- The drafting prompts call the contact's most frequent events what they are. They were labelled "features used", so `payment_failed` read as a feature and the value gate judged a draft against it.
+
+### Changed
+
+- The value gate no longer holds a draft silently. In a flow that needs approval, a draft the gate objects to still reaches the queue, with the objection shown above it (`status_reason` `value_gate: ...`). In a flow that sends on its own, a held draft (`value_gated`) is listed under Needs attention on the Approvals screen, with Send to review (`POST /v1/messages/:id/release`) and Dismiss (`POST /v1/messages/:id/dismiss`). See [Approvals](docs/guide/APPROVALS.md#value-gate-and-llm-budget-v08).
+
 ## [0.14.0] - 2026-11-28
 
 ### Fixed
