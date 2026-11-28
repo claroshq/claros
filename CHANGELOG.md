@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-28
+
 ### Fixed
 
 - Ingestion: a `/v1/batch` item that cannot be stored (a database error) now answers `503` with `success: false`, so the sender retries the batch; with `messageId` set nothing is stored twice. Before, the batch answered `200` with the failure only in `errors[]`, and a sender that checks the status alone treated the event as delivered: a `signed_up` was lost and its Welcome flow never started. Invalid items still answer `200` with `errors[]`. Every item that was not stored is recorded on the Health page (`ingest_failed`). See [Ingestion](docs/guide/INGESTION.md).
@@ -476,7 +478,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/claroshq/claros/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/claroshq/claros/compare/v0.13.3...v0.14.0
 [0.13.3]: https://github.com/claroshq/claros/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/claroshq/claros/compare/v0.13.1...v0.13.2
