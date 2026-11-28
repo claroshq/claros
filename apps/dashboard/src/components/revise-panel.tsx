@@ -9,7 +9,7 @@
  * content up to a limit, then scrolls.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowUp, Check, LoaderCircle, Sparkles, X } from "lucide-react";
 import type { Message } from "../api.js";
 import { Button } from "./ui/button.js";
 import { cn } from "../lib/utils.js";
@@ -34,6 +34,7 @@ export function RevisePanel({
   submitting,
   onSubmit,
   inputRef,
+  onClose,
 }: {
   message: Message;
   /** The worker is writing the revised draft. */
@@ -43,6 +44,8 @@ export function RevisePanel({
   submitting: boolean;
   onSubmit: (instruction: string) => void;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  /** Close the composer (Escape in an empty box, or the close button). */
+  onClose?: () => void;
 }) {
   const [text, setText] = useState("");
   const ownRef = useRef<HTMLTextAreaElement | null>(null);
@@ -77,17 +80,27 @@ export function RevisePanel({
   }
 
   return (
-    <section aria-label="Revise with AI" className="mt-6 overflow-hidden rounded-lg border border-border bg-card shadow-card">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+    <section aria-label="Revise with AI">
+      <header className="flex items-center gap-2 px-4 pt-3">
         <Sparkles className="size-4 text-accent-text" aria-hidden />
         <h3 className="text-body font-semibold text-foreground">Revise with AI</h3>
-        <span className="truncate text-small text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-small text-muted-foreground">
           Say what should change. The AI rewrites this draft and it comes back here for review.
         </span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close revise"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        )}
       </header>
 
       {thread.length > 0 && (
-        <ol className="max-h-72 space-y-3 overflow-y-auto px-4 py-3.5">
+        <ol className="max-h-56 space-y-3 overflow-y-auto px-4 py-3">
           {thread.map((turn, i) => {
             const last = i === thread.length - 1;
             const pending = last && drafting;
@@ -123,7 +136,7 @@ export function RevisePanel({
       )}
 
       <form
-        className={cn("px-3 pb-3", thread.length > 0 ? "border-t border-border pt-3" : "pt-3")}
+        className={cn("px-3 pb-3", thread.length > 0 ? "pt-1" : "pt-3")}
         onSubmit={(e) => {
           e.preventDefault();
           send();
@@ -146,7 +159,8 @@ export function RevisePanel({
                 e.preventDefault();
                 send();
               } else if (e.key === "Escape") {
-                e.currentTarget.blur();
+                if (text.trim().length === 0 && onClose) onClose();
+                else e.currentTarget.blur();
               }
             }}
             disabled={busy || disabled}
