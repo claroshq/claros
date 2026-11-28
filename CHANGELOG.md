@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-28
+
 ### Added
 
 - Approvals: a person card for the recipient. Hover or click their name above the draft or under Details (or press `p`) to see who the draft is going to without leaving the queue: name, email, company, lifecycle state, engagement and payment status, first and last seen, suppression, the flows they are in, the team's latest notes, a few properties and their most recent timeline (events, state changes and mail, with the draft under review marked), with a link to the full profile. Dashboard only; it reads the existing contact, timeline and notes endpoints.
@@ -501,7 +503,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/claroshq/claros/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/claroshq/claros/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/claroshq/claros/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/claroshq/claros/compare/v0.13.3...v0.14.0
