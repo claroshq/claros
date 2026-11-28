@@ -6,6 +6,8 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-28
+
 ### Fixed
 
 - Drafting, deciding, flow compiles and assessments work again with Claude as the LLM. Anthropic's OpenAI-compatible endpoint now answers `response_format: { type: "json_object" }` with a 400 (`Input should be 'json_schema'`), which failed every generation with `generation_failed: ... LLM provider returned 400`. Claros no longer sends `response_format` to an `anthropic.com` base URL, and any other endpoint that rejects it gets the request once more without it. Messages that failed this way can be retried from Needs attention.
@@ -462,7 +464,8 @@ See the [GitHub Release](https://github.com/claroshq/claros/releases/tag/v0.6.0)
 
 Earlier releases (v0.0.1 to v0.5.2) are listed on the [releases page](https://github.com/claroshq/claros/releases) and as tags.
 
-[Unreleased]: https://github.com/claroshq/claros/compare/v0.13.3...HEAD
+[Unreleased]: https://github.com/claroshq/claros/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/claroshq/claros/compare/v0.13.3...v0.14.0
 [0.13.3]: https://github.com/claroshq/claros/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/claroshq/claros/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/claroshq/claros/compare/v0.13.0...v0.13.1
