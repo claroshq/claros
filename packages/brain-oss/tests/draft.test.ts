@@ -274,7 +274,7 @@ describe("buildDraftMessages()", () => {
     });
     const user = messages[1]!.content;
     expect(user).toContain("Last action: clicked_upgrade");
-    expect(user).toContain("Most used features: reports");
+    expect(user).toContain("Most frequent events (30 days; product use and billing/lifecycle events mixed): reports");
     expect(user).toContain("Recent events: login");
   });
 

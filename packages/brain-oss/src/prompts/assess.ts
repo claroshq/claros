@@ -82,9 +82,9 @@ OUTPUT FORMAT (strict JSON, no markdown fences, no commentary outside the JSON):
 THE BAR: an email passes if it would plausibly cause this specific contact to take a positive action - engage more deeply, resolve an issue, or learn something directly applicable to their current situation.
 
 AUTOMATIC FAIL - reject if ANY of the following is true:
-1. GENERIC: the email could be sent to any user in this lifecycle state with no meaningful use of the specific contact data provided (name, company, plan, behavior, features used). A mail-merge with the contact's name does not count as personalization.
+1. GENERIC: the email could be sent to any user in this lifecycle state with no meaningful use of the specific contact data provided (name, company, plan, behavior, recent events). A mail-merge with the contact's name does not count as personalization.
 2. MISALIGNED: the email is primarily a feature advertisement with no visible connection to the contact's demonstrated behavior or lifecycle state. The action type and instruction must be reflected in the email's substance, not just its framing.
-3. CONTRADICTORY: the email ignores or contradicts explicit contact data. Examples: pushing heavy adoption of a feature the contact already uses as their top feature; urging upgrade when the contact is already on a paid plan; sending a "we miss you" message to a contact marked as active.
+3. CONTRADICTORY: the email ignores or contradicts explicit contact data. Examples: pushing heavy adoption of a feature the contact's events show they already use heavily; urging upgrade when the contact is already on a paid plan; sending a "we miss you" message to a contact marked as active.
 
 PASS WHEN: the email references the contact's specific situation (their lifecycle state, tenure, behavior, or usage patterns) and offers something that is genuinely useful or timely for them right now.
 
@@ -147,10 +147,12 @@ export function buildAssessMessages(ctx: AssessPromptContext): ChatMessage[] {
     }
   }
 
-  // Key behavioral signals (most used features only - concise for the assessor)
+  // Key behavioral signals. These are the contact's most frequent event names,
+  // which mix product use with billing and lifecycle events (payment_failed,
+  // subscription_cancel_scheduled): never present them as "features used".
   if (draftCtx.behavior?.most_used_features && draftCtx.behavior.most_used_features.length > 0) {
     userParts.push(
-      `\nTOP FEATURES USED: ${draftCtx.behavior.most_used_features.join(", ")}`,
+      `\nMOST FREQUENT EVENTS (last 30 days, product use mixed with billing and lifecycle events; an event name is not proof of feature use): ${draftCtx.behavior.most_used_features.join(", ")}`,
     );
   }
 
