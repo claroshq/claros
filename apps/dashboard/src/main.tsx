@@ -7,6 +7,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.js";
 import { queryClient } from "./query-client.js";
+import { installDoubleClickGuard } from "./lib/double-click-guard.js";
 import "@fontsource-variable/instrument-sans";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/bricolage-grotesque";
@@ -15,6 +16,8 @@ import "./index.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("No #root element found");
+
+installDoubleClickGuard();
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>

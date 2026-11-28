@@ -10,6 +10,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 - Approvals has a Refresh button in its header. It refetches the review queue, Approved and Needs attention lists and the LLM budget notice in one go, and its icon turns while it runs. Drafts you just approved or rejected stay hidden during their undo window.
 
+### Fixed
+
+- Double-click protection across the dashboard. The second click of a double click on any button is dropped before it reaches the page, so a double click on Approve or Reject no longer decides the next draft in the queue too, and a save, create or send button cannot fire twice before it shows as busy. Keyboard activation is not affected. Previous and next (pagination, draft navigation) and moving a flow step keep accepting quick repeated clicks. In Approvals, holding down `a`, `r` or `z` no longer repeats the decision or undo draft after draft; `j` and `k` still repeat.
+
 ## [0.16.0] - 2026-11-28
 
 ### Added

@@ -477,10 +477,10 @@ export function StepPanel({ index, count, step, previousDelayLabel, isSchedule, 
         </div>
         {!d && (
           <div className="flex items-center gap-1">
-            <Button type="button" size="icon" variant="ghost" aria-label="Move earlier" title="Move earlier" disabled={index === 0} onClick={() => onMove(-1)}>
+            <Button type="button" size="icon" variant="ghost" data-repeatable aria-label="Move earlier" title="Move earlier" disabled={index === 0} onClick={() => onMove(-1)}>
               <ArrowUp />
             </Button>
-            <Button type="button" size="icon" variant="ghost" aria-label="Move later" title="Move later" disabled={index === count - 1} onClick={() => onMove(1)}>
+            <Button type="button" size="icon" variant="ghost" data-repeatable aria-label="Move later" title="Move later" disabled={index === count - 1} onClick={() => onMove(1)}>
               <ArrowDown />
             </Button>
             {confirmRemove ? (
