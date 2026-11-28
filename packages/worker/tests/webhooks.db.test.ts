@@ -43,7 +43,7 @@ beforeAll(async () => {
   const [t] = await db.insert(tenants).values({ name: "Webhooks", slug }).returning({ id: tenants.id });
   tenantId = t!.id;
   contactExt = `user-${randomUUID().slice(0, 6)}`;
-  const [c] = await db.insert(contacts).values({ tenantId, externalId: contactExt, email: "w@example.com", lifecycleState: "engaged" }).returning({ id: contacts.id });
+  const [c] = await db.insert(contacts).values({ tenantId, externalId: contactExt, email: "w@example.com", name: "Wanda", properties: { plan: "pro" }, lifecycleState: "engaged" }).returning({ id: contacts.id });
   const [f] = await db.insert(flows).values({ tenantId, name: "Welcome", slug: "welcome", triggerType: "manual", triggerConfig: {}, steps: [] }).returning({ id: flows.id });
   const [m] = await db.insert(flowMemberships).values({ tenantId, contactId: c!.id, flowId: f!.id, enteredAt: new Date() }).returning({ id: flowMemberships.id });
   const [msg] = await db.insert(lifecycleMessages).values({ tenantId, contactId: c!.id, flowId: f!.id, membershipId: m!.id, flowStepOrder: 2, status: "pending_approval", subject: "Hello", brainActionType: "welcome" }).returning({ id: lifecycleMessages.id });
@@ -145,6 +145,7 @@ describe("analytics sink", () => {
     const bodies = calls.map((c) => JSON.parse(c.body));
     expect(bodies).toContainEqual({
       event: "email_sent", ts: "2026-11-20T10:00:00.000Z", user_id: contactExt, product: slug,
+      traits: { email: "w@example.com", name: "Wanda", plan: "pro" },
       message_id: messageId, action_type: "welcome", step: 2, flow: "welcome",
     });
     expect(bodies.find((b) => b.event === "approval_decided")).toMatchObject({ decision: "approved", user_id: contactExt });
@@ -158,6 +159,7 @@ describe("analytics sink", () => {
     const calls: Call[] = [];
     await processWebhookTick(db as never, new Date(), { fetch: fakeFetch(200, calls), encryptionKey: KEY, limit: 1000 });
     expect(JSON.parse(calls[0]!.body)).toMatchObject({ event: "flow_exited", reason: "condition_met", product: slug });
+    expect(JSON.parse(calls[0]!.body).traits).toBeUndefined(); // no contact, no traits
     expect(verifyWebhook({ headers: calls[0]!.headers, body: calls[0]!.body, secret: SECRET })).toBe(true);
   });
 });

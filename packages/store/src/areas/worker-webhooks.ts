@@ -25,7 +25,15 @@ export interface WebhookDeliveryRow {
 
 /** What the delivery adds to a payload (ids resolved to names the receiver knows). */
 export interface WebhookSubject {
-  contact: { id: string; externalId: string; email: string | null } | null;
+  contact: {
+    id: string;
+    externalId: string;
+    email: string | null;
+    name: string | null;
+    company: string | null;
+    /** The contact's free-form properties (from identify and track), or null. */
+    properties: Record<string, unknown> | null;
+  } | null;
   message: {
     id: string;
     subject: string | null;

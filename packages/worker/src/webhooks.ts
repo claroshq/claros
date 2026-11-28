@@ -10,7 +10,8 @@
  *     it; delivery is at least once).
  *   - kind 'analytics', sink 'statsraven': POST {endpoint}/ingest?source=claros
  *     with the ingest token as Bearer, one flat event (G30 names, keyed by
- *     user_id = the contact's external_id). StatsRaven's server ingest API.
+ *     user_id = the contact's external_id, with the contact's known email,
+ *     name, company and plan as `traits`). StatsRaven's server ingest API.
  *   - kind 'analytics', sink 'webhook': the same flat event as JSON, signed
  *     like a webhook when a secret is set.
  *
@@ -21,7 +22,7 @@
  */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { storeFor, type WebhookDeliveryRow, type WebhookSubject } from "@claros/store";
-import { ANALYTICS_EVENT_MAP, signWebhook, webhookBackoffMs } from "@claros/core";
+import { ANALYTICS_EVENT_MAP, analyticsTraits, signWebhook, webhookBackoffMs } from "@claros/core";
 import { decrypt, parseEncryptionKey } from "@claros/adapters";
 
 type Db = NodePgDatabase<Record<string, never>>;
@@ -168,6 +169,8 @@ export function analyticsEvent(row: Pick<WebhookDeliveryRow, "event" | "tenantSl
     user_id: subject.contact?.externalId ?? null,
     product: row.tenantSlug,
   };
+  const traits = subject.contact ? analyticsTraits(subject.contact) : null;
+  if (traits) ev.traits = traits;
   if (subject.message) {
     ev.message_id = subject.message.id;
     if (subject.message.actionType) ev.action_type = subject.message.actionType;

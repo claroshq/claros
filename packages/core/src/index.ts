@@ -279,6 +279,7 @@ export {
   PENDING_APPROVAL_WINDOW_MS,
   WEBHOOK_MAX_ATTEMPTS,
   isWebhookEvent,
+  analyticsTraits,
   pendingApprovalBatch,
   endpointBatchMinutes,
   webhookBackoffMs,
@@ -288,6 +289,7 @@ export {
   type WebhookEvent,
   type OutboxEventName,
   type AnalyticsSink,
+  type AnalyticsTraitValue,
 } from "./webhooks.js";
 
 export {

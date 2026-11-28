@@ -107,18 +107,18 @@ export function pgWorkerWebhooks(db: PgDb): WorkerWebhooksQueries {
         fId ??= m.rows[0]?.flow_id ?? null;
       }
       if (cId) {
-        const c = await db.execute<{ id: string; external_id: string; email: string | null }>(sql`
-          SELECT id, external_id, email FROM contacts WHERE id = ${cId}::uuid AND tenant_id = ${tenantId}::uuid
+        const c = await db.execute<ContactRow>(sql`
+          SELECT id, external_id, email, name, company, properties FROM contacts WHERE id = ${cId}::uuid AND tenant_id = ${tenantId}::uuid
         `);
         const row = c.rows[0];
-        if (row) out.contact = { id: row.id, externalId: row.external_id, email: row.email };
+        if (row) out.contact = subjectContact(row);
       } else if (email) {
-        const c = await db.execute<{ id: string; external_id: string; email: string | null }>(sql`
-          SELECT id, external_id, email FROM contacts WHERE tenant_id = ${tenantId}::uuid AND lower(email) = lower(${email})
+        const c = await db.execute<ContactRow>(sql`
+          SELECT id, external_id, email, name, company, properties FROM contacts WHERE tenant_id = ${tenantId}::uuid AND lower(email) = lower(${email})
           ORDER BY created_at LIMIT 1
         `);
         const row = c.rows[0];
-        if (row) out.contact = { id: row.id, externalId: row.external_id, email: row.email };
+        if (row) out.contact = subjectContact(row);
       }
       if (fId) {
         const f = await db.execute<{ id: string; slug: string | null; name: string }>(sql`
@@ -136,4 +136,12 @@ export function pgWorkerWebhooks(db: PgDb): WorkerWebhooksQueries {
       return Number(res.rows[0]?.n ?? 0);
     },
   };
+}
+
+type ContactRow = { id: string; external_id: string; email: string | null; name: string | null; company: string | null; properties: unknown };
+
+function subjectContact(row: ContactRow): NonNullable<WebhookSubject["contact"]> {
+  const p = row.properties;
+  const properties = p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : null;
+  return { id: row.id, externalId: row.external_id, email: row.email, name: row.name, company: row.company, properties };
 }

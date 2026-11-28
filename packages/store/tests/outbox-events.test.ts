@@ -153,10 +153,13 @@ for (const factory of testBackends()) {
       const subject = await b.store.workerWebhooks.describeSubject({ tenantId: t, messageId: m.id });
       expect(subject).toMatchObject({
         message: { id: m.id, subject: "Hi", actionType: "welcome", step: 1, status: "pending_approval" },
-        contact: { id: m.c, externalId: `ext-${m.c}` },
+        contact: { id: m.c, externalId: `ext-${m.c}`, name: null, company: null, properties: null },
         flow: { id: m.f },
         topic: null,
       });
+      const named = await insertContact(b, t, { name: "Ada", company: "Acme", properties: { plan: "pro" } });
+      expect((await b.store.workerWebhooks.describeSubject({ tenantId: t, contactId: named })).contact)
+        .toEqual({ id: named, externalId: `ext-${named}`, email: null, name: "Ada", company: "Acme", properties: { plan: "pro" } });
       expect((await b.store.workerWebhooks.describeSubject({ tenantId: t, membershipId: m.m })).contact?.id).toBe(m.c);
       expect((await b.store.workerWebhooks.describeSubject({ tenantId: await b.newTenant(), messageId: m.id })).message).toBeNull();
       expect(await b.store.workerWebhooks.countPendingApprovals(t)).toBe(1);

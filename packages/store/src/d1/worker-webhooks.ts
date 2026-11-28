@@ -109,16 +109,16 @@ export function d1WorkerWebhooks(db: D1Db): WorkerWebhooksQueries {
         fId ??= m?.flow_id ?? null;
       }
       if (cId) {
-        const [row] = await db.all<{ id: string; external_id: string; email: string | null }>(sql`
-          SELECT id, external_id, email FROM contacts WHERE id = ${cId} AND tenant_id = ${tenantId}
+        const [row] = await db.all<ContactRow>(sql`
+          SELECT id, external_id, email, name, company, properties FROM contacts WHERE id = ${cId} AND tenant_id = ${tenantId}
         `);
-        if (row) out.contact = { id: row.id, externalId: row.external_id, email: row.email };
+        if (row) out.contact = subjectContact(row);
       } else if (email) {
-        const [row] = await db.all<{ id: string; external_id: string; email: string | null }>(sql`
-          SELECT id, external_id, email FROM contacts WHERE tenant_id = ${tenantId} AND lower(email) = lower(${email})
+        const [row] = await db.all<ContactRow>(sql`
+          SELECT id, external_id, email, name, company, properties FROM contacts WHERE tenant_id = ${tenantId} AND lower(email) = lower(${email})
           ORDER BY created_at IS NULL, created_at LIMIT 1
         `);
-        if (row) out.contact = { id: row.id, externalId: row.external_id, email: row.email };
+        if (row) out.contact = subjectContact(row);
       }
       if (fId) {
         const [f] = await db.all<{ id: string; slug: string | null; name: string }>(sql`
@@ -136,4 +136,12 @@ export function d1WorkerWebhooks(db: D1Db): WorkerWebhooksQueries {
       return Number(row?.n ?? 0);
     },
   };
+}
+
+type ContactRow = { id: string; external_id: string; email: string | null; name: string | null; company: string | null; properties: unknown };
+
+function subjectContact(row: ContactRow): NonNullable<WebhookSubject["contact"]> {
+  const p = json(row.properties);
+  const properties = p && typeof p === "object" && !Array.isArray(p) ? p : null;
+  return { id: row.id, externalId: row.external_id, email: row.email, name: row.name, company: row.company, properties };
 }

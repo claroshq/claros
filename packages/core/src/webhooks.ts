@@ -53,6 +53,39 @@ export const ANALYTICS_EVENT_MAP: Readonly<Record<string, string>> = {
   "choose.decided": "choose_decided",
 };
 
+/** A person trait value an analytics event carries. */
+export type AnalyticsTraitValue = string | number;
+
+/**
+ * Who the user of an analytics event is (G30), sent as `traits` next to
+ * `user_id` so the analytics tool can name the person. Only values the
+ * contact really has: a missing, blank or non-scalar value leaves its key
+ * out (an empty value would erase what the tool already knows). Keys:
+ * email, name, company (the contact's own fields) and plan (the product's
+ * `plan` property). null when nothing is known.
+ */
+export function analyticsTraits(contact: {
+  email: string | null;
+  name: string | null;
+  company: string | null;
+  properties?: Record<string, unknown> | null;
+}): Record<string, AnalyticsTraitValue> | null {
+  const out: Record<string, AnalyticsTraitValue> = {};
+  const put = (key: string, value: unknown) => {
+    if (typeof value === "string") {
+      const v = value.trim();
+      if (v) out[key] = v;
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      out[key] = value;
+    }
+  };
+  put("email", contact.email);
+  put("name", contact.name);
+  put("company", contact.company);
+  put("plan", contact.properties?.plan);
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** The outbox events an analytics sink endpoint receives. */
 export const ANALYTICS_SOURCE_EVENTS: readonly string[] = Object.keys(ANALYTICS_EVENT_MAP);
 

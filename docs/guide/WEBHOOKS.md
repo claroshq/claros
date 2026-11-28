@@ -118,8 +118,11 @@ Opens are not sent: they are unreliable (mail privacy proxies open everything).
 
 ```json
 { "event": "email_sent", "ts": "2026-11-20T10:00:00.000Z", "user_id": "user_123", "product": "acme",
+  "traits": { "email": "ada@example.com", "name": "Ada Lovelace", "company": "Acme", "plan": "pro" },
   "message_id": "...", "action_type": "welcome", "step": 1, "flow": "welcome", "topic": "lifecycle" }
 ```
+
+`traits` says who the user is, so the analytics tool can show a name and email instead of a bare id: the contact's `email`, `name` and `company`, and `plan` from the contact's `plan` property. Only values the contact has are sent; an unknown or blank one leaves its key out, so it never erases what the tool already knows. An event with no contact has no `traits`.
 
 - `sink: "statsraven"`: `POST {endpoint}/ingest?source=claros` with `Authorization: Bearer {secret}` (a StatsRaven ingest token). `endpoint` is the StatsRaven address, for example `https://stats.example.com`.
 - `sink: "webhook"`: `POST {endpoint}` with the flat event as the body, signed like a webhook when `secret` is set.
