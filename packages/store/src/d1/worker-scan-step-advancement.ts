@@ -253,7 +253,7 @@ export function d1WorkerScanStepAdvancement(db: D1Db): WorkerScanStepAdvancement
             lte(lifecycleMessages.flowStepOrder, stepOrder),
           ),
         )
-        .orderBy(desc(lifecycleMessages.createdAt))
+        .orderBy(desc(lifecycleMessages.flowStepOrder))
         .limit(1);
       return prevMessage[0]?.createdAt ?? null;
     },

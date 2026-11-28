@@ -156,6 +156,8 @@ export function membershipStepContract(getB: () => Backend, area: (b: Backend) =
     const created = new Date("2026-11-02T00:00:00Z");
     await insertMessage(b, { tenantId: t, contactId: c, flowId: f, membershipId: m, flowStepOrder: 2, createdAt: created });
     expect(await q.getStepMessageCreatedAt({ membershipId: m, stepOrder: 2 })).toEqual(created);
+    // A later step with no message (skipped by its condition) reads the last step that has one.
+    expect(await q.getStepMessageCreatedAt({ membershipId: m, stepOrder: 4 })).toEqual(created);
   });
 
   it("createStepMessage copies the flow's topic onto the message (null without one)", async () => {
