@@ -6,6 +6,10 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ## [Unreleased]
 
+### Fixed
+
+- Drafting, deciding, flow compiles and assessments work again with Claude as the LLM. Anthropic's OpenAI-compatible endpoint now answers `response_format: { type: "json_object" }` with a 400 (`Input should be 'json_schema'`), which failed every generation with `generation_failed: ... LLM provider returned 400`. Claros no longer sends `response_format` to an `anthropic.com` base URL, and any other endpoint that rejects it gets the request once more without it. Messages that failed this way can be retried from Needs attention.
+
 ### Changed
 
 - Analytics sink: every event with a user now carries `traits` with the contact's known `email`, `name`, `company` and `plan` (from the `plan` property), so StatsRaven and other tools can name people who only meet the product through email. Unknown or blank values are left out, never sent empty. See [Webhooks](docs/guide/WEBHOOKS.md#analytics-sink).
