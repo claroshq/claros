@@ -31,7 +31,10 @@
  * Pagination is cursor-based; the queue appends via "Load more".
  * Critical-class flows (dunning, trial ending) come first.
  *
- * Keyboard: j/k move, a approve, r reject, e edit, / revise, z undo
+ * The recipient's name opens a person card (hover, click or p): who they
+ * are, their lifecycle state, notes and recent timeline.
+ *
+ * Keyboard: j/k move, a approve, r reject, e edit, / revise, p person, z undo
  * (not while typing).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -85,6 +88,7 @@ import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
 import { cn } from "../lib/utils.js";
 import { RevisePanel } from "../components/revise-panel.js";
+import { PersonCard, type PersonCardHandle } from "../components/person-card.js";
 import { nextSelection, parseView, sharedFlowId, type ApprovalsView } from "../approvals-model.js";
 
 /** How long an approve or reject can be undone before it is sent to the server. */
@@ -526,7 +530,11 @@ function ContextRail({ message, flowName }: { message: Message; flowName: string
       <RailSection title="Details">
         <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1.5 text-small">
           <dt className="text-muted-foreground">To</dt>
-          <dd className="min-w-0 truncate text-foreground">{contactLabel(message)}</dd>
+          <dd className="min-w-0 truncate text-foreground">
+            <PersonCard key={message.id} contactId={message.contact_id} messageId={message.id}>
+              {contactLabel(message)}
+            </PersonCard>
+          </dd>
           {message.contact.email && message.contact.name && (
             <>
               <dt className="text-muted-foreground">Email</dt>
@@ -623,7 +631,7 @@ function ReviewEmpty({ approvedCount, attentionCount }: { approvedCount: number;
           </p>
           <p className="mt-6 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-small text-subtle-foreground">
             <Kbd>J</Kbd>
-            <Kbd>K</Kbd> move, <Kbd>A</Kbd> approve, <Kbd>R</Kbd> reject, <Kbd>E</Kbd> edit, <Kbd>/</Kbd> revise
+            <Kbd>K</Kbd> move, <Kbd>A</Kbd> approve, <Kbd>R</Kbd> reject, <Kbd>E</Kbd> edit, <Kbd>/</Kbd> revise, <Kbd>P</Kbd> person
           </p>
         </div>
 
@@ -700,6 +708,7 @@ function ReviewView({ approvedCount, attentionCount }: { approvedCount: number; 
   const [editing, setEditing] = useState(false);
   const [reviseOpen, setReviseOpen] = useState(false);
   const reviseInput = useRef<HTMLTextAreaElement | null>(null);
+  const personCard = useRef<PersonCardHandle | null>(null);
 
   /** Drafts decided but still inside the undo window: hidden from the queue. */
   const pending = useRef(new Map<string, PendingDecision>());
@@ -884,7 +893,7 @@ function ReviewView({ approvedCount, attentionCount }: { approvedCount: number; 
     setSelectedId(messages[next]!.id);
   }
 
-  // Keyboard: j/k move, a approve, r reject, e edit, / revise, z undo.
+  // Keyboard: j/k move, a approve, r reject, e edit, / revise, p person, z undo.
   const onKey = useCallback(
     (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -910,6 +919,9 @@ function ReviewView({ approvedCount, attentionCount }: { approvedCount: number; 
         e.preventDefault();
       } else if (e.key === "e" && !editing && !actionPending) {
         setEditing(true);
+        e.preventDefault();
+      } else if (e.key === "p" && !editing) {
+        personCard.current?.toggle();
         e.preventDefault();
       } else if (e.key === "/" && !editing) {
         setReviseOpen(true);
@@ -1114,7 +1126,9 @@ function ReviewView({ approvedCount, attentionCount }: { approvedCount: number; 
               </div>
               <p className="mt-1 truncate text-body text-muted-foreground">
                 {"to "}
-                <span className="text-foreground">{contactLabel(selected)}</span>
+                <PersonCard key={selected.id} ref={personCard} contactId={selected.contact_id} messageId={selected.id} className="text-foreground">
+                  {contactLabel(selected)}
+                </PersonCard>
                 {selected.contact.email && selected.contact.name && <> ({selected.contact.email})</>}
                 {" · "}
                 {flowNames.get(selected.flow_id) ?? "Unknown flow"}

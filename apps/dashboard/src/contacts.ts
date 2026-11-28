@@ -45,18 +45,20 @@ export function useContacts(filters: ContactFilters) {
 }
 
 /** One contact with memberships and suppression state. */
-export function useContact(id: string) {
+export function useContact(id: string, enabled = true) {
   return useQuery({
     queryKey: contactQueryKey(id),
     queryFn: () => fetchContact(id),
+    enabled,
   });
 }
 
 /** Merged timeline for one contact, cursor-paginated. */
-export function useContactTimeline(id: string) {
+export function useContactTimeline(id: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: contactTimelineQueryKey(id),
     queryFn: ({ pageParam }) => fetchContactTimeline(id, pageParam),
+    enabled,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
@@ -67,10 +69,11 @@ export function contactNotesQueryKey(id: string) {
 }
 
 /** The team's notes about one person, newest first. */
-export function useContactNotes(id: string) {
+export function useContactNotes(id: string, enabled = true) {
   return useQuery({
     queryKey: contactNotesQueryKey(id),
     queryFn: () => fetchContactNotes(id),
+    enabled,
   });
 }
 
