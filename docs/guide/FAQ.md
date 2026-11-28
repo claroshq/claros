@@ -83,7 +83,7 @@ Fixed constraints: the drain sweep runs every 15 minutes (approvals and enrollme
 
 ### Why did a contact get no email even though the flow ran?
 
-Look at the message status on the contact or in Sent: `skipped` (the brain's decide step said wait/skip, or a step condition was false), `value_gated` (the assess step judged the draft not worth sending), `suppressed`, `rejected`, or `failed` (with the reason attached). All of these are terminal and deliberate; none of them retry on their own. Generation failures can be retried from the Approvals screen.
+Look at the message status on the contact or in Sent: `skipped` (the brain's decide step said wait/skip, or a step condition was false), `value_gated` (the assess step judged the draft not worth sending in a flow that sends without review; listed under Needs attention on the Approvals screen, where you can send it to review or dismiss it), `suppressed`, `rejected`, or `failed` (with the reason attached). All of these are terminal and deliberate; none of them retry on their own. Generation failures can be retried from the Approvals screen.
 
 ## People
 

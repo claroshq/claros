@@ -168,8 +168,9 @@ for (const factory of engineBackends()) {
       llm.calls.length = 0;
       await processContentTick(b.db, new Date(), 20, [strict.t]);
       const m = await message(strict.id);
-      expect(m.status).toBe("value_gated");
-      expect(m.brainReasoning).toContain("below the threshold 6");
+      // The flow needs approval, so a low score goes to review with the reason, not into a hold.
+      expect(m.status).toBe("pending_approval");
+      expect(m.statusReason).toContain("below the threshold 6");
       expect(llm.calls.find((c) => c.kind === "assess")!.system).toContain('"score"');
       llm.answer = (c) => DEFAULT_ANSWERS[c.kind];
     });

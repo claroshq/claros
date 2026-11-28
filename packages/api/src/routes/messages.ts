@@ -17,6 +17,8 @@
  *                                      or revising the draft with a reviewer instruction
  *   POST  /v1/messages/:id/cancel      approved -> cancelled (G20)
  *   POST  /v1/messages/:id/unapprove   approved -> pending_approval (G20)
+ *   POST  /v1/messages/:id/release     value_gated -> pending_approval (review a held draft)
+ *   POST  /v1/messages/:id/dismiss     value_gated -> cancelled
  *
  * Every route also accepts a product admin key with the `messages` scope
  * (G1). Approve/reject/edit/cancel record who acted ("user:<id>" or
@@ -46,6 +48,8 @@ import {
   parseBulkIds,
   REVISION_MAX_CHARS,
   regenerateMessage,
+  releaseValueGated,
+  dismissValueGated,
   rejectMessage,
   rejectMessages,
   unapproveMessage,
@@ -401,6 +405,32 @@ export default function messagesRoutes() {
       forced_action_type: actionType,
       instruction,
     });
+  });
+
+  /**
+   * POST /v1/messages/:id/release
+   *
+   * value_gated -> pending_approval: send a draft the value gate held to
+   * review. The draft is kept and status_reason carries the gate's reason
+   * ('value_gate: ...'). 409 when the message is not value_gated.
+   */
+  router.post("/:id/release", "member", allowAdminKey("messages"), async (c) => {
+    const r = await releaseValueGated(serviceContext(c), c.req.param("id")!);
+    if (r.kind === "ok") return c.json({ message: "Message sent to review.", id: r.id, status: "pending_approval" });
+    return actionError(c, r, "release");
+  });
+
+  /**
+   * POST /v1/messages/:id/dismiss
+   *
+   * value_gated -> cancelled (terminal): the held draft is not wanted.
+   * Already cancelled answers 200; any other status 409.
+   */
+  router.post("/:id/dismiss", "member", allowAdminKey("messages"), async (c) => {
+    const r = await dismissValueGated(serviceContext(c), c.req.param("id")!);
+    if (r.kind === "ok") return c.json({ message: "Message dismissed.", id: r.id, status: "cancelled" });
+    if (r.kind === "already") return c.json({ message: "Message already cancelled.", id: r.id, status: r.status });
+    return actionError(c, r, "dismiss");
   });
 
   /**

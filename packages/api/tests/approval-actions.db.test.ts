@@ -118,6 +118,30 @@ describe("approval actions", () => {
     expect((await a.inject({ method: "POST", url: `/v1/messages/00000000-0000-4000-8000-000000000000/cancel`, headers: bearer(key), payload: {} })).statusCode).toBe(404);
   });
 
+  it("sends a draft the value gate held to review, or dismisses it; other statuses 409", async () => {
+    const a = await app();
+    const held = await newMessage(db, p.tenantId, { status: "value_gated" });
+    await db.update(lifecycleMessages).set({ brainReasoning: "value_gated: The email is generic." }).where(eq(lifecycleMessages.id, held.messageId));
+    const res = await a.inject({ method: "POST", url: `/v1/messages/${held.messageId}/release`, headers: cookieJson(p.memberCookie), payload: {} });
+    expect(res.statusCode).toBe(200);
+    const r = await row(held.messageId);
+    expect(r.status).toBe("pending_approval");
+    expect(r.statusReason).toBe("value_gate: The email is generic.");
+    expect(r.subject).toBe("Hello");
+    expect((await a.inject({ method: "POST", url: `/v1/messages/${held.messageId}/release`, headers: bearer(key), payload: {} })).statusCode).toBe(409);
+
+    const other = await newMessage(db, p.tenantId, { status: "value_gated" });
+    expect((await a.inject({ method: "POST", url: `/v1/messages/${other.messageId}/dismiss`, headers: bearer(key), payload: {} })).statusCode).toBe(200);
+    const d = await row(other.messageId);
+    expect(d.status).toBe("cancelled");
+    expect(d.statusReason).toBe("dismissed");
+    expect(d.rejectedBy).toMatch(/^api_key:/);
+    expect((await a.inject({ method: "POST", url: `/v1/messages/${other.messageId}/dismiss`, headers: bearer(key), payload: {} })).statusCode).toBe(200);
+
+    const pending = await newMessage(db, p.tenantId);
+    expect((await a.inject({ method: "POST", url: `/v1/messages/${pending.messageId}/dismiss`, headers: bearer(key), payload: {} })).statusCode).toBe(409);
+  });
+
   it("excludes a person: suppression plus cancelled queue", async () => {
     const a = await app();
     const m1 = await newMessage(db, p.tenantId, { externalId: "exclude-me" });

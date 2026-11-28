@@ -312,6 +312,7 @@ async function getMessage(id: string) {
       bodyHtml: lifecycleMessages.bodyHtml,
       bodyText: lifecycleMessages.bodyText,
       revisionRequest: lifecycleMessages.revisionRequest,
+      statusReason: lifecycleMessages.statusReason,
     })
     .from(lifecycleMessages)
     .where(eq(lifecycleMessages.id, id));
@@ -1130,7 +1131,7 @@ describe("content generation worker", () => {
       expect(msg.bodyText).toBeTruthy();
     });
 
-    it("rejection verdict: message lands at value_gated with draft content and reasoning persisted", async () => {
+    it("rejection verdict on a flow a person approves: the draft goes to review with the gate's reason", async () => {
       if (!dbAvailable) return;
       const contactId = await insertContact("vg-fail");
       const flowId = await insertFlow("VG Fail Flow");
@@ -1148,17 +1149,39 @@ describe("content generation worker", () => {
       const now = new Date("2026-07-26T10:00:00Z");
       const result = await processContentTick(db, now, 1, [testTenantId]);
 
+      expect(result.advanced).toBe(1);
+      expect(result.valueGated).toBe(0);
+
+      const msg = await getMessage(messageId);
+      // Never a silent hold: the reviewer sees the draft and the objection.
+      expect(msg.status).toBe("pending_approval");
+      expect(msg.subject).toBe("Test Subject");
+      expect(msg.bodyHtml).toBeTruthy();
+      expect(msg.statusReason).toMatch(/^value_gate: The email is generic/);
+    });
+
+    it("rejection verdict on a flow that sends on its own: held at value_gated with draft and reasoning", async () => {
+      if (!dbAvailable) return;
+      const contactId = await insertContact("vg-fail-auto");
+      const flowId = await insertFlow("VG Fail Auto Flow");
+      await db.update(flows).set({ approvalMode: "auto" }).where(eq(flows.id, flowId));
+      const membershipId = await insertMembership(contactId, flowId);
+      const messageId = await insertPendingGenerationMessage({ contactId, flowId, membershipId });
+
+      mockAssess.mockResolvedValueOnce({
+        ok: true,
+        assessment: { verdict: "fail", reasoning: "The email is generic." },
+      });
+
+      const result = await processContentTick(db, new Date("2026-07-26T10:00:00Z"), 1, [testTenantId]);
+
       expect(result.advanced).toBe(0);
       expect(result.valueGated).toBe(1);
 
       const msg = await getMessage(messageId);
-      // Terminal status
       expect(msg.status).toBe("value_gated");
-      // Draft content preserved for audit
       expect(msg.subject).toBe("Test Subject");
       expect(msg.bodyHtml).toBeTruthy();
-      expect(msg.bodyText).toBeTruthy();
-      // Gate reasoning recorded
       expect(msg.brainReasoning).toContain("value_gated");
       expect(msg.brainReasoning).toContain("generic");
     });

@@ -720,9 +720,14 @@ export async function processOneContentMessage(
 
     // 8. Value gate: assess the draft for quality before pending_approval.
     //
-    // A 'fail' verdict terminates the message at 'value_gated' (draft preserved
-    // for audit). A gate call error leaves the message at 'awaiting_content' for
-    // reap - it is NOT marked value_gated. Only a validated 'fail' verdict gates.
+    // A 'fail' verdict on a flow that sends without review (approval_mode
+    // 'auto') holds the message at 'value_gated' (draft kept; the dashboard
+    // lists it under Needs attention, where a person can send it to review
+    // or dismiss it). On a flow where a person approves every message
+    // anyway, the gate does not block: the draft goes to pending_approval
+    // with status_reason 'value_gate: <reason>' so the reviewer sees the
+    // objection and decides. A gate call error leaves the message at
+    // 'awaiting_content' for reap - it is NOT marked value_gated.
     // P5b: settings.brain.assess: enabled false skips the gate; threshold asks for a score.
     // A revision skips the gate: the reviewer asked for it and reviews it.
     const assessCfg = candidate.revisionRequest ? { enabled: false, threshold: null } : assessSettings(info?.settings);
@@ -738,6 +743,21 @@ export async function processOneContentMessage(
       // Gate call error (transient LLM failure, parse failure).
       // Leave at awaiting_content for reap; do NOT mark value_gated.
       return "error";
+    }
+
+    const approvalMode = (await storeFor(db).workerContent.getFlowApprovalMode(candidate.flowId)) ?? "require";
+
+    if (assessResult.assessment.verdict === "fail" && approvalMode !== "auto") {
+      const flagged = await storeFor(db).workerContent.completeDraft(
+        candidate.id,
+        "pending_approval",
+        { subject, bodyHtml: renderMarkdownToHtml(body_markdown), bodyText: markdownToText(body_markdown) },
+        null,
+        now,
+        queueEvents(candidate, "pending_approval", now),
+        `value_gate: ${assessResult.assessment.reasoning}`,
+      );
+      return flagged ? "advanced" : "error";
     }
 
     if (assessResult.assessment.verdict === "fail") {
@@ -772,7 +792,6 @@ export async function processOneContentMessage(
     // If the flow has approval_mode = 'auto', skip pending_approval and go
     // directly to 'approved'. This avoids blocking auto-approved flows on
     // human review while preserving the default require-approval path.
-    const approvalMode = (await storeFor(db).workerContent.getFlowApprovalMode(candidate.flowId)) ?? "require";
     const targetStatus = approvalMode === "auto" ? "approved" : "pending_approval";
     const approvedAt = approvalMode === "auto" ? now : null;
 

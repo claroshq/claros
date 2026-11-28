@@ -150,6 +150,16 @@ export function pgApiMessages(db: PgDb): ApiMessagesQueries {
       return moved.length > 0;
     },
 
+    async releaseValueGated({ tenantId, messageId, now, outbox }) {
+      const moved = await transition(tenantId, [messageId], "value_gated", sql`status = 'pending_approval', status_reason = 'value_gate: ' || substr(COALESCE(brain_reasoning, ''), 14), updated_at = ${now}`, now, () => outbox);
+      return moved.length > 0;
+    },
+
+    async dismissValueGated({ tenantId, messageId, actor, now }) {
+      const moved = await transition(tenantId, [messageId], "value_gated", sql`status = 'cancelled', status_reason = 'dismissed', rejected_by = ${actor}, updated_at = ${now}`, now, null);
+      return moved.length > 0;
+    },
+
     async requeueFailedGeneration({ tenantId, messageId, now }) {
       const casResult = await db.execute<{ id: string }>(sql`
         UPDATE lifecycle_messages

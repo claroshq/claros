@@ -146,6 +146,15 @@ export interface ApiMessagesQueries {
    * cleared; writes the batched message.pending_approval outbox entry.
    */
   unapproveMessage(input: { tenantId: string; messageId: string; now: Date; outbox: OutboxEntry[] }): Promise<boolean>;
+  /**
+   * CAS value_gated -> pending_approval: a person reviews a draft the value
+   * gate held. The draft is kept; status_reason becomes 'value_gate: <the
+   * gate's reason>' so the review shows the objection. Writes the batched
+   * message.pending_approval outbox entry.
+   */
+  releaseValueGated(input: { tenantId: string; messageId: string; now: Date; outbox: OutboxEntry[] }): Promise<boolean>;
+  /** CAS value_gated -> cancelled; status_reason 'dismissed', rejected_by = actor. */
+  dismissValueGated(input: { tenantId: string; messageId: string; actor: string; now: Date }): Promise<boolean>;
   /** CAS failed (generation_failed) -> pending_generation with retry_count reset; true when this call made the transition. */
   requeueFailedGeneration(input: { tenantId: string; messageId: string; now: Date }): Promise<boolean>;
   /** Status and content of a tenant's message, or null when it does not exist. */

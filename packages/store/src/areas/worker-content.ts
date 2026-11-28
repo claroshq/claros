@@ -164,6 +164,8 @@ export interface WorkerContentQueries extends ContactConditionQueries {
     now: Date,
     /** Outbox entries (G5) written with the transition, when it happens. */
     events?: { tenantId: string; outbox: OutboxEntry[] },
+    /** status_reason to record, e.g. 'value_gate: ...' when the value gate objected but a person reviews it anyway. */
+    statusReason?: string | null,
   ): Promise<boolean>;
   /**
    * CAS generating -> status (pending_approval or approved) with rendered template content and

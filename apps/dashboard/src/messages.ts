@@ -21,6 +21,9 @@ import {
   bulkApproveMessages,
   bulkRejectMessages,
   fetchFailedMessages,
+  fetchHeldMessages,
+  releaseMessage,
+  dismissMessage,
   retryMessage,
   editMessage,
   regenerateMessage,
@@ -36,6 +39,7 @@ import { HOME_PENDING_QUERY_KEY } from "./home.js";
 
 export const MESSAGES_QUERY_KEY = ["messages"] as const;
 export const FAILED_MESSAGES_QUERY_KEY = ["messages", "failed"] as const;
+export const HELD_MESSAGES_QUERY_KEY = ["messages", "value_gated"] as const;
 export const APPROVED_MESSAGES_QUERY_KEY = ["messages", "approved"] as const;
 
 /** The pending-approval queue, paginated by cursor. */
@@ -129,6 +133,43 @@ export function useFailedMessages() {
     queryKey: FAILED_MESSAGES_QUERY_KEY,
     queryFn: fetchFailedMessages,
     refetchInterval: 30000,
+  });
+}
+
+/**
+ * Drafts the value gate held: only flows that send without review are held,
+ * and a held draft must never be invisible, so it is listed with the failed
+ * messages under Needs attention.
+ */
+export function useHeldMessages() {
+  return useQuery({
+    queryKey: HELD_MESSAGES_QUERY_KEY,
+    queryFn: fetchHeldMessages,
+    refetchInterval: 30000,
+  });
+}
+
+/** Send a held draft to review; it joins the approval queue with the gate's reason shown. */
+export function useReleaseMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => releaseMessage(id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: HELD_MESSAGES_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: MESSAGES_QUERY_KEY, exact: true });
+      void qc.invalidateQueries({ queryKey: HOME_PENDING_QUERY_KEY });
+    },
+  });
+}
+
+/** Drop a held draft (value_gated -> cancelled). */
+export function useDismissMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => dismissMessage(id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: HELD_MESSAGES_QUERY_KEY });
+    },
   });
 }
 
