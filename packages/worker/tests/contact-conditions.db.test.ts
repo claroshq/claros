@@ -90,6 +90,28 @@ describe("event triggers with where", () => {
   });
 });
 
+describe("reserved traits", () => {
+  it("payment_status, email, name and company stored in columns are traits for conditions", async () => {
+    const event = `payment_failed_${randomUUID().slice(0, 6)}`;
+    const pastDue = await eventFlow(event, [{ trait: { key: "payment_status", op: "eq", value: "past_due" } }]);
+    const named = await eventFlow(event, [{ trait: { key: "company", op: "eq", value: "Acme" } }]);
+
+    const [c] = await db
+      .insert(contacts)
+      .values({ tenantId, externalId: `u-${randomUUID().slice(0, 8)}`, email: "a@acme.test", company: "Acme", paymentStatus: "past_due", lifecycleState: "engaged", properties: { plan_tier: "pro" } })
+      .returning({ id: contacts.id });
+    const paid = await contact({ plan_tier: "pro" });
+    await db.update(contacts).set({ paymentStatus: "paid" }).where(eq(contacts.id, paid));
+
+    await handleTriggerCheck({ tenant_id: tenantId, contact_id: c!.id, event_name: event }, db as never);
+    await handleTriggerCheck({ tenant_id: tenantId, contact_id: paid, event_name: event }, db as never);
+
+    const rows = await db.select({ contactId: flowMemberships.contactId, flowId: flowMemberships.flowId }).from(flowMemberships).where(eq(flowMemberships.tenantId, tenantId));
+    expect(rows.filter((r) => r.contactId === c!.id).map((r) => r.flowId).sort()).toEqual([pastDue, named].sort());
+    expect(rows.some((r) => r.contactId === paid && (r.flowId === pastDue || r.flowId === named))).toBe(false);
+  });
+});
+
 describe("condition evaluator with contact conditions", () => {
   const checker = (traits: Record<string, unknown>, sends: number): EventChecker => ({
     hasEventSince: async () => false,

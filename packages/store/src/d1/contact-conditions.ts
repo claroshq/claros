@@ -3,23 +3,26 @@
  */
 import { sql } from "drizzle-orm";
 import type { D1Db } from "./db.js";
-import type { ContactConditionQueries } from "../areas/shared-conditions.js";
+import { withReservedTraits, type ContactConditionQueries, type ReservedTraitColumns } from "../areas/shared-conditions.js";
 
 export function d1ContactConditions(db: D1Db): ContactConditionQueries {
   return {
     async getContactTraits({ tenantId, contactId }) {
-      const rows = await db.all<{ properties: string | null }>(sql`
-        SELECT properties FROM contacts WHERE id = ${contactId} AND tenant_id = ${tenantId}
+      const rows = await db.all<ReservedTraitColumns & { properties: string | null }>(sql`
+        SELECT properties, email, name, company, payment_status FROM contacts WHERE id = ${contactId} AND tenant_id = ${tenantId}
       `);
       const row = rows[0];
       if (!row) return null;
-      if (!row.properties) return {};
-      try {
-        const parsed = JSON.parse(row.properties) as unknown;
-        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-      } catch {
-        return {};
+      let props: Record<string, unknown> = {};
+      if (row.properties) {
+        try {
+          const parsed = JSON.parse(row.properties) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) props = parsed as Record<string, unknown>;
+        } catch {
+          // unreadable properties: the reserved columns still count
+        }
       }
+      return withReservedTraits(props, row);
     },
 
     async countSends({ tenantId, contactId, flow, actionType, topic, since }) {
