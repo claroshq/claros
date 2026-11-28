@@ -16,12 +16,12 @@ export interface SendCountInput {
 }
 
 /** The reserved traits ingest stores in their own columns instead of properties. */
-export interface ReservedTraitColumns {
+export type ReservedTraitColumns = {
   email: string | null;
   name: string | null;
   company: string | null;
   payment_status: string | null;
-}
+};
 
 /**
  * The traits a condition sees: properties plus the reserved traits (email,

@@ -2,7 +2,8 @@
  * Postgres implementation of the queries used by packages/worker/src/drain.ts.
  */
 import { eq, and, sql } from "drizzle-orm";
-import { tenants, contacts, flows, lifecycleMessages, suppressions, topics, contactTopics } from "@claros/db/schema";
+import { gte } from "drizzle-orm";
+import { tenants, contacts, flows, lifecycleMessages, suppressions, topics, contactTopics, events, flowMemberships } from "@claros/db/schema";
 import type { PgDb } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
 import { pgWriteOutbox } from "./outbox.js";
@@ -166,6 +167,36 @@ export function pgWorkerDrain(db: PgDb): WorkerDrainQueries {
         .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
         .returning({ id: lifecycleMessages.id });
       return updated.length > 0;
+    },
+
+    async markCancelled(messageId, now, reason) {
+      const updated = await db
+        .update(lifecycleMessages)
+        .set({ status: "cancelled", statusReason: reason, updatedAt: now })
+        .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.status, "sending")))
+        .returning({ id: lifecycleMessages.id });
+      return updated.length > 0;
+    },
+
+    async getExitCheckInput({ tenantId, messageId }) {
+      const rows = await db
+        .select({ enteredAt: flowMemberships.enteredAt, lifecycleState: contacts.lifecycleState })
+        .from(lifecycleMessages)
+        .innerJoin(flowMemberships, eq(flowMemberships.id, lifecycleMessages.membershipId))
+        .innerJoin(contacts, eq(contacts.id, lifecycleMessages.contactId))
+        .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.tenantId, tenantId)))
+        .limit(1);
+      const r = rows[0];
+      return r && r.enteredAt ? { enteredAt: r.enteredAt, lifecycleState: r.lifecycleState ?? null } : null;
+    },
+
+    async hasEventSince({ contactId, eventName, since }) {
+      const found = await db
+        .select({ id: events.id })
+        .from(events)
+        .where(and(eq(events.contactId, contactId), eq(events.eventName, eventName), gte(events.timestamp, since)))
+        .limit(1);
+      return found.length > 0;
     },
 
     async markSuppressed(messageId, now, reason) {

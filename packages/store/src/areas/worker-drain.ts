@@ -91,6 +91,16 @@ export interface WorkerDrainQueries {
   releaseClaim(messageId: string, now: Date): Promise<boolean>;
   /** CAS sending -> approved with scheduled_send_at = sendAt; true when this call won. */
   deferClaim(messageId: string, sendAt: Date, now: Date): Promise<boolean>;
+  /** CAS sending -> cancelled with status_reason (e.g. 'exit_met'); true when this call won. */
+  markCancelled(messageId: string, now: Date, reason: string): Promise<boolean>;
+  /**
+   * What the send-time exit check needs: when the message's membership
+   * entered the flow and the contact's lifecycle state. null when the
+   * message has no membership row.
+   */
+  getExitCheckInput(input: { tenantId: string; messageId: string }): Promise<{ enteredAt: Date; lifecycleState: string | null } | null>;
+  /** True when the contact has an event of this name at or after `since`. */
+  hasEventSince(input: { contactId: string; eventName: string; since: Date }): Promise<boolean>;
   /** CAS sending -> suppressed (with status_reason when given); true when this call won. */
   markSuppressed(messageId: string, now: Date, reason?: string): Promise<boolean>;
   /**
