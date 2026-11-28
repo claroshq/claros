@@ -1,7 +1,7 @@
 /**
  * Postgres implementation of the queries used by packages/worker/src/advance-membership.ts.
  */
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, sql, lte, desc } from "drizzle-orm";
 import {
   contacts,
   events,
@@ -176,9 +176,10 @@ export function pgWorkerAdvanceMembership(db: PgDb): WorkerAdvanceMembershipQuer
         .where(
           and(
             eq(lifecycleMessages.membershipId, membershipId),
-            eq(lifecycleMessages.flowStepOrder, stepOrder),
+            lte(lifecycleMessages.flowStepOrder, stepOrder),
           ),
         )
+        .orderBy(desc(lifecycleMessages.flowStepOrder))
         .limit(1);
       return prevMessage[0]?.createdAt ?? null;
     },

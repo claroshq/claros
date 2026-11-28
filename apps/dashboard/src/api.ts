@@ -531,6 +531,21 @@ export async function fetchFailedMessages(): Promise<MessagesPage> {
   return fetchMessages(undefined, "failed");
 }
 
+/** GET /v1/messages?status=value_gated - drafts the value gate held (flows that send without review). */
+export async function fetchHeldMessages(): Promise<MessagesPage> {
+  return fetchMessages(undefined, "value_gated");
+}
+
+/** POST /v1/messages/:id/release - send a held draft to review. */
+export async function releaseMessage(id: string): Promise<void> {
+  return messageAction(id, "release");
+}
+
+/** POST /v1/messages/:id/dismiss - drop a held draft. */
+export async function dismissMessage(id: string): Promise<void> {
+  return messageAction(id, "dismiss");
+}
+
 /** POST /v1/messages/:id/retry - re-queue a generation-failed message. */
 export async function retryMessage(id: string): Promise<void> {
   const res = await apiFetch(`/v1/messages/${id}/retry`, { method: "POST" });
@@ -549,7 +564,7 @@ export interface MessageActionError {
 
 async function messageAction(
   id: string,
-  action: "approve" | "reject" | "regenerate" | "cancel" | "unapprove",
+  action: "approve" | "reject" | "regenerate" | "cancel" | "unapprove" | "release" | "dismiss",
   body?: Record<string, unknown>,
 ): Promise<void> {
   const res = await apiFetch(

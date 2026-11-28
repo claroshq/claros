@@ -218,7 +218,7 @@ export function buildDraftMessages(ctx: DraftPromptContext): ChatMessage[] {
     const parts: string[] = [];
     if (b.last_action) parts.push(`Last action: ${b.last_action}`);
     if (b.most_used_features && b.most_used_features.length > 0) {
-      parts.push(`Most used features: ${b.most_used_features.join(", ")}`);
+      parts.push(`Most frequent events (30 days; product use and billing/lifecycle events mixed): ${b.most_used_features.join(", ")}`);
     }
     if (b.recent_events && b.recent_events.length > 0) {
       parts.push(`Recent events: ${b.recent_events.join(", ")}`);

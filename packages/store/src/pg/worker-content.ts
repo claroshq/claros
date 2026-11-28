@@ -161,7 +161,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
       return gatedResult.rows.length > 0;
     },
 
-    async completeDraft(messageId, targetStatus, { subject, bodyHtml, bodyText }, approvedAt, now, events) {
+    async completeDraft(messageId, targetStatus, { subject, bodyHtml, bodyText }, approvedAt, now, events, statusReason = null) {
       return withOutbox(events, now, async (tx) => (await tx.execute<{ id: string }>(sql`
         UPDATE lifecycle_messages
         SET
@@ -171,6 +171,7 @@ export function pgWorkerContent(db: PgDb): WorkerContentQueries {
           body_text = ${bodyText},
           approved_at = ${approvedAt},
           revision_request = NULL,
+          status_reason = ${statusReason},
           updated_at = ${now}
         WHERE id = ${messageId}
           AND status = 'awaiting_content'

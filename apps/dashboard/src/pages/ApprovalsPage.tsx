@@ -37,6 +37,9 @@ import {
   useBulkRejectMessages,
   useFailedMessages,
   useRetryMessage,
+  useHeldMessages,
+  useReleaseMessage,
+  useDismissMessage,
   useEditMessage,
   useRegenerateMessage,
   useReviseMessage,
@@ -192,18 +195,26 @@ function QueueSkeleton() {
 }
 
 /**
- * Terminal failures, shown because a message that never reaches the queue
- * is otherwise invisible: generation faults (no LLM configured, bad key,
- * unknown model) and exhausted send retries land in 'failed'. The reason
- * recorded by the worker is shown verbatim. Generation failures can be
- * re-queued once the fault is fixed.
+ * Messages that never reach the queue on their own, shown because they are
+ * otherwise invisible:
+ * - 'failed': generation faults (no LLM configured, bad key, unknown model)
+ *   and exhausted send retries. Generation failures can be re-queued once
+ *   the fault is fixed.
+ * - 'value_gated': drafts the value gate held in a flow that sends without
+ *   review. They can be sent to review (the reason travels with them) or
+ *   dismissed. Flows that need approval never hold a draft; the gate's
+ *   objection shows on the draft in the queue instead.
+ * The reason recorded by the worker is shown verbatim.
  *
  * Rendered as a collapsed disclosure below the inbox: it is a recovery
  * list, not the day's work, so it must never dominate the screen.
  */
 function FailedSection() {
   const failed = useFailedMessages();
+  const held = useHeldMessages();
   const retry = useRetryMessage();
+  const release = useReleaseMessage();
+  const dismiss = useDismissMessage();
   const flowsQuery = useFlows();
 
   const flowNames = useMemo(() => {
@@ -215,21 +226,58 @@ function FailedSection() {
   }, [flowsQuery.data]);
 
   const items = failed.data?.messages ?? [];
-  if (failed.isLoading || items.length === 0) {
+  const heldItems = held.data?.messages ?? [];
+  if ((failed.isLoading && held.isLoading) || items.length + heldItems.length === 0) {
     return null;
   }
+  const actionError = [retry, release, dismiss].find((m) => m.isError)?.error;
 
   return (
     <details className="group mt-10 rounded-lg border border-border bg-card shadow-card">
       <summary className="flex cursor-pointer select-none items-center gap-3 px-6 py-4">
         <span className="text-lead font-medium text-foreground">Needs attention</span>
-        <Badge variant="danger">{items.length} failed</Badge>
+        {items.length > 0 && <Badge variant="danger">{items.length} failed</Badge>}
+        {heldItems.length > 0 && <Badge variant="warning">{heldItems.length} held by review</Badge>}
         <span className="flex-1" />
         <span className="text-small text-muted-foreground transition-transform duration-(--dur-fast) group-open:rotate-90">
           &rsaquo;
         </span>
       </summary>
       <div className="border-t border-border px-6 pb-6">
+        {heldItems.length > 0 && (
+          <>
+            <p className="mt-4 text-body text-muted-foreground">
+              The value gate held these drafts, so they were not sent. Read the reason, then send a draft to review or dismiss it.
+            </p>
+            <ul className="mt-4 divide-y divide-border">
+              {heldItems.map((m) => (
+                <li key={m.id} className="flex items-start justify-between gap-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-body font-medium text-foreground">
+                      {flowNames.get(m.flow_id) ?? "Unknown flow"}
+                      <span className="ml-2 text-small text-muted-foreground">to {contactLabel(m)}</span>
+                    </p>
+                    {m.subject && <p className="mt-0.5 text-body text-foreground">{m.subject}</p>}
+                    <p className="mt-0.5 text-body text-muted-foreground">
+                      {m.brain_reasoning?.replace(/^value_gated:\s*/, "") ?? "Held by the value gate."}
+                    </p>
+                    <p className="mt-0.5 font-mono text-small text-subtle-foreground">{formatDate(m.updated_at)}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="outline" size="sm" onClick={() => dismiss.mutate(m.id)} disabled={dismiss.isPending}>
+                      Dismiss
+                    </Button>
+                    <Button size="sm" onClick={() => release.mutate(m.id)} disabled={release.isPending}>
+                      Send to review
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {items.length > 0 && (
+        <>
         <p className="mt-4 text-body text-muted-foreground">
           These messages stopped permanently. The reason is recorded on each;
           fix the cause, then retry generation failures.
@@ -267,9 +315,13 @@ function FailedSection() {
             );
           })}
         </ul>
-        {retry.isError && (
+        </>
+        )}
+        {actionError != null && (
           <p className="mt-3 text-body text-danger">
-            {retry.error instanceof Error ? retry.error.message : "Retry failed."}
+            {actionError instanceof Error
+              ? actionError.message
+              : ((actionError as { message?: string }).message ?? "The action failed.")}
           </p>
         )}
       </div>
@@ -866,6 +918,13 @@ export default function ApprovalsPage() {
                   ) : null}
                 </div>
               </div>
+
+              {selected.status_reason?.startsWith("value_gate:") && (
+                <p className="mt-4 rounded-md border border-warning bg-warning-soft px-4 py-3 text-body text-foreground" role="note">
+                  <span className="font-medium">The value gate objected to this draft.</span>{" "}
+                  {selected.status_reason.replace(/^value_gate:\s*/, "")} You decide: approve, edit, revise or reject it.
+                </p>
+              )}
 
               {editing ? (
                 <DraftEditor

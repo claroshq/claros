@@ -33,6 +33,7 @@ import {
   flowMemberships,
   lifecycleMessages,
   suppressions,
+  events,
 } from "@claros/db/schema";
 import { processDrainTick } from "../src/drain.js";
 import { verifyUnsubscribeToken } from "@claros/adapters";
@@ -160,6 +161,7 @@ beforeEach(async () => {
   await db.execute(sql`DELETE FROM flows WHERE tenant_id = ${testTenantId}`);
   await db.execute(sql`DELETE FROM suppressions WHERE tenant_id = ${testTenantId}`);
   await db.execute(sql`DELETE FROM lifecycle_transitions WHERE contact_id IN (SELECT id FROM contacts WHERE tenant_id = ${testTenantId})`);
+  await db.execute(sql`DELETE FROM events WHERE tenant_id = ${testTenantId}`);
   await db.execute(sql`DELETE FROM contacts WHERE tenant_id = ${testTenantId}`);
   // Restore settings with postal address after any test that removed it.
   await db
@@ -176,6 +178,7 @@ afterAll(async () => {
 });
 
 async function cleanup() {
+  await db.execute(sql`DELETE FROM events WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${SLUG})`);
   await db.execute(
     sql`DELETE FROM lifecycle_messages WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ${SLUG})`,
   );
@@ -408,6 +411,41 @@ describe("drain worker", () => {
         .from(lifecycleMessages)
         .where(eq(lifecycleMessages.id, messageId));
       expect(msg!.status).toBe("suppressed");
+    });
+  });
+
+  describe("send-time exit check", () => {
+    it("cancels an approved message whose flow exit was met after entry; sends when it was not", async () => {
+      if (!dbAvailable) return;
+
+      const reactivated = await insertContact("exit-reactivated");
+      const stillLeaving = await insertContact("exit-still-leaving");
+      const flowId = await insertFlow({ name: "exit-flow", windowPolicy: "immediate" });
+      await db
+        .update(flows)
+        .set({
+          compiledPlan: {
+            trigger: { type: "event", condition: { event: "subscription_cancel_scheduled" } },
+            steps: [{ order: 1, action_type: "cancel_save", delay: "0m", window_policy: "immediate" }],
+            exit_conditions: [{ event: "subscription_reactivated" }, { trait: { key: "payment_status", op: "eq", value: "paid_again" } }],
+          },
+        })
+        .where(eq(flows.id, flowId));
+      const m1 = await insertApprovedMessage({ contactId: reactivated, flowId, membershipId: await insertMembership(reactivated, flowId) });
+      const m2 = await insertApprovedMessage({ contactId: stillLeaving, flowId, membershipId: await insertMembership(stillLeaving, flowId) });
+      // The membership entered 2026-07-20; the reactivation came after it.
+      await db.insert(events).values({ tenantId: testTenantId, contactId: reactivated, type: "track", eventName: "subscription_reactivated", timestamp: new Date("2026-07-20T12:00:00Z") });
+      // An older event (before entry) does not count.
+      await db.insert(events).values({ tenantId: testTenantId, contactId: stillLeaving, type: "track", eventName: "subscription_reactivated", timestamp: new Date("2026-07-19T12:00:00Z") });
+
+      const adapter = new LogTransportAdapter();
+      const result = await runDrainTick(adapter, new Date("2026-07-21T10:00:00Z"));
+
+      expect(result.exitMet).toBe(1);
+      expect(result.sent).toBe(1);
+      expect(adapter.sends.map((x) => x.messageId)).toEqual([m2]);
+      const [cancelled] = await db.select({ status: lifecycleMessages.status, reason: lifecycleMessages.statusReason }).from(lifecycleMessages).where(eq(lifecycleMessages.id, m1));
+      expect(cancelled).toEqual({ status: "cancelled", reason: "exit_met" });
     });
   });
 

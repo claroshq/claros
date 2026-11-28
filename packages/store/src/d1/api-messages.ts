@@ -256,6 +256,28 @@ export function d1ApiMessages(db: D1Db): ApiMessagesQueries {
       return moved.length > 0;
     },
 
+    async releaseValueGated({ tenantId, messageId, now, outbox }) {
+      const moved = await transition(
+        tenantId,
+        [messageId],
+        "value_gated",
+        {
+          status: "pending_approval",
+          // brain_reasoning is 'value_gated: <reason>'; 'value_gated: ' is 13 characters.
+          statusReason: sql`'value_gate: ' || substr(COALESCE(brain_reasoning, ''), 14)`,
+          updatedAt: now,
+        },
+        now,
+        () => outbox,
+      );
+      return moved.length > 0;
+    },
+
+    async dismissValueGated({ tenantId, messageId, actor, now }) {
+      const moved = await transition(tenantId, [messageId], "value_gated", { status: "cancelled", statusReason: "dismissed", rejectedBy: actor, updatedAt: now }, now, null);
+      return moved.length > 0;
+    },
+
     async requeueFailedGeneration({ tenantId, messageId, now }) {
       const rows = await db.all<{ id: string }>(sql`
         UPDATE lifecycle_messages

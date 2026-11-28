@@ -212,6 +212,30 @@ export async function cancelMessage(ctx: ServiceContext, id: string): Promise<Me
   return settle(ctx, id, "cancelled");
 }
 
+/** value_gated -> pending_approval: a person reviews a draft the value gate held. */
+export async function releaseValueGated(ctx: ServiceContext, id: string): Promise<MessageActionResult> {
+  if (!isUuid(id)) return { kind: "not_found", id };
+  const now = new Date();
+  const batch = pendingApprovalBatch(now);
+  const ok = await storeFor(ctx.db).apiMessages.releaseValueGated({
+    tenantId: ctx.tenant.id,
+    messageId: id,
+    now,
+    outbox: [{ event: "message.pending_approval", payload: { message_id: id }, dedupKey: batch.dedupKey, deliverAt: batch.deliverAt, batched: true }],
+  });
+  if (!ok) return settle(ctx, id, null);
+  return { kind: "ok", id, status: "pending_approval" };
+}
+
+/** value_gated -> cancelled: the held draft is not wanted. */
+export async function dismissValueGated(ctx: ServiceContext, id: string): Promise<MessageActionResult> {
+  if (!isUuid(id)) return { kind: "not_found", id };
+  if (await storeFor(ctx.db).apiMessages.dismissValueGated({ tenantId: ctx.tenant.id, messageId: id, actor: actorOf(ctx.tenant), now: new Date() })) {
+    return { kind: "ok", id, status: "cancelled" };
+  }
+  return settle(ctx, id, "cancelled");
+}
+
 /** approved -> pending_approval, with the batched message.pending_approval outbox entry. */
 export async function unapproveMessage(ctx: ServiceContext, id: string): Promise<MessageActionResult> {
   if (!isUuid(id)) return { kind: "not_found", id };

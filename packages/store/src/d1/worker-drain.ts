@@ -23,6 +23,8 @@ import {
   transportConfigs,
   topics,
   contactTopics,
+  events,
+  flowMemberships,
 } from "@claros/db/schema-sqlite";
 import type { D1Db } from "./db.js";
 import type { OutboxEntry } from "../areas/shared-outbox.js";
@@ -166,6 +168,31 @@ export function d1WorkerDrain(db: D1Db): WorkerDrainQueries {
 
     deferClaim(messageId, sendAt, now) {
       return casFromSending(messageId, { status: "approved", scheduledSendAt: sendAt, updatedAt: now });
+    },
+
+    markCancelled(messageId, now, reason) {
+      return casFromSending(messageId, { status: "cancelled", statusReason: reason, updatedAt: now });
+    },
+
+    async getExitCheckInput({ tenantId, messageId }) {
+      const rows = await db
+        .select({ enteredAt: flowMemberships.enteredAt, lifecycleState: contacts.lifecycleState })
+        .from(lifecycleMessages)
+        .innerJoin(flowMemberships, eq(flowMemberships.id, lifecycleMessages.membershipId))
+        .innerJoin(contacts, eq(contacts.id, lifecycleMessages.contactId))
+        .where(and(eq(lifecycleMessages.id, messageId), eq(lifecycleMessages.tenantId, tenantId)))
+        .limit(1);
+      const r = rows[0];
+      return r && r.enteredAt ? { enteredAt: r.enteredAt, lifecycleState: r.lifecycleState ?? null } : null;
+    },
+
+    async hasEventSince({ contactId, eventName, since }) {
+      const found = await db
+        .select({ id: events.id })
+        .from(events)
+        .where(and(eq(events.contactId, contactId), eq(events.eventName, eventName), gte(events.timestamp, since)))
+        .limit(1);
+      return found.length > 0;
     },
 
     markSuppressed(messageId, now, reason) {

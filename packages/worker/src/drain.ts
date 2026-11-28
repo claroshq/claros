@@ -101,6 +101,7 @@ import {
   type LinkTracking,
 } from "@claros/core";
 import type { TenantTransportAdapter, TransportResolver } from "./transport.js";
+import { exitMetAtSend } from "./exit-recheck.js";
 import {
   buildComplianceOutput,
   checkBaseUrl,
@@ -166,6 +167,8 @@ export interface DrainTickResult {
   topicUnsubscribed: number;
   /** Messages failed by the transport policy (non-transactional mail routed to a cloudflare transport). */
   transportPolicyFailures: number;
+  /** Cancelled at send time because the flow's exit was met (exit-recheck.ts). */
+  exitMet: number;
   /**
    * Products whose due messages were left unsent by a configuration fault
    * (one entry per product and fault): no usable transport, or no
@@ -267,6 +270,7 @@ export async function processDrainTick(
     permanentFailures: 0,
     topicUnsubscribed: 0,
     transportPolicyFailures: 0,
+    exitMet: 0,
     configFaults: [],
   };
   const fault = (tenantId: string, kind: DrainConfigFault["fault"]) => {
@@ -384,6 +388,9 @@ export async function processDrainTick(
       case "transport_policy":
         stats.transportPolicyFailures++;
         break;
+      case "exit_met":
+        stats.exitMet++;
+        break;
       case "deferred_frequency":
         stats.deferredFrequency++;
         break;
@@ -418,7 +425,8 @@ export type MessageOutcome =
   | "transport_error"
   | "permanent_failure"
   | "topic_unsubscribed"
-  | "transport_policy";
+  | "transport_policy"
+  | "exit_met";
 
 /** The message's topic as the drain needs it, or null when the message has none. */
 export interface DrainTopic {
@@ -570,6 +578,16 @@ export async function processOneMessage(
   if (!gateInput.isSuppressed && messageTopic !== null && topicBlocks(messageTopic)) {
     await storeFor(db).workerDrain.markSuppressed(candidate.id, now, "topic_unsubscribed");
     return "topic_unsubscribed";
+  }
+
+  // Step 4c: Send-time exit check (exit-recheck.ts). A draft can wait hours
+  // or days for approval and the send window; if the flow's exit has been met
+  // since (the user reactivated, the payment recovered, they upgraded), the
+  // message is cancelled instead of sent.
+  const exitPlan = (await storeFor(db).workerDrain.getFlowThrottleInfo(candidate.flowId))?.compiledPlan ?? null;
+  if (await exitMetAtSend(db, { tenantId: candidate.tenantId, messageId: candidate.id, contactId: candidate.contactId, compiledPlan: exitPlan, now })) {
+    await storeFor(db).workerDrain.markCancelled(candidate.id, now, "exit_met");
+    return "exit_met";
   }
 
   const verdict = evaluateThrottleGate(gateInput);

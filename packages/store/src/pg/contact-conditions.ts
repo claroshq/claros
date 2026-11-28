@@ -4,17 +4,17 @@
  */
 import { sql } from "drizzle-orm";
 import type { PgDb } from "./db.js";
-import type { ContactConditionQueries } from "../areas/shared-conditions.js";
+import { withReservedTraits, type ContactConditionQueries, type ReservedTraitColumns } from "../areas/shared-conditions.js";
 
 export function pgContactConditions(db: PgDb): ContactConditionQueries {
   return {
     async getContactTraits({ tenantId, contactId }) {
-      const res = await db.execute<{ properties: Record<string, unknown> | null }>(sql`
-        SELECT properties FROM contacts WHERE id = ${contactId}::uuid AND tenant_id = ${tenantId}::uuid
+      const res = await db.execute<ReservedTraitColumns & { properties: Record<string, unknown> | null }>(sql`
+        SELECT properties, email, name, company, payment_status FROM contacts WHERE id = ${contactId}::uuid AND tenant_id = ${tenantId}::uuid
       `);
       const row = res.rows[0];
       if (!row) return null;
-      return row.properties && typeof row.properties === "object" ? row.properties : {};
+      return withReservedTraits(row.properties && typeof row.properties === "object" ? row.properties : {}, row);
     },
 
     async countSends({ tenantId, contactId, flow, actionType, topic, since }) {

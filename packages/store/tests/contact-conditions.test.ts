@@ -19,14 +19,23 @@ for (const factory of testBackends()) {
 
     const areas = (b: Backend) => [b.store.workerAdvanceMembership, b.store.workerScanStepAdvancement, b.store.workerTriggerCheck];
 
-    it("getContactTraits returns properties, {} when unset, null when missing or in another tenant", async () => {
+    it("getContactTraits returns properties plus reserved columns, null when missing or in another tenant", async () => {
       const t = await b.newTenant();
       const c = await insertContact(b, t, { properties: { plan_tier: "pro", n: 3, nested: { a: true } } });
       const bare = await insertContact(b, t);
       for (const q of areas(b)) {
-        expect(await q.getContactTraits({ tenantId: t, contactId: c })).toEqual({ plan_tier: "pro", n: 3, nested: { a: true } });
-        expect(await q.getContactTraits({ tenantId: t, contactId: bare })).toEqual({});
+        // payment_status is a reserved trait from its column (default 'free').
+        expect(await q.getContactTraits({ tenantId: t, contactId: c })).toEqual({ plan_tier: "pro", n: 3, nested: { a: true }, payment_status: "free" });
+        expect(await q.getContactTraits({ tenantId: t, contactId: bare })).toEqual({ payment_status: "free" });
         expect(await q.getContactTraits({ tenantId: await b.newTenant(), contactId: c })).toBeNull();
+      }
+    });
+
+    it("getContactTraits: reserved columns override stale properties; NULL columns stay absent", async () => {
+      const t = await b.newTenant();
+      const c = await insertContact(b, t, { email: "x@acme.test", company: "Acme", paymentStatus: "past_due", properties: { payment_status: "paid", plan_tier: "pro" } });
+      for (const q of areas(b)) {
+        expect(await q.getContactTraits({ tenantId: t, contactId: c })).toEqual({ plan_tier: "pro", payment_status: "past_due", email: "x@acme.test", company: "Acme" });
       }
     });
 

@@ -132,7 +132,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
       });
     },
 
-    completeDraft(messageId, status, { subject, bodyHtml, bodyText }, approvedAt, now, events) {
+    completeDraft(messageId, status, { subject, bodyHtml, bodyText }, approvedAt, now, events, statusReason = null) {
       return cas(messageId, "awaiting_content", {
         status,
         subject,
@@ -140,6 +140,7 @@ export function d1WorkerContent(db: D1Db): WorkerContentQueries {
         bodyText,
         approvedAt,
         revisionRequest: null,
+        statusReason,
         updatedAt: now,
       }, events, now);
     },

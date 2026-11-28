@@ -409,7 +409,8 @@ async function processTenantStepAdvancement(
 
       // Determine delay reference time:
       //   Step 1: membership.entered_at
-      //   Step N: created_at of step N-1's message row (or entered_at if skipped)
+      //   Step N: created_at of the latest message at or before step N-1
+      //           (a skipped step has none), else entered_at
       let referenceTime: Date;
       if (membership.currentStep === 1) {
         referenceTime = membership.enteredAt;
@@ -421,8 +422,7 @@ async function processTenantStepAdvancement(
         });
 
         if (prevCreatedAt === null) {
-          // No previous message found - the previous step was skipped by condition.
-          // Use entered_at as fallback (the delay will have elapsed).
+          // No earlier message in this membership (every earlier step was skipped).
           referenceTime = membership.enteredAt;
         } else {
           referenceTime = prevCreatedAt;

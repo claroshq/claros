@@ -86,6 +86,8 @@ afterAll(async () => {
     return;
   }
   await db.execute(sql`DELETE FROM events WHERE tenant_id = ${tenantId}`);
+  await db.execute(sql`DELETE FROM ops_events WHERE tenant_id = ${tenantId}`);
+  await db.execute(sql`DELETE FROM ops_alerts WHERE tenant_id = ${tenantId}`);
   await db.execute(sql`DELETE FROM contacts WHERE tenant_id = ${tenantId}`);
   await db.execute(sql`DELETE FROM api_keys WHERE tenant_id = ${tenantId}`);
   await db.execute(sql`DELETE FROM tenants WHERE id = ${tenantId}`);
@@ -339,6 +341,62 @@ describe("POST /v1/batch", () => {
       sql`SELECT event_name FROM events WHERE tenant_id = ${tenantId} AND event_name = 'batch_track_ok'`,
     );
     expect(rows.rows.length).toBe(1);
+    await app.close();
+  });
+
+  it("answers 503 when an item cannot be stored, so the sender retries; the failure is an ops event", async () => {
+    if (!dbAvailable) return;
+    const app = await buildApp({ logger: false, db });
+    const send = () =>
+      app.inject({
+        method: "POST",
+        url: "/v1/batch",
+        headers: { authorization: `Bearer ${secretKey}` },
+        payload: {
+          batch: [
+            { type: "track", userId: "batch_503", event: "stored_before_failure", messageId: "b503-1" },
+            // Postgres refuses a NUL byte in text: valid JSON, fails while being stored.
+            { type: "track", userId: "batch_503", event: "bad\u0000name", messageId: "b503-2" },
+            { type: "track", userId: "batch_503", event: "after_failure", messageId: "b503-3" },
+          ],
+        },
+      });
+    const res = await send();
+    expect(res.statusCode).toBe(503);
+    const body = JSON.parse(res.body);
+    expect(body.success).toBe(false);
+    expect(body.received).toBe(1);
+    expect(body.errors[0].index).toBe(1);
+
+    // The item after the failure was not attempted; the resend stores nothing twice.
+    await send();
+    const rows = await db.execute(
+      sql`SELECT message_id FROM events WHERE tenant_id = ${tenantId} AND message_id LIKE 'b503-%' ORDER BY message_id`,
+    );
+    expect(rows.rows.map((r) => r.message_id)).toEqual(["b503-1"]);
+
+    const ops = await db.execute(
+      sql`SELECT kind, severity, context FROM ops_events WHERE tenant_id = ${tenantId} AND kind = 'ingest_failed' AND severity = 'error'`,
+    );
+    expect(ops.rows.length).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(ops.rows[0]!.context)).toContain("b503-2");
+    await app.close();
+  });
+
+  it("records invalid items as an ops warning", async () => {
+    if (!dbAvailable) return;
+    const app = await buildApp({ logger: false, db });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/batch",
+      headers: { authorization: `Bearer ${secretKey}` },
+      payload: { batch: [{ type: "track", event: "no_user_id_here" }] },
+    });
+    expect(res.statusCode).toBe(200);
+    const ops = await db.execute(
+      sql`SELECT context FROM ops_events WHERE tenant_id = ${tenantId} AND kind = 'ingest_failed' AND severity = 'warning'`,
+    );
+    expect(JSON.stringify(ops.rows.map((r) => r.context))).toContain("no_user_id_here");
     await app.close();
   });
 

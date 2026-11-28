@@ -29,6 +29,8 @@ export const OPS_KIND = {
   WEBHOOK_FAILURES: "webhook_failures",
   /** More than 20% of a product's LLM calls (decide, draft, assess) failed over 15 minutes. */
   LLM_ERROR_RATE: "llm_error_rate",
+  /** An ingested event or identify was not stored: invalid, or a storage failure answered with 503. */
+  INGEST_FAILED: "ingest_failed",
 } as const;
 export type OpsKind = (typeof OPS_KIND)[keyof typeof OPS_KIND];
 

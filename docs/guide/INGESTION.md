@@ -146,6 +146,15 @@ Notes:
 
 - Events with only an `anonymousId` are rejected (`userId` required); they
   appear as per-item errors in the batch response, not as silent drops.
+- A batch answers `200` with `received` and `errors[]` when every valid item
+  was stored. Invalid items are listed in `errors[]` and recorded on the
+  Health page; sending them again will not help.
+- If a valid item cannot be stored (a database error), the batch answers
+  `503` with `success: false`. The items before it are stored, the rest are
+  not attempted. Send the whole batch again: with `messageId` set, items
+  already stored are not stored twice. The failure is recorded on the Health
+  page. A sender that checks only for a `2xx` status therefore never drops an
+  event that Claros did not store.
 - `page`/`screen`/`group`/`alias` calls have no endpoint here. Do not set
   `path` to anything but `/v1/batch`.
 - Payload caps: 100 items and 512 KB per batch request. Segment's own limits

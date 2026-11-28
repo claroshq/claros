@@ -58,6 +58,7 @@ import { createRouter, parseBody } from "../http/router.js";
 import { createIngestAuth, ingestPreflight, parsePlainTextAsJson } from "../http/ingest-auth.js";
 import type { AppContext } from "../http/env.js";
 import { z } from "zod";
+import { recordIngestFailure } from "../ops-events.js";
 import { storeFor } from "@claros/store";
 import { QUEUE, INGEST_TIMESTAMP_CLAMP_HOURS, boundedEventProperties } from "@claros/core";
 import type { Db } from "../plugins/db.js";
@@ -470,7 +471,14 @@ export default function ingestRoutes() {
    * Semantics:
    * - 200 with per-item results; invalid items are reported in errors[] and
    *   do not abort the batch (Segment's own behavior: a batch is accepted
-   *   or rejected as a unit only on auth/size failure).
+   *   or rejected as a unit only on auth/size failure). Sending an invalid
+   *   item again cannot help, so it is not retried; it is recorded as an
+   *   ops event (Health) so it is never a silent drop.
+   * - 503 when a valid item failed while being stored (database error).
+   *   The items before it are stored; the client resends the whole batch
+   *   and messageId dedup makes the resend safe. Before this, a failed item
+   *   was reported only in errors[] of a 200, which a client that checks the
+   *   status alone (most do) treated as delivered: the event was lost.
    * - Anonymous items (no userId) fail validation and land in errors[] -
    *   anonymous tracking is out of scope (see file header).
    * - Caps: 100 items per batch, 512 KB request body (route body limit),
@@ -510,15 +518,34 @@ export default function ingestRoutes() {
         }
         received += 1;
       } catch (err) {
-        errors.push({
-          index,
-          message: err instanceof Error ? err.message : "processing failed",
-        });
+        // A stored-side failure: stop here and ask for the batch again.
+        const message = err instanceof Error ? err.message : "processing failed";
+        errors.push({ index, message });
+        await recordIngestFailure(db, tenantId, "processing", { index, message: clean(message), ...itemRef(rawItem) });
+        return c.json({ success: false, received, errors, error: "An item could not be stored. Send the batch again." }, 503);
       }
     }
 
+    if (errors.length > 0) {
+      const first = errors[0]!;
+      await recordIngestFailure(db, tenantId, "invalid", { count: errors.length, index: first.index, message: clean(first.message), ...itemRef(parsed.data.batch[first.index]) });
+    }
     return c.json({ success: true, received, errors });
   });
 
   return app;
+}
+
+/** The event name, type and ids of a raw batch item, for an ops event (never its traits or properties). */
+function itemRef(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  // Control characters (a NUL byte is one way an item fails) would fail the ops insert too.
+  const pick = (k: string) => (typeof r[k] === "string" ? { [k]: clean(r[k] as string) } : {});
+  return { ...pick("type"), ...pick("event"), ...pick("userId"), ...pick("messageId") };
+}
+
+function clean(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\u0000-\u001f\u007f]/g, "?").slice(0, 300);
 }

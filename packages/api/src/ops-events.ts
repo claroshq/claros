@@ -1,5 +1,6 @@
 /**
- * Ops events recorded by the API (G25): Resend webhook failures.
+ * Ops events recorded by the API (G25): Resend webhook failures and
+ * ingestion items that were not stored.
  *
  * Every signature or processing failure for a product adds to a windowed
  * counter (instance setting webhook.window.<product>, one atomic statement,
@@ -53,5 +54,41 @@ export async function recordWebhookFailure(
     );
   } catch (err) {
     console.error("[alerts] could not record a webhook failure:", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * An ingestion item that was not stored: invalid (reported in the batch's
+ * errors[], not retried) or a storage failure (the batch answered 503 and
+ * should be sent again). Every one is an ops event, so a dropped event is
+ * visible on Health and alerts by mail; the alert groups by product and
+ * reason. Never throws.
+ */
+export async function recordIngestFailure(
+  db: Db,
+  tenantId: string,
+  reason: "invalid" | "processing",
+  context: Record<string, unknown>,
+  now: Date = new Date(),
+): Promise<void> {
+  try {
+    const message =
+      reason === "processing"
+        ? "Events could not be stored: a batch item failed and the batch was answered with 503 so the sender retries it. If this repeats, the sender may be dropping events."
+        : "Events were rejected as invalid and not stored. The sender should fix them; resending the same item will not help.";
+    await storeFor(db).ops.recordEvent(
+      {
+        at: now,
+        tenantId,
+        kind: OPS_KIND.INGEST_FAILED,
+        severity: reason === "processing" ? "error" : "warning",
+        fingerprint: opsFingerprint(OPS_KIND.INGEST_FAILED, tenantId, message),
+        message,
+        context,
+      },
+      { alert: true },
+    );
+  } catch (err) {
+    console.error("[alerts] could not record an ingestion failure:", err instanceof Error ? err.message : err);
   }
 }

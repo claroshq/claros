@@ -168,7 +168,7 @@ export function buildDecideMessages(ctx: DecidePromptContext): ChatMessage[] {
     const behaviorLines: string[] = [];
     if (ctx.behavior.lastAction) behaviorLines.push(`Last action: ${ctx.behavior.lastAction}`);
     if (ctx.behavior.mostUsedFeatures && ctx.behavior.mostUsedFeatures.length > 0) {
-      behaviorLines.push(`Most used features: ${ctx.behavior.mostUsedFeatures.join(", ")}`);
+      behaviorLines.push(`Most frequent events (30 days; product use and billing/lifecycle events mixed): ${ctx.behavior.mostUsedFeatures.join(", ")}`);
     }
     if (ctx.behavior.recentEvents && ctx.behavior.recentEvents.length > 0) {
       behaviorLines.push(`Recent events: ${ctx.behavior.recentEvents.join(", ")}`);
