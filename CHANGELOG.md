@@ -8,6 +8,7 @@ Each release has a GitHub Release with the same notes and an upgrade section.
 
 ### Added
 
+- Approvals: a person card for the recipient. Hover or click their name above the draft or under Details (or press `p`) to see who the draft is going to without leaving the queue: name, email, company, lifecycle state, engagement and payment status, first and last seen, suppression, the flows they are in, the team's latest notes, a few properties and their most recent timeline (events, state changes and mail, with the draft under review marked), with a link to the full profile. Dashboard only; it reads the existing contact, timeline and notes endpoints.
 - Approvals has a Refresh button in its header. It refetches the review queue, Approved and Needs attention lists and the LLM budget notice in one go, and its icon turns while it runs. Drafts you just approved or rejected stay hidden during their undo window.
 
 ### Fixed

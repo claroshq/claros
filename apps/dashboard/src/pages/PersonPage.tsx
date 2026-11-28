@@ -28,52 +28,15 @@ import {
 } from "../contacts.js";
 import { useExcludeContact } from "../messages.js";
 import { useMe } from "../auth.js";
-import type { ContactDetail, ContactTopicStatus, TimelineItem } from "../api.js";
+import type { ContactTopicStatus, TimelineItem } from "../api.js";
 import { Textarea } from "../components/ui/textarea.js";
 import { Input } from "../components/ui/input.js";
-import { Badge, type BadgeVariant } from "../components/ui/badge.js";
+import { Badge } from "../components/ui/badge.js";
+import { membershipVariant, messageVariant, stateVariant } from "../lib/person-badges.js";
 import { Button } from "../components/ui/button.js";
 import { Skeleton } from "../components/ui/skeleton.js";
 import { cn } from "../lib/utils.js";
 import { stateHint, stateName } from "../lib/lifecycle-names.js";
-
-function stateVariant(state: ContactDetail["lifecycle_state"]): BadgeVariant {
-  switch (state) {
-    case "signed_up": return "neutral";
-    case "activated": return "accent";
-    case "engaged": return "success";
-    case "at_risk": return "warning";
-    case "dormant": return "muted";
-    case "gone_quiet": return "danger";
-    // Older servers (before the gone_quiet rename) return churned.
-    case "churned": return "danger";
-    case "resurrected": return "success";
-  }
-}
-
-function membershipVariant(status: string): BadgeVariant {
-  switch (status) {
-    case "active": return "success";
-    case "paused": return "warning";
-    case "completed": return "muted";
-    case "exited": return "neutral";
-    default: return "neutral";
-  }
-}
-
-function messageVariant(status: string): BadgeVariant {
-  switch (status) {
-    case "sent": return "success";
-    case "approved": return "accent";
-    case "pending_approval": return "warning";
-    case "rejected":
-    case "failed":
-    case "suppressed": return "danger";
-    case "skipped":
-    case "value_gated": return "muted";
-    default: return "neutral";
-  }
-}
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
